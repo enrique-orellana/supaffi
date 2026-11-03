@@ -247,30 +247,37 @@ export async function getMerchantByDomain(
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
   await assertOwns(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
-  await db.$transaction([
-    db.commission.deleteMany({ where: affiliates }),
+  await db.$transaction(async (tx) => {
+    // Historical import rows are immutable in normal application flows. The
+    // database trigger permits their removal only inside this scoped merchant
+    // cleanup transaction, after the ownership check above.
+    await tx.$executeRaw`
+      SELECT set_config('supaffi.archive_purge_merchant_id', ${merchantId}, true)
+    `;
+
+    await tx.commission.deleteMany({ where: affiliates });
     // Points at the click, so it goes before clicks do.
-    db.referredSubscription.deleteMany({ where: { merchantId } }),
-    db.paymentRecord.deleteMany({ where: { merchantId } }),
+    await tx.referredSubscription.deleteMany({ where: { merchantId } });
+    await tx.paymentRecord.deleteMany({ where: { merchantId } });
     // Checkouts may point at clicks and provider connections; payment records
     // above may point at a checkout.
-    db.commerceCheckout.deleteMany({ where: { merchantId } }),
-    db.commerceEventDelivery.deleteMany({ where: { merchantId } }),
+    await tx.commerceCheckout.deleteMany({ where: { merchantId } });
+    await tx.commerceEventDelivery.deleteMany({ where: { merchantId } });
     // Imported rows retain optional Affiliate and Merchant mappings and must
     // be removed before either side or their owning batch is deleted.
-    db.importedCommission.deleteMany({ where: { batch: { merchantId } } }),
-    db.importedPayout.deleteMany({ where: { batch: { merchantId } } }),
-    db.click.deleteMany({ where: affiliates }),
-    db.affiliateLink.deleteMany({ where: affiliates }),
-    db.affiliateLoginToken.deleteMany({ where: affiliates }),
-    db.affiliate.deleteMany({ where: { merchantId } }),
-    db.program.deleteMany({ where: { merchantId } }),
-    db.webhookEvent.deleteMany({ where: { merchantId } }),
-    db.affiliateImportBatch.deleteMany({ where: { merchantId } }),
-    db.commerceIntegration.deleteMany({ where: { merchantId } }),
-    db.paymentConnection.deleteMany({ where: { merchantId } }),
-    db.merchant.delete({ where: { id: merchantId } }),
-  ]);
+    await tx.importedCommission.deleteMany({ where: { batch: { merchantId } } });
+    await tx.importedPayout.deleteMany({ where: { batch: { merchantId } } });
+    await tx.click.deleteMany({ where: affiliates });
+    await tx.affiliateLink.deleteMany({ where: affiliates });
+    await tx.affiliateLoginToken.deleteMany({ where: affiliates });
+    await tx.affiliate.deleteMany({ where: { merchantId } });
+    await tx.program.deleteMany({ where: { merchantId } });
+    await tx.webhookEvent.deleteMany({ where: { merchantId } });
+    await tx.affiliateImportBatch.deleteMany({ where: { merchantId } });
+    await tx.commerceIntegration.deleteMany({ where: { merchantId } });
+    await tx.paymentConnection.deleteMany({ where: { merchantId } });
+    await tx.merchant.delete({ where: { id: merchantId } });
+  });
 }
 
 export async function getOnboardingState(

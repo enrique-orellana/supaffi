@@ -357,6 +357,12 @@ enum PaymentProvider {
   NOWPAYMENTS
 }
 
+enum PaymentConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
 enum CommerceEventDeliveryStatus {
   PENDING
   PROCESSING
@@ -419,6 +425,10 @@ model PaymentConnection {
   merchantId          String
   merchant            Merchant         @relation(fields: [merchantId], references: [id])
   provider            PaymentProvider
+  // Connectivity and cutover activation are independent: a working provider
+  // can be paused without forgetting its status or credentials.
+  status              PaymentConnectionStatus @default(DISCONNECTED)
+  enabled             Boolean          @default(false)
   apiKeyEnc           String?
   webhookSecretEnc    String?
   externalEndpointId String?
@@ -486,6 +496,8 @@ model PaymentRecord {
   saleCurrency    String
   cryptoAmount    Decimal?          @db.Decimal(38, 18)
   cryptoCurrency  String?
+  // Asset symbols can exist on more than one chain.
+  cryptoNetwork   String?
   status          String
   clickId         String?
   click           Click?            @relation(fields: [clickId], references: [id])
