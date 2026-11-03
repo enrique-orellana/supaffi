@@ -251,12 +251,24 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
     db.commission.deleteMany({ where: affiliates }),
     // Points at the click, so it goes before clicks do.
     db.referredSubscription.deleteMany({ where: { merchantId } }),
+    db.paymentRecord.deleteMany({ where: { merchantId } }),
+    // Checkouts may point at clicks and provider connections; payment records
+    // above may point at a checkout.
+    db.commerceCheckout.deleteMany({ where: { merchantId } }),
+    db.commerceEventDelivery.deleteMany({ where: { merchantId } }),
+    // Imported rows retain optional Affiliate and Merchant mappings and must
+    // be removed before either side or their owning batch is deleted.
+    db.importedCommission.deleteMany({ where: { batch: { merchantId } } }),
+    db.importedPayout.deleteMany({ where: { batch: { merchantId } } }),
     db.click.deleteMany({ where: affiliates }),
     db.affiliateLink.deleteMany({ where: affiliates }),
     db.affiliateLoginToken.deleteMany({ where: affiliates }),
     db.affiliate.deleteMany({ where: { merchantId } }),
     db.program.deleteMany({ where: { merchantId } }),
     db.webhookEvent.deleteMany({ where: { merchantId } }),
+    db.affiliateImportBatch.deleteMany({ where: { merchantId } }),
+    db.commerceIntegration.deleteMany({ where: { merchantId } }),
+    db.paymentConnection.deleteMany({ where: { merchantId } }),
     db.merchant.delete({ where: { id: merchantId } }),
   ]);
 }
