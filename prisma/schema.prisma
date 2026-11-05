@@ -573,7 +573,13 @@ model AffiliateImportBatch {
   commissions ImportedCommission[]
   payouts     ImportedPayout[]
 
+  // Composite keys let archive rows retain an optional mapping while ensuring
+  // any mapped Merchant matches the batch's intended Merchant.
+  mappedCommissions ImportedCommission[] @relation("ImportedCommissionBatchTenant")
+  mappedPayouts     ImportedPayout[]     @relation("ImportedPayoutBatchTenant")
+
   @@unique([merchantId, sourceAdapter, normalizedDigest])
+  @@unique([id, merchantId])
   @@index([merchantId, createdAt])
 }
 
@@ -582,10 +588,12 @@ model ImportedCommission {
   id                      String               @id @default(cuid())
   batchId                 String
   batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchTenant             AffiliateImportBatch? @relation("ImportedCommissionBatchTenant", fields: [batchId, merchantId], references: [id, merchantId], onDelete: Cascade)
   merchantId              String?
   merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
-  affiliate               Affiliate?           @relation(fields: [affiliateId], references: [id])
+  // The migration-owned CHECK requires merchantId whenever affiliateId is set.
+  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: SetNull)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceLinkIdentity      String?
@@ -602,6 +610,7 @@ model ImportedCommission {
 
   @@index([batchId, importedAt])
   @@index([affiliateId, sourceCreatedAt])
+  @@index([merchantId])
 }
 
 /// Historical payout snapshots are aggregate records; no individual imported
@@ -610,10 +619,12 @@ model ImportedPayout {
   id                      String               @id @default(cuid())
   batchId                 String
   batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchTenant             AffiliateImportBatch? @relation("ImportedPayoutBatchTenant", fields: [batchId, merchantId], references: [id, merchantId], onDelete: Cascade)
   merchantId              String?
   merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
-  affiliate               Affiliate?           @relation(fields: [affiliateId], references: [id])
+  // The migration-owned CHECK requires merchantId whenever affiliateId is set.
+  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: SetNull)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceTransactionRef    String?
@@ -627,4 +638,5 @@ model ImportedPayout {
 
   @@index([batchId, importedAt])
   @@index([affiliateId, paidAt])
+  @@index([merchantId])
 }

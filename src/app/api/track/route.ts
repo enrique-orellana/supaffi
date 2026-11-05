@@ -37,27 +37,25 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
+  // Codes are scoped to the Merchant resolved from the validated request host.
   // Only live codes attribute. A code its Affiliate renamed or deleted
   // (RetiredLinkCode) is not looked up here: the edit dialog tells the
   // Affiliate that old links stop earning, and quietly crediting them anyway
   // would contradict what they were told. Retiring it still keeps the code
   // from ever resolving for someone else.
   const link = await db.affiliateLink.findUnique({
-    where: { code: referralCode },
+    where: { merchantId_code: { merchantId: merchant.id, code: referralCode } },
     select: {
       id: true,
       affiliate: {
         select: {
           id: true,
-          merchantId: true,
           program: { select: { attributionWindowDays: true } },
         },
       },
     },
   });
-  // The code is globally unique, so a code belonging to another Merchant
-  // resolves but must not attribute here.
-  if (!link || link.affiliate.merchantId !== merchant.id) {
+  if (!link) {
     return new NextResponse(null, { status: 404 });
   }
 
@@ -100,7 +98,7 @@ export async function GET(req: NextRequest) {
   if (throttled) rememberClick(throttled);
   await db.click.create({
     data: {
-      merchantId: link.affiliate.merchantId,
+      merchantId: merchant.id,
       affiliateId: link.affiliate.id,
       linkId: link.id,
       referralToken,
