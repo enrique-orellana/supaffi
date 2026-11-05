@@ -162,6 +162,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     const written = await createCommissionUnlessSelfReferral({
       data: {
         affiliateId: affiliate.id,
+        merchantId: click.merchantId,
         clickId: click.id,
         stripePaymentRef: invoice.id,
         currency: invoice.currency,

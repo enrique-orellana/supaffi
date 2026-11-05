@@ -310,6 +310,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     const written = await createCommissionUnlessSelfReferral({
       data: {
         affiliateId: affiliate.id,
+        merchantId: click.merchantId,
         clickId: click.id,
         stripePaymentRef,
         currency: session.currency,

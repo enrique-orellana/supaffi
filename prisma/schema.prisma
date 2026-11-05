@@ -290,6 +290,9 @@ model Commission {
   id          String    @id @default(cuid())
   affiliateId String
   affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
+  // Filled from the required Click by a database trigger. Nullable in the
+  // Prisma model so inserts can leave the authoritative value to the database.
+  merchantId  String?
   clickId     String
   click       Click     @relation(fields: [clickId], references: [id])
 
@@ -513,6 +516,8 @@ model PaymentRecord {
 
   @@unique([merchantId, provider, paymentRef])
   @@unique([merchantId, provider, sourceOrderId])
+  // Target of Commission's migration-owned tenant-scoped composite foreign key.
+  @@unique([merchantId, id])
   @@index([checkoutId])
   @@index([clickId])
 }
@@ -593,7 +598,7 @@ model ImportedCommission {
   merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
   // The migration-owned CHECK requires merchantId whenever affiliateId is set.
-  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: SetNull)
+  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: Cascade)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceLinkIdentity      String?
@@ -624,7 +629,7 @@ model ImportedPayout {
   merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
   // The migration-owned CHECK requires merchantId whenever affiliateId is set.
-  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: SetNull)
+  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: Cascade)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceTransactionRef    String?
