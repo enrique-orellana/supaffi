@@ -230,7 +230,7 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
   if (!click) return;
 
   const invoices: Stripe.Invoice[] = [];
-  const stripe = click.commissions.length > 0 ? stripeClientFor(merchant) : null;
+  const stripe = click.commissions.length > 0 ? await stripeClientFor(merchant) : null;
   if (stripe) {
     for (const { stripePaymentRef } of click.commissions) {
       if (!stripePaymentRef) continue;

@@ -81,7 +81,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const program = click.affiliate.program;
   if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
 
-  const stripe = stripeClientFor(merchant);
+  const stripe = await stripeClientFor(merchant);
 
   // The invoice's own flag is on the payload, so an excluded invoice stops
   // here without a call.

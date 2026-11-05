@@ -21,6 +21,7 @@ export async function runTick(): Promise<void> {
   try {
     const batch = await claimBatch();
     for (const event of batch) {
+      const providerEvent = `${event.provider.toLowerCase()}:${event.providerEventId ?? "unknown"}`;
       try {
         await processWebhookEvent(event);
         await markProcessed(event.id);
@@ -29,9 +30,9 @@ export async function runTick(): Promise<void> {
         // names the masked key and the account. Anything else is a bug here
         // and keeps its stack.
         if (isStripeError(err)) {
-          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed: ${loggableError(err)}`);
+          console.error(`[worker] event ${event.id} (${providerEvent}) failed: ${loggableError(err)}`);
         } else {
-          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed`, err);
+          console.error(`[worker] event ${event.id} (${providerEvent}) failed`, err);
         }
         await markFailed(event.id, event.attempts, err);
       }

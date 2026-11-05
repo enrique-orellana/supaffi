@@ -10,7 +10,7 @@ export type ReversalOutcome = { void: true } | { void: false; amount: number };
 const UNPAID_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
 
 export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Charge): Promise<void> {
-  const stripe = stripeClientFor(merchant);
+  const stripe = await stripeClientFor(merchant);
   const paymentRefs = await resolvePaymentReferenceIds(stripe, {
     legacyInvoice: (charge as unknown as { invoice?: string | { id: string } | null }).invoice ?? null,
     paymentIntentId: idOf(charge.payment_intent),

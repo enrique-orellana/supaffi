@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { stripeApiLocation } from "@/lib/stripeApi";
 
@@ -16,11 +17,15 @@ const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 // without a key. Nothing queues Stripe work for such a Merchant (no webhook
 // secret means the webhook route rejects the delivery before it is ever
 // stored), so reaching here without a key is a bug, not a user state.
-export function stripeClientFor(merchant: { stripeSecretKeyEnc: string | null }): Stripe {
-  if (!merchant.stripeSecretKeyEnc) {
+export async function stripeClientFor(merchant: { id: string }): Promise<Stripe> {
+  const connection = await db.paymentConnection.findUnique({
+    where: { merchantId_provider: { merchantId: merchant.id, provider: "STRIPE" } },
+    select: { apiKeyEnc: true },
+  });
+  if (!connection?.apiKeyEnc) {
     throw new Error("Stripe is not connected for this Merchant");
   }
-  return new Stripe(decrypt(merchant.stripeSecretKeyEnc), {
+  return new Stripe(decrypt(connection.apiKeyEnc), {
     apiVersion: STRIPE_API_VERSION,
     ...stripeApiLocation(),
   });

@@ -32,17 +32,6 @@ model Merchant {
   domain     String @unique // e.g. affiliates.instantgradient.com
   websiteUrl String // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
-  // Encrypted at rest (ADR 0003), master key outside the database.
-  // Nullable because connecting Stripe is a separate onboarding step from
-  // creating the Merchant: a Merchant exists first, then gets integrations
-  // attached. Anything that spends these must handle the unconnected case.
-  stripeSecretKeyEnc      String?
-  stripeWebhookSecretEnc  String?
-  // Set only when Supaffi created the endpoint itself, which it does as soon
-  // as the restricted key carries write access to webhook endpoints. Used to
-  // avoid creating a second endpoint on a repeat connect.
-  stripeWebhookEndpointId String?
-
   // The tracking integration is the one part of setup Supaffi cannot do for
   // the Merchant: the script goes on their site and client_reference_id goes
   // in their checkout code. Proving it works needs a real purchase carrying a
@@ -386,10 +375,7 @@ model WebhookEvent {
   merchantId      String
   merchant        Merchant           @relation(fields: [merchantId], references: [id])
   provider        PaymentProvider    @default(STRIPE)
-  providerEventId String?
-  // Retained while the existing Stripe route and worker transition to the
-  // provider-neutral event identity. Null for non-Stripe events.
-  stripeEventId   String?
+  providerEventId String
   payload         Json
   status          WebhookEventStatus @default(PENDING)
   attempts        Int                @default(0)
@@ -398,10 +384,7 @@ model WebhookEvent {
   createdAt       DateTime           @default(now())
   processedAt     DateTime?
 
-  // Blocks duplicate delivery per Merchant. Not globally: two products on
-  // one Stripe account each get their own copy of every event, and a global
-  // key dropped the second copy as a duplicate before its handler could run.
-  @@unique([merchantId, stripeEventId])
+  // Blocks duplicate delivery per Merchant and provider.
   @@unique([merchantId, provider, providerEventId])
   @@index([status, nextAttemptAt, createdAt])
   // Cleanup only deletes an old processed row when the same product has a

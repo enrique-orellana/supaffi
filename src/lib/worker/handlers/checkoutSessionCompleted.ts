@@ -85,7 +85,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // the row already there instead of writing a second one.
   const earlierPaymentRef = invoiceId && invoiceId !== stripePaymentRef ? invoiceId : null;
 
-  const stripe = stripeClientFor(merchant);
+  const stripe = await stripeClientFor(merchant);
 
   // A Session with no money on it (a free trial, a first month discounted to
   // nothing, or a billing cycle anchor that bills later) reads nothing here.
@@ -129,7 +129,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     const products =
       existing && existing.stripeProductIds.length > 0
         ? existing.stripeProductIds
-        : await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
+        : await subscriptionProductIds(stripe, subscriptionId);
     referred = await recordReferredSubscription(
       merchant.id,
       click.id,

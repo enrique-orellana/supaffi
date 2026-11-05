@@ -141,12 +141,19 @@ function refresh(
     const started = now();
     const merchant = await db.merchant.findFirst({
       where: { id: merchantId, ownerId },
-      select: { domain: true, websiteUrl: true, stripeSecretKeyEnc: true },
+      select: {
+        domain: true,
+        websiteUrl: true,
+        paymentConnections: {
+          where: { provider: "STRIPE" },
+          select: { apiKeyEnc: true },
+        },
+      },
     });
     if (!merchant) throw new Error("Merchant not found");
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
-    const stripeKey = safeDecrypt(merchant.stripeSecretKeyEnc);
+    const stripeKey = safeDecrypt(merchant.paymentConnections[0]?.apiKeyEnc ?? null);
     const wanted = new Set(sections);
     const result: Partial<ProductChecks> = {};
 

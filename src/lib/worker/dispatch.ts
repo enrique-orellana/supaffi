@@ -9,6 +9,9 @@ import { handleChargeDisputeClosed } from "./handlers/chargeDisputeClosed";
 import { handleSubscriptionDeleted } from "./handlers/subscriptionDeleted";
 
 export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
+  if (row.provider !== "STRIPE") {
+    throw new Error(`No webhook handler is registered for provider ${row.provider}`);
+  }
   const event = row.payload as unknown as Stripe.Event;
   const merchant = await db.merchant.findUniqueOrThrow({ where: { id: row.merchantId } });
 

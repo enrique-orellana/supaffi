@@ -183,7 +183,7 @@ export async function releaseDisputeHold(commissionId: string, now: Date = new D
  * disputes (paymentState.ts).
  */
 export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Dispute): Promise<void> {
-  const stripe = stripeClientFor(merchant);
+  const stripe = await stripeClientFor(merchant);
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 

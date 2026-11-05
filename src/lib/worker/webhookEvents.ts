@@ -23,14 +23,6 @@ function defaultClient(secretKey: string): WebhookEndpointsClient {
   }) as unknown as WebhookEndpointsClient;
 }
 
-const merchantSelect = {
-  id: true,
-  domain: true,
-  stripeSecretKeyEnc: true,
-  stripeWebhookSecretEnc: true,
-  stripeWebhookEndpointId: true,
-} as const;
-
 /**
  * Upgrades one product's webhook endpoint to the full event list. Never
  * throws: a failure is logged and the caller carries on. Self-hosted Supaffi
@@ -42,21 +34,29 @@ export async function upgradeMerchantWebhookEvents(
   makeClient: MakeClient = defaultClient
 ): Promise<void> {
   try {
-    const merchant = await db.merchant.findUnique({ where: { id: merchantId }, select: merchantSelect });
+    const connection = await db.paymentConnection.findUnique({
+      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      select: {
+        apiKeyEnc: true,
+        webhookSecretEnc: true,
+        externalEndpointId: true,
+        merchant: { select: { domain: true } },
+      },
+    });
     // A product with no key or no webhook has nothing to upgrade, and one on
     // a local address has no endpoint at all: Stripe cannot reach it, so its
     // events come from the CLI instead.
     if (
-      !merchant?.stripeSecretKeyEnc ||
-      !merchant.stripeWebhookSecretEnc ||
-      isLocalDomain(merchant.domain)
+      !connection?.apiKeyEnc ||
+      !connection.webhookSecretEnc ||
+      isLocalDomain(connection.merchant.domain)
     ) {
       return;
     }
 
-    const result = await ensureRequiredWebhookEvents(makeClient(decrypt(merchant.stripeSecretKeyEnc)), {
-      endpointId: merchant.stripeWebhookEndpointId,
-      url: webhookEndpointUrl(merchant.domain),
+    const result = await ensureRequiredWebhookEvents(makeClient(decrypt(connection.apiKeyEnc)), {
+      endpointId: connection.externalEndpointId,
+      url: webhookEndpointUrl(connection.merchant.domain),
     });
 
     if (result.status === "updated") {
@@ -88,18 +88,22 @@ export async function upgradeMerchantWebhookEvents(
  * keeps failing costs one request per start and nothing more.
  */
 export async function upgradeAllWebhookEvents(makeClient: MakeClient = defaultClient): Promise<void> {
-  let merchants: { id: string }[];
+  let merchants: { merchantId: string }[];
   try {
-    merchants = await db.merchant.findMany({
-      where: { stripeSecretKeyEnc: { not: null }, stripeWebhookSecretEnc: { not: null } },
-      select: { id: true },
+    merchants = await db.paymentConnection.findMany({
+      where: {
+        provider: "STRIPE",
+        apiKeyEnc: { not: null },
+        webhookSecretEnc: { not: null },
+      },
+      select: { merchantId: true },
       orderBy: { createdAt: "asc" },
     });
   } catch (err) {
     console.error("[webhook-events] could not list products to check their Stripe endpoints", err);
     return;
   }
-  for (const merchant of merchants) {
-    await upgradeMerchantWebhookEvents(merchant.id, makeClient);
+  for (const connection of merchants) {
+    await upgradeMerchantWebhookEvents(connection.merchantId, makeClient);
   }
 }

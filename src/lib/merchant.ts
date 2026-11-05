@@ -63,64 +63,50 @@ export async function connectStripe(
   const newWebhookSecretEnc = input.webhookSecret ? encrypt(input.webhookSecret) : undefined;
 
   await db.$transaction(async (tx) => {
-    // Serialize rotations so the legacy and provider-neutral records are
-    // derived from the same, latest ciphertexts.
-    const merchants = await tx.$queryRaw<
-      {
-        id: string;
-        stripeSecretKeyEnc: string | null;
-        stripeWebhookSecretEnc: string | null;
-        stripeWebhookEndpointId: string | null;
-      }[]
-    >`SELECT "id", "stripeSecretKeyEnc", "stripeWebhookSecretEnc", "stripeWebhookEndpointId"
-      FROM "Merchant" WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId} FOR UPDATE`;
+    const merchants = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Merchant"
+      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+      FOR UPDATE
+    `;
     const merchant = merchants[0];
     if (!merchant) throw new Error("Merchant not found");
 
-    const stripeSecretKeyEnc = newSecretKeyEnc ?? merchant.stripeSecretKeyEnc;
-    const stripeWebhookSecretEnc = newWebhookSecretEnc ?? merchant.stripeWebhookSecretEnc;
-    const stripeWebhookEndpointId = input.webhookEndpointId !== undefined
-      ? input.webhookEndpointId
-      : merchant.stripeWebhookEndpointId;
-    const status = stripeSecretKeyEnc && stripeWebhookSecretEnc ? "CONNECTED" : "DISCONNECTED";
-
-    await tx.merchant.update({
-      where: { id: merchantId },
-      data: {
-        ...(newSecretKeyEnc !== undefined ? { stripeSecretKeyEnc: newSecretKeyEnc } : {}),
-        ...(newWebhookSecretEnc !== undefined ? { stripeWebhookSecretEnc: newWebhookSecretEnc } : {}),
-        // Explicit null clears it, which is what a manually pasted secret means:
-        // the endpoint on the other end is one Supaffi did not create and must
-        // not later delete.
-        ...(input.webhookEndpointId !== undefined ? { stripeWebhookEndpointId: input.webhookEndpointId } : {}),
-      },
+    const existing = await tx.paymentConnection.findUnique({
+      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      select: { apiKeyEnc: true, webhookSecretEnc: true, externalEndpointId: true },
     });
+    const apiKeyEnc = newSecretKeyEnc ?? existing?.apiKeyEnc ?? null;
+    const webhookSecretEnc = newWebhookSecretEnc ?? existing?.webhookSecretEnc ?? null;
+    // An explicit null means the endpoint was configured manually and should
+    // not later be removed by the application.
+    const externalEndpointId = input.webhookEndpointId !== undefined
+      ? input.webhookEndpointId
+      : existing?.externalEndpointId ?? null;
+    const status = apiKeyEnc && webhookSecretEnc ? "CONNECTED" : "DISCONNECTED";
 
     await tx.paymentConnection.upsert({
       where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
       create: {
         merchantId,
         provider: "STRIPE",
-        apiKeyEnc: stripeSecretKeyEnc,
-        webhookSecretEnc: stripeWebhookSecretEnc,
-        externalEndpointId: stripeWebhookEndpointId,
+        apiKeyEnc,
+        webhookSecretEnc,
+        externalEndpointId,
         status,
         enabled: true,
       },
       update: {
-        // Copy ciphertext unchanged when a different credential is rotated.
-        apiKeyEnc: stripeSecretKeyEnc,
-        webhookSecretEnc: stripeWebhookSecretEnc,
-        externalEndpointId: stripeWebhookEndpointId,
+        apiKeyEnc,
+        webhookSecretEnc,
+        externalEndpointId,
         status,
+        enabled: true,
       },
     });
   });
 }
 
-/** Clears both Stripe representations together; deleting an endpoint remotely
- * remains a separate operation because only Supaffi-created endpoints may be
- * removed on the owner's behalf. */
+/** Clears the connection; deleting an endpoint remotely remains separate. */
 export async function disconnectStripe(ownerId: string, merchantId: string): Promise<void> {
   await db.$transaction(async (tx) => {
     const merchants = await tx.$queryRaw<{ id: string }[]>`
@@ -130,14 +116,6 @@ export async function disconnectStripe(ownerId: string, merchantId: string): Pro
     `;
     if (!merchants[0]) throw new Error("Merchant not found");
 
-    await tx.merchant.update({
-      where: { id: merchantId },
-      data: {
-        stripeSecretKeyEnc: null,
-        stripeWebhookSecretEnc: null,
-        stripeWebhookEndpointId: null,
-      },
-    });
     await tx.paymentConnection.updateMany({
       where: { merchantId, provider: "STRIPE" },
       data: {
@@ -162,12 +140,12 @@ export async function getIntegrationStatus(
   ownerId: string,
   merchantId: string
 ): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { stripeSecretKeyEnc: true, stripeWebhookSecretEnc: true },
+  const connection = await db.paymentConnection.findFirst({
+    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    select: { apiKeyEnc: true, webhookSecretEnc: true },
   });
-  const stripeKey = Boolean(merchant?.stripeSecretKeyEnc);
-  const stripeWebhook = Boolean(merchant?.stripeWebhookSecretEnc);
+  const stripeKey = Boolean(connection?.apiKeyEnc);
+  const stripeWebhook = Boolean(connection?.webhookSecretEnc);
   return {
     stripe: stripeKey && stripeWebhook,
     stripeKey,
@@ -190,11 +168,11 @@ export async function getStripeKeyKind(
   ownerId: string,
   merchantId: string
 ): Promise<StripeKeyKind> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { stripeSecretKeyEnc: true },
+  const connection = await db.paymentConnection.findFirst({
+    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    select: { apiKeyEnc: true },
   });
-  if (!merchant?.stripeSecretKeyEnc) return null;
+  if (!connection?.apiKeyEnc) return null;
 
   // A rotated or lost MASTER_ENCRYPTION_KEY makes decrypt throw. Integrations
   // is the one screen that exists to tell an Owner their Stripe connection is
@@ -202,7 +180,7 @@ export async function getStripeKeyKind(
   // decrypt failure prompts a reconnect).
   let key: string;
   try {
-    key = decrypt(merchant.stripeSecretKeyEnc);
+    key = decrypt(connection.apiKeyEnc);
   } catch {
     return null;
   }
@@ -252,11 +230,11 @@ export async function getStripeWebhookEndpointId(
   ownerId: string,
   merchantId: string
 ): Promise<string | null> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { stripeWebhookEndpointId: true },
+  const connection = await db.paymentConnection.findFirst({
+    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    select: { externalEndpointId: true },
   });
-  return merchant?.stripeWebhookEndpointId ?? null;
+  return connection?.externalEndpointId ?? null;
 }
 
 export async function getMerchantForOwner(

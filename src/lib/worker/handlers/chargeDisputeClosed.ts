@@ -23,7 +23,7 @@ export async function handleChargeDisputeClosed(merchant: Merchant, dispute: Str
     return;
   }
 
-  const stripe = stripeClientFor(merchant);
+  const stripe = await stripeClientFor(merchant);
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 
