@@ -1,0 +1,381 @@
+import { createHmac, timingSafeEqual } from "crypto";
+import type {
+  CheckoutRequest,
+  PaymentProviderAdapter,
+  VerifiedProviderEvent,
+} from "../types";
+
+const INVOICE_API_URL = "https://api.nowpayments.io/v1/invoice";
+const STATUS_KIND: Readonly<Record<string, VerifiedProviderEvent["kind"]>> = {
+  waiting: "payment_pending",
+  confirming: "payment_pending",
+  confirmed: "payment_pending",
+  sending: "payment_pending",
+  partially_paid: "payment_pending",
+  finished: "payment_succeeded",
+  failed: "payment_failed",
+  expired: "payment_failed",
+  refunded: "payment_refunded",
+};
+
+type JsonObject = Record<string, unknown>;
+
+function sortForSignature(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortForSignature);
+  if (value && typeof value === "object") {
+    const object = value as JsonObject;
+    return Object.fromEntries(
+      Object.keys(object)
+        .sort()
+        .map((key) => [key, sortForSignature(object[key])])
+    );
+  }
+  return value;
+}
+
+function canonicalPayload(value: unknown): string {
+  return JSON.stringify(sortForSignature(value));
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function skipWhitespace(body: string, start: number): number {
+  let index = start;
+  while (index < body.length && /\s/.test(body[index])) index += 1;
+  return index;
+}
+
+/** Read one JSON string token and return its decoded value and next offset. */
+function readJsonString(body: string, start: number): { value: string; next: number } {
+  if (body[start] !== '"') throw new Error("Invalid JSON string");
+  let index = start + 1;
+  while (index < body.length) {
+    if (body[index] === "\\") {
+      index += 2;
+    } else if (body[index] === '"') {
+      const next = index + 1;
+      return { value: JSON.parse(body.slice(start, next)) as string, next };
+    } else {
+      index += 1;
+    }
+  }
+  throw new Error("Invalid JSON string");
+}
+
+/** Skip a validated JSON value without converting numeric tokens to Number. */
+function skipJsonValue(body: string, start: number): number {
+  let index = skipWhitespace(body, start);
+  const current = body[index];
+  if (current === '"') return readJsonString(body, index).next;
+
+  if (current === "{") {
+    index = skipWhitespace(body, index + 1);
+    if (body[index] === "}") return index + 1;
+    while (index < body.length) {
+      const key = readJsonString(body, index);
+      index = skipWhitespace(body, key.next);
+      if (body[index] !== ":") throw new Error("Invalid JSON object");
+      index = skipJsonValue(body, index + 1);
+      index = skipWhitespace(body, index);
+      if (body[index] === "}") return index + 1;
+      if (body[index] !== ",") throw new Error("Invalid JSON object");
+      index = skipWhitespace(body, index + 1);
+    }
+    throw new Error("Invalid JSON object");
+  }
+
+  if (current === "[") {
+    index = skipWhitespace(body, index + 1);
+    if (body[index] === "]") return index + 1;
+    while (index < body.length) {
+      index = skipJsonValue(body, index);
+      index = skipWhitespace(body, index);
+      if (body[index] === "]") return index + 1;
+      if (body[index] !== ",") throw new Error("Invalid JSON array");
+      index = skipWhitespace(body, index + 1);
+    }
+    throw new Error("Invalid JSON array");
+  }
+
+  while (index < body.length && !/[\s,\]}]/.test(body[index])) index += 1;
+  if (index === start) throw new Error("Invalid JSON value");
+  return index;
+}
+
+/** Preserve top-level numeric lexemes for the money fields in an IPN body. */
+function topLevelRawValues(body: string): Map<string, string> {
+  const values = new Map<string, string>();
+  let index = skipWhitespace(body, 0);
+  if (body[index] !== "{") throw new Error("Invalid JSON object");
+  index = skipWhitespace(body, index + 1);
+  if (body[index] === "}") return values;
+
+  while (index < body.length) {
+    const key = readJsonString(body, index);
+    index = skipWhitespace(body, key.next);
+    if (body[index] !== ":") throw new Error("Invalid JSON object");
+    index = skipWhitespace(body, index + 1);
+    const valueStart = index;
+    index = skipJsonValue(body, index);
+    values.set(key.value, body.slice(valueStart, index));
+    index = skipWhitespace(body, index);
+    if (body[index] === "}") return values;
+    if (body[index] !== ",") throw new Error("Invalid JSON object");
+    index = skipWhitespace(body, index + 1);
+  }
+  throw new Error("Invalid JSON object");
+}
+
+/** Expand a JSON decimal token without passing its value through binary float. */
+function decimalText(value: string): string | null {
+  if (!value || value.length > 128) return null;
+  const match = /^(-?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(value);
+  if (!match) return null;
+  const exponent = Number(match[4] ?? "0");
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 128) return null;
+
+  const negative = match[1] === "-";
+  const whole = match[2];
+  const fraction = match[3] ?? "";
+  const digits = `${whole}${fraction}`;
+  const decimalPosition = whole.length + exponent;
+  let expanded: string;
+  if (decimalPosition <= 0) {
+    expanded = `0.${"0".repeat(-decimalPosition)}${digits}`;
+  } else if (decimalPosition >= digits.length) {
+    expanded = `${digits}${"0".repeat(decimalPosition - digits.length)}`;
+  } else {
+    expanded = `${digits.slice(0, decimalPosition)}.${digits.slice(decimalPosition)}`;
+  }
+
+  if (expanded.length > 256) return null;
+  const [expandedWhole, expandedFraction] = expanded.split(".");
+  const normalizedWhole = expandedWhole.replace(/^0+(?=\d)/, "");
+  const normalized = expandedFraction === undefined
+    ? normalizedWhole
+    : `${normalizedWhole}.${expandedFraction}`;
+  if (/^0(?:\.0*)?$/.test(normalized)) return "0";
+  return negative ? `-${normalized}` : normalized;
+}
+
+function exactDecimalField(
+  rawValues: Map<string, string>,
+  payload: JsonObject,
+  key: string
+): string | null {
+  const raw = rawValues.get(key);
+  if (!raw) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const source = typeof value === "string" ? value : raw;
+  // Ensure the field was a JSON number when JSON.parse produced a Number. The
+  // raw token, not the rounded Number, is the value passed to decimalText.
+  if (typeof value === "number" && !/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) return null;
+  if (typeof payload[key] !== typeof value) return null;
+  const result = decimalText(source);
+  return result && !result.startsWith("-") ? result : null;
+}
+
+function stringId(value: unknown, rawValues: Map<string, string>, key: string): string | null {
+  if (typeof value === "string") return value.trim() ? value : null;
+  const raw = rawValues.get(key);
+  if (typeof value === "number" && raw && /^\d+$/.test(raw)) return raw;
+  return null;
+}
+
+function currencyCode(value: unknown, pattern: RegExp): string | null {
+  return typeof value === "string" && pattern.test(value) ? value.toLowerCase() : null;
+}
+
+function occurredAt(payload: JsonObject): Date {
+  for (const key of ["updated_at", "created_at"]) {
+    const value = payload[key];
+    if (typeof value !== "string") continue;
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  return new Date();
+}
+
+function validateCheckout(input: CheckoutRequest): {
+  amount: string;
+  currency: string;
+  callbackUrl: string;
+  successUrl: string;
+  cancelUrl: string;
+} {
+  const amount = input.amount;
+  if (!/^(?:0|[1-9]\d{0,15})\.\d{2}$/.test(amount)) {
+    throw new Error("A two-decimal amount is required");
+  }
+  const [whole, fraction] = amount.split(".");
+  if (/^0+$/.test(whole) && /^0+$/.test(fraction)) {
+    throw new Error("A positive amount is required");
+  }
+  if (!/^[a-z]{3}$/i.test(input.currency)) throw new Error("A currency code is required");
+  if (!input.sourceOrderId.trim() || input.sourceOrderId.length > 255) {
+    throw new Error("An order ID is required");
+  }
+  const callbackUrl = httpsUrl(input.callbackUrl, "A callback URL is required");
+  return {
+    amount,
+    currency: input.currency.toLowerCase(),
+    callbackUrl,
+    successUrl: httpsUrl(input.successUrl, "A return URL is required"),
+    cancelUrl: httpsUrl(input.cancelUrl, "A return URL is required"),
+  };
+}
+
+function httpsUrl(value: string | undefined, error: string): string {
+  if (!value) throw new Error(error);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(error);
+  }
+  if (url.protocol !== "https:" || url.username || url.password) throw new Error(error);
+  return url.toString();
+}
+
+async function createInvoice(input: CheckoutRequest, apiKey: string | null): Promise<{
+  checkoutRef: string;
+  checkoutUrl: string;
+}> {
+  if (!apiKey?.trim()) throw new Error("Payment connection is unavailable");
+  const valid = validateCheckout(input);
+  // price_amount is a JSON number in the provider API. Insert the already
+  // validated two-decimal token directly so no JS Number can round it.
+  const body = `{"price_amount":${valid.amount},"price_currency":${JSON.stringify(valid.currency)},"order_id":${JSON.stringify(input.sourceOrderId)},"ipn_callback_url":${JSON.stringify(valid.callbackUrl)},"success_url":${JSON.stringify(valid.successUrl)},"cancel_url":${JSON.stringify(valid.cancelUrl)}}`;
+
+  let response: Response;
+  try {
+    response = await fetch(INVOICE_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("Unable to create hosted checkout");
+  }
+  if (!response.ok) throw new Error("Unable to create hosted checkout");
+
+  let result: unknown;
+  let resultRawValues: Map<string, string>;
+  try {
+    const responseBody = await response.text();
+    result = JSON.parse(responseBody) as unknown;
+    resultRawValues = topLevelRawValues(responseBody);
+  } catch {
+    throw new Error("Unable to create hosted checkout");
+  }
+  if (!isObject(result)) throw new Error("Unable to create hosted checkout");
+  const checkoutRef = stringId(result.invoice_id, resultRawValues, "invoice_id");
+  let checkoutUrl: string | null = null;
+  if (typeof result.invoice_url === "string") {
+    try {
+      const url = new URL(result.invoice_url);
+      if (url.protocol === "https:" && !url.username && !url.password) checkoutUrl = url.toString();
+    } catch {
+      // A malformed provider destination is treated as an unsuccessful call.
+    }
+  }
+  if (!checkoutRef || !checkoutUrl) throw new Error("Unable to create hosted checkout");
+  return { checkoutRef, checkoutUrl };
+}
+
+export const nowpaymentsAdapter: PaymentProviderAdapter = {
+  provider: "nowpayments",
+  capabilities: {
+    webhooks: true,
+    hostedCheckout: true,
+    recurringBilling: false,
+    refunds: false,
+    disputes: false,
+  },
+  async createCheckout(input, connection) {
+    return createInvoice(input, connection.apiKey);
+  },
+  verifyAndParseWebhook({ rawBody, headers, connection }) {
+    if (!connection.webhookSecret) return null;
+    const signature = headers.get("x-nowpayments-sig")?.trim() ?? "";
+    if (!/^[a-f\d]{128}$/i.test(signature)) return null;
+
+    let payload: unknown;
+    let rawValues: Map<string, string>;
+    try {
+      payload = JSON.parse(rawBody) as unknown;
+      rawValues = topLevelRawValues(rawBody);
+    } catch {
+      return null;
+    }
+    if (!isObject(payload)) return null;
+
+    const expected = createHmac("sha512", connection.webhookSecret)
+      .update(canonicalPayload(payload), "utf8")
+      .digest();
+    const received = Buffer.from(signature, "hex");
+    if (received.length !== expected.length || !timingSafeEqual(received, expected)) return null;
+
+    const paymentStatus = payload.payment_status;
+    if (
+      typeof paymentStatus !== "string" ||
+      !Object.prototype.hasOwnProperty.call(STATUS_KIND, paymentStatus)
+    ) {
+      return null;
+    }
+    const kind = STATUS_KIND[paymentStatus];
+    const paymentId = stringId(payload.payment_id, rawValues, "payment_id");
+    const invoiceId = stringId(payload.invoice_id, rawValues, "invoice_id");
+    const orderId = typeof payload.order_id === "string" ? payload.order_id : null;
+    const priceAmount = exactDecimalField(rawValues, payload, "price_amount");
+    const priceCurrency = currencyCode(payload.price_currency, /^[a-z]{3}$/i);
+    const cryptoCurrency = currencyCode(payload.pay_currency, /^[a-z0-9_-]{2,20}$/i);
+    const cryptoAmount = exactDecimalField(rawValues, payload, "actually_paid") ??
+      exactDecimalField(rawValues, payload, "pay_amount");
+
+    if (
+      !paymentId ||
+      !invoiceId ||
+      !orderId?.trim() ||
+      !priceAmount ||
+      !priceCurrency
+    ) {
+      return null;
+    }
+
+    // Keep money values as their exact decimal text in the payload that the
+    // ingress may persist. Signature verification above still uses the
+    // provider's original JSON value types and canonical representation.
+    const normalizedPayload: JsonObject = { ...payload };
+    for (const field of ["price_amount", "pay_amount", "actually_paid", "outcome_amount", "fee"]) {
+      const exactAmount = exactDecimalField(rawValues, payload, field);
+      if (exactAmount !== null) normalizedPayload[field] = exactAmount;
+    }
+
+    return {
+      provider: "nowpayments",
+      eventId: `${paymentId}:${paymentStatus}`,
+      kind,
+      paymentRef: paymentId,
+      checkoutRef: invoiceId,
+      saleAmount: priceAmount,
+      saleCurrency: priceCurrency,
+      cryptoAmount,
+      cryptoCurrency,
+      occurredAt: occurredAt(payload),
+      rawPayload: normalizedPayload,
+    };
+  },
+};

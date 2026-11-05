@@ -10,6 +10,7 @@ import {
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
+import { connectNowPayments, disconnectNowPayments } from "@/lib/paymentConnections";
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -100,6 +101,30 @@ export async function replaceWebhookSecretAction(
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
   await upgradeMerchantWebhookEvents(product.id);
   redirect(settings(product.slug, "stripe"));
+}
+
+export async function saveNowPaymentsConnectionAction(
+  product: ProductRef,
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const apiKey = String(formData.get("apiKey") ?? "").trim();
+  const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
+  if (!apiKey || !ipnSecret) return { error: "Enter both credentials." };
+  await connectNowPayments(ownerId, product.id, { apiKey, webhookSecret: ipnSecret });
+  revalidatePath(settings(product.slug));
+  redirect(settings(product.slug));
+}
+
+export async function disconnectNowPaymentsConnectionAction(
+  product: ProductRef,
+  _formData: FormData
+): Promise<void> {
+  const ownerId = await owner();
+  await disconnectNowPayments(ownerId, product.id);
+  revalidatePath(settings(product.slug));
+  redirect(settings(product.slug));
 }
 
 export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {

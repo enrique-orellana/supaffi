@@ -1,8 +1,8 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
+import { getNowPaymentsConnectionStatus } from "@/lib/paymentConnections";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
@@ -15,6 +15,7 @@ import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
+import { PaymentConnectionCard } from "@/components/dashboard/PaymentConnectionCard";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
@@ -65,10 +66,11 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup] = await Promise.all([
+  const [checks, keyKind, setup, nowPayments] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
+    getNowPaymentsConnectionStatus(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
@@ -165,6 +167,14 @@ export default async function SettingsPage({
               </a>
             </p>
           )}
+        </div>
+        <div className="px-5 py-4">
+          <PaymentConnectionCard
+            product={productRef}
+            connected={nowPayments.connected}
+            hasCallbackId={nowPayments.hasCallbackId}
+            callbackUrl={nowPayments.callbackUrl}
+          />
         </div>
       </Section>
 

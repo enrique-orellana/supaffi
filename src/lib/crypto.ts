@@ -1,8 +1,8 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
 
 // AES-256-GCM, keyed by MASTER_ENCRYPTION_KEY (ADR 0003). Used for every
-// Merchant-supplied credential stored in the database: Stripe secret key,
-// Stripe webhook signing secret, email provider config. The key itself
+// Merchant-supplied credential stored in the database: Stripe and NOWPayments
+// API keys and webhook signing secrets, email provider config. The key itself
 // lives only in the environment, never in the database — losing it makes
 // every encrypted credential on this Instance unrecoverable (documented
 // in CONTEXT.md, this is a known, accepted trade-off).

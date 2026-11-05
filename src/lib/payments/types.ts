@@ -19,6 +19,8 @@ export type CheckoutRequest = {
   sourceOrderId: string;
   successUrl: string;
   cancelUrl: string;
+  /** Provider callback destination, when the adapter requires one. */
+  callbackUrl?: string;
 };
 
 export type CheckoutResponse = {
