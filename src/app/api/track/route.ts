@@ -99,7 +99,13 @@ export async function GET(req: NextRequest) {
 
   if (throttled) rememberClick(throttled);
   await db.click.create({
-    data: { affiliateId: link.affiliate.id, linkId: link.id, referralToken, expiresAt },
+    data: {
+      merchantId: link.affiliate.merchantId,
+      affiliateId: link.affiliate.id,
+      linkId: link.id,
+      referralToken,
+      expiresAt,
+    },
   });
 
   return NextResponse.json({ referralToken }, { headers: CORS });

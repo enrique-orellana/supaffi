@@ -54,6 +54,7 @@ model Merchant {
 
   programs                Program[]
   affiliates              Affiliate[]
+  clicks                  Click[]
   affiliateLinks          AffiliateLink[]
   webhookEvents           WebhookEvent[]
   referredSubscriptions   ReferredSubscription[]
@@ -79,7 +80,7 @@ enum CommissionDurationType {
 model Program {
   id         String   @id @default(cuid())
   merchantId String
-  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   name       String
   // Appears in the public signup URL an Affiliate is sent, which is a link a
   // real person is asked to trust. Unique per Merchant, same derive-once rule
@@ -104,9 +105,9 @@ model Program {
 model Affiliate {
   id         String   @id @default(cuid())
   merchantId String // identity is scoped to the Merchant, not the Program — moving between Programs (e.g. Standard to VIP tier) keeps the same Affiliate row and history
-  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   programId  String // current Program assignment, reassignable
-  program    Program  @relation(fields: [programId], references: [id])
+  program    Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   email                String
   name                 String?
@@ -189,8 +190,10 @@ model AffiliateLoginToken {
 
 model Click {
   id            String    @id @default(cuid())
+  merchantId    String
+  merchant      Merchant  @relation(fields: [merchantId], references: [id])
   affiliateId   String
-  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  affiliate     Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
   referralToken String    @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
   expiresAt     DateTime // createdAt + Program.attributionWindowDays, computed at insert
   createdAt     DateTime  @default(now())
@@ -232,6 +235,8 @@ model Click {
 
   @@index([stripeCustomerId])
   @@index([linkId])
+  @@index([merchantId])
+  @@unique([id, merchantId])
 }
 
 /// A subscription that a referred Checkout Session created. Renewals earn by
@@ -456,7 +461,7 @@ model CommerceCheckout {
   connection         PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
   sourceOrderId      String
   clickId            String?
-  click              Click?            @relation(fields: [clickId], references: [id])
+  click              Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
   amount             Decimal           @db.Decimal(18, 2)
   currency           String
   successUrl         String
@@ -474,6 +479,7 @@ model CommerceCheckout {
   payments PaymentRecord[]
 
   @@unique([merchantId, provider, sourceOrderId])
+  @@unique([id, merchantId])
   @@index([status, nextAttemptAt])
 }
 
@@ -489,7 +495,7 @@ model PaymentRecord {
   connection      PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
   sourceOrderId   String?
   checkoutId      String?
-  checkout        CommerceCheckout? @relation(fields: [checkoutId], references: [id])
+  checkout        CommerceCheckout? @relation(fields: [checkoutId, merchantId], references: [id, merchantId], onDelete: Restrict)
   checkoutRef     String?
   paymentRef      String?
   saleAmount      Decimal           @db.Decimal(18, 2)
@@ -500,7 +506,7 @@ model PaymentRecord {
   cryptoNetwork   String?
   status          String
   clickId         String?
-  click           Click?            @relation(fields: [clickId], references: [id])
+  click           Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
   commission      Commission?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -553,7 +559,7 @@ model CommerceEventDelivery {
 model AffiliateImportBatch {
   id                  String   @id @default(cuid())
   merchantId          String
-  merchant            Merchant @relation(fields: [merchantId], references: [id])
+  merchant            Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   sourceAdapter       String
   sourceFormatVersion Int
   normalizedDigest    String
@@ -575,9 +581,9 @@ model AffiliateImportBatch {
 model ImportedCommission {
   id                      String               @id @default(cuid())
   batchId                 String
-  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id])
+  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   merchantId              String?
-  merchant                Merchant?            @relation(fields: [merchantId], references: [id])
+  merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
   affiliate               Affiliate?           @relation(fields: [affiliateId], references: [id])
   sourceIdentity          String               @unique
@@ -603,9 +609,9 @@ model ImportedCommission {
 model ImportedPayout {
   id                      String               @id @default(cuid())
   batchId                 String
-  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id])
+  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   merchantId              String?
-  merchant                Merchant?            @relation(fields: [merchantId], references: [id])
+  merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   affiliateId             String?
   affiliate               Affiliate?           @relation(fields: [affiliateId], references: [id])
   sourceIdentity          String               @unique

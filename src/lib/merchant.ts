@@ -59,17 +59,95 @@ export async function connectStripe(
   merchantId: string,
   input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null }
 ): Promise<void> {
-  await assertOwns(ownerId, merchantId);
-  await db.merchant.update({
-    where: { id: merchantId },
-    data: {
-      ...(input.secretKey ? { stripeSecretKeyEnc: encrypt(input.secretKey) } : {}),
-      ...(input.webhookSecret ? { stripeWebhookSecretEnc: encrypt(input.webhookSecret) } : {}),
-      // Explicit null clears it, which is what a manually pasted secret means:
-      // the endpoint on the other end is one Supaffi did not create and must
-      // not later delete.
-      ...(input.webhookEndpointId !== undefined ? { stripeWebhookEndpointId: input.webhookEndpointId } : {}),
-    },
+  const newSecretKeyEnc = input.secretKey ? encrypt(input.secretKey) : undefined;
+  const newWebhookSecretEnc = input.webhookSecret ? encrypt(input.webhookSecret) : undefined;
+
+  await db.$transaction(async (tx) => {
+    // Serialize rotations so the legacy and provider-neutral records are
+    // derived from the same, latest ciphertexts.
+    const merchants = await tx.$queryRaw<
+      {
+        id: string;
+        stripeSecretKeyEnc: string | null;
+        stripeWebhookSecretEnc: string | null;
+        stripeWebhookEndpointId: string | null;
+      }[]
+    >`SELECT "id", "stripeSecretKeyEnc", "stripeWebhookSecretEnc", "stripeWebhookEndpointId"
+      FROM "Merchant" WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId} FOR UPDATE`;
+    const merchant = merchants[0];
+    if (!merchant) throw new Error("Merchant not found");
+
+    const stripeSecretKeyEnc = newSecretKeyEnc ?? merchant.stripeSecretKeyEnc;
+    const stripeWebhookSecretEnc = newWebhookSecretEnc ?? merchant.stripeWebhookSecretEnc;
+    const stripeWebhookEndpointId = input.webhookEndpointId !== undefined
+      ? input.webhookEndpointId
+      : merchant.stripeWebhookEndpointId;
+    const status = stripeSecretKeyEnc && stripeWebhookSecretEnc ? "CONNECTED" : "DISCONNECTED";
+
+    await tx.merchant.update({
+      where: { id: merchantId },
+      data: {
+        ...(newSecretKeyEnc !== undefined ? { stripeSecretKeyEnc: newSecretKeyEnc } : {}),
+        ...(newWebhookSecretEnc !== undefined ? { stripeWebhookSecretEnc: newWebhookSecretEnc } : {}),
+        // Explicit null clears it, which is what a manually pasted secret means:
+        // the endpoint on the other end is one Supaffi did not create and must
+        // not later delete.
+        ...(input.webhookEndpointId !== undefined ? { stripeWebhookEndpointId: input.webhookEndpointId } : {}),
+      },
+    });
+
+    await tx.paymentConnection.upsert({
+      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      create: {
+        merchantId,
+        provider: "STRIPE",
+        apiKeyEnc: stripeSecretKeyEnc,
+        webhookSecretEnc: stripeWebhookSecretEnc,
+        externalEndpointId: stripeWebhookEndpointId,
+        status,
+        enabled: true,
+      },
+      update: {
+        // Copy ciphertext unchanged when a different credential is rotated.
+        apiKeyEnc: stripeSecretKeyEnc,
+        webhookSecretEnc: stripeWebhookSecretEnc,
+        externalEndpointId: stripeWebhookEndpointId,
+        status,
+      },
+    });
+  });
+}
+
+/** Clears both Stripe representations together; deleting an endpoint remotely
+ * remains a separate operation because only Supaffi-created endpoints may be
+ * removed on the owner's behalf. */
+export async function disconnectStripe(ownerId: string, merchantId: string): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const merchants = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Merchant"
+      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+      FOR UPDATE
+    `;
+    if (!merchants[0]) throw new Error("Merchant not found");
+
+    await tx.merchant.update({
+      where: { id: merchantId },
+      data: {
+        stripeSecretKeyEnc: null,
+        stripeWebhookSecretEnc: null,
+        stripeWebhookEndpointId: null,
+      },
+    });
+    await tx.paymentConnection.updateMany({
+      where: { merchantId, provider: "STRIPE" },
+      data: {
+        apiKeyEnc: null,
+        webhookSecretEnc: null,
+        externalEndpointId: null,
+        status: "DISCONNECTED",
+        enabled: false,
+      },
+    });
   });
 }
 
@@ -238,23 +316,15 @@ export async function getMerchantByDomain(
 }
 
 /**
- * Deletes a product and every row that hangs off it, in one transaction, in
- * dependency order. Prisma relations here have no cascade, and adding one to
- * the schema would make an accidental delete of a Merchant row silently take
- * a year of commission history with it. Explicit here, behind the ownership
- * check, is the only place that should be able to do this.
+ * Deletes a product and its operational data in one ownership-checked
+ * transaction. Live dependents are deleted explicitly in dependency order;
+ * the database cascades only the owned Affiliate/Program subtree and imported
+ * archive when the final Merchant row is deleted.
  */
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
   await assertOwns(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
   await db.$transaction(async (tx) => {
-    // Historical import rows are immutable in normal application flows. The
-    // database trigger permits their removal only inside this scoped merchant
-    // cleanup transaction, after the ownership check above.
-    await tx.$executeRaw`
-      SELECT set_config('supaffi.archive_purge_merchant_id', ${merchantId}, true)
-    `;
-
     await tx.commission.deleteMany({ where: affiliates });
     // Points at the click, so it goes before clicks do.
     await tx.referredSubscription.deleteMany({ where: { merchantId } });
@@ -263,19 +333,15 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
     // above may point at a checkout.
     await tx.commerceCheckout.deleteMany({ where: { merchantId } });
     await tx.commerceEventDelivery.deleteMany({ where: { merchantId } });
-    // Imported rows retain optional Affiliate and Merchant mappings and must
-    // be removed before either side or their owning batch is deleted.
-    await tx.importedCommission.deleteMany({ where: { batch: { merchantId } } });
-    await tx.importedPayout.deleteMany({ where: { batch: { merchantId } } });
     await tx.click.deleteMany({ where: affiliates });
     await tx.affiliateLink.deleteMany({ where: affiliates });
     await tx.affiliateLoginToken.deleteMany({ where: affiliates });
-    await tx.affiliate.deleteMany({ where: { merchantId } });
-    await tx.program.deleteMany({ where: { merchantId } });
     await tx.webhookEvent.deleteMany({ where: { merchantId } });
-    await tx.affiliateImportBatch.deleteMany({ where: { merchantId } });
     await tx.commerceIntegration.deleteMany({ where: { merchantId } });
     await tx.paymentConnection.deleteMany({ where: { merchantId } });
+    // Affiliates, Programs, import batches, and their immutable rows are
+    // removed by the database's Merchant-delete cascades after all operational
+    // dependents above have been cleaned up.
     await tx.merchant.delete({ where: { id: merchantId } });
   });
 }
