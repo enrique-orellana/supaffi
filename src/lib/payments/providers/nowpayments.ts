@@ -128,6 +128,67 @@ function topLevelRawValues(body: string): Map<string, string> {
   throw new Error("Invalid JSON object");
 }
 
+/** Parse raw JSON while retaining every numeric token as decimal text. */
+function parseLosslessValue(body: string, start: number): { value: unknown; next: number } {
+  let index = skipWhitespace(body, start);
+  const current = body[index];
+  if (current === '"') {
+    const parsed = readJsonString(body, index);
+    return { value: parsed.value, next: parsed.next };
+  }
+
+  if (current === "{") {
+    const entries: [string, unknown][] = [];
+    index = skipWhitespace(body, index + 1);
+    if (body[index] === "}") return { value: {}, next: index + 1 };
+    while (index < body.length) {
+      const key = readJsonString(body, index);
+      index = skipWhitespace(body, key.next);
+      if (body[index] !== ":") throw new Error("Invalid JSON object");
+      const parsed = parseLosslessValue(body, index + 1);
+      entries.push([key.value, parsed.value]);
+      index = skipWhitespace(body, parsed.next);
+      if (body[index] === "}") return { value: Object.fromEntries(entries), next: index + 1 };
+      if (body[index] !== ",") throw new Error("Invalid JSON object");
+      index = skipWhitespace(body, index + 1);
+    }
+    throw new Error("Invalid JSON object");
+  }
+
+  if (current === "[") {
+    const values: unknown[] = [];
+    index = skipWhitespace(body, index + 1);
+    if (body[index] === "]") return { value: values, next: index + 1 };
+    while (index < body.length) {
+      const parsed = parseLosslessValue(body, index);
+      values.push(parsed.value);
+      index = skipWhitespace(body, parsed.next);
+      if (body[index] === "]") return { value: values, next: index + 1 };
+      if (body[index] !== ",") throw new Error("Invalid JSON array");
+      index = skipWhitespace(body, index + 1);
+    }
+    throw new Error("Invalid JSON array");
+  }
+
+  const end = skipJsonValue(body, index);
+  const token = body.slice(index, end);
+  if (token === "true") return { value: true, next: end };
+  if (token === "false") return { value: false, next: end };
+  if (token === "null") return { value: null, next: end };
+  if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) {
+    return { value: token, next: end };
+  }
+  throw new Error("Invalid JSON value");
+}
+
+function losslessPayload(body: string): JsonObject {
+  const parsed = parseLosslessValue(body, 0);
+  if (skipWhitespace(body, parsed.next) !== body.length || !isObject(parsed.value)) {
+    throw new Error("Invalid JSON object");
+  }
+  return parsed.value;
+}
+
 /** Expand a JSON decimal token without passing its value through binary float. */
 function decimalText(value: string): string | null {
   if (!value || value.length > 128) return null;
@@ -281,7 +342,7 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
     throw new Error("Unable to create hosted checkout");
   }
   if (!isObject(result)) throw new Error("Unable to create hosted checkout");
-  const checkoutRef = stringId(result.invoice_id, resultRawValues, "invoice_id");
+  const checkoutRef = stringId(result.id, resultRawValues, "id");
   let checkoutUrl: string | null = null;
   if (typeof result.invoice_url === "string") {
     try {
@@ -313,9 +374,11 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
     if (!/^[a-f\d]{128}$/i.test(signature)) return null;
 
     let payload: unknown;
+    let normalizedPayload: JsonObject;
     let rawValues: Map<string, string>;
     try {
       payload = JSON.parse(rawBody) as unknown;
+      normalizedPayload = losslessPayload(rawBody);
       rawValues = topLevelRawValues(rawBody);
     } catch {
       return null;
@@ -347,7 +410,6 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
 
     if (
       !paymentId ||
-      !invoiceId ||
       !orderId?.trim() ||
       !priceAmount ||
       !priceCurrency
@@ -355,21 +417,14 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
       return null;
     }
 
-    // Keep money values as their exact decimal text in the payload that the
-    // ingress may persist. Signature verification above still uses the
-    // provider's original JSON value types and canonical representation.
-    const normalizedPayload: JsonObject = { ...payload };
-    for (const field of ["price_amount", "pay_amount", "actually_paid", "outcome_amount", "fee"]) {
-      const exactAmount = exactDecimalField(rawValues, payload, field);
-      if (exactAmount !== null) normalizedPayload[field] = exactAmount;
-    }
-
     return {
       provider: "nowpayments",
       eventId: `${paymentId}:${paymentStatus}`,
       kind,
       paymentRef: paymentId,
-      checkoutRef: invoiceId,
+      // Some provider payment callbacks have a null invoice_id. Our invoice
+      // request always supplies order_id, so it remains a stable lookup key.
+      checkoutRef: invoiceId ?? orderId,
       saleAmount: priceAmount,
       saleCurrency: priceCurrency,
       cryptoAmount,
