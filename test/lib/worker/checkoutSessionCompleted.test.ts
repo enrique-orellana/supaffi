@@ -85,6 +85,7 @@ async function clearAll() {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.paymentConnection.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }
@@ -266,7 +267,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
       },
     });
     const program = await db.program.create({
@@ -374,7 +375,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other" }));
@@ -1325,7 +1326,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other", subscription: "sub_1" }));

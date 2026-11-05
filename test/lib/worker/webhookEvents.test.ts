@@ -5,20 +5,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // one failing product never stops the next.
 const findUnique = vi.fn();
 const findMany = vi.fn();
-vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique, findMany } } }));
+vi.mock("@/lib/db", () => ({ db: { paymentConnection: { findUnique, findMany } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => `plain:${value}` }));
 
 const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents } = await import("@/lib/worker/webhookEvents");
 
 const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refunded", "customer.subscription.deleted"];
 
-function merchant(id: string, extra: Record<string, unknown> = {}) {
+function connection(merchantId: string, extra: Record<string, unknown> = {}) {
   return {
-    id,
-    domain: `${id}.example.com`,
-    stripeSecretKeyEnc: `key-${id}`,
-    stripeWebhookSecretEnc: `whsec-${id}`,
-    stripeWebhookEndpointId: `we_${id}`,
+    merchantId,
+    apiKeyEnc: `key-${merchantId}`,
+    webhookSecretEnc: `whsec-${merchantId}`,
+    externalEndpointId: `we_${merchantId}`,
+    merchant: { domain: `${merchantId}.example.com` },
     ...extra,
   };
 }
@@ -34,9 +34,12 @@ describe("upgradeAllWebhookEvents", () => {
   });
 
   it("upgrades each product in turn with its own key and warns only about a real problem", async () => {
-    const rows = { a: merchant("a"), b: merchant("b"), c: merchant("c") };
-    findMany.mockResolvedValue([{ id: "a" }, { id: "b" }, { id: "c" }]);
-    findUnique.mockImplementation(async ({ where }: { where: { id: keyof typeof rows } }) => rows[where.id]);
+    const rows = { a: connection("a"), b: connection("b"), c: connection("c") };
+    findMany.mockResolvedValue([{ merchantId: "a" }, { merchantId: "b" }, { merchantId: "c" }]);
+    findUnique.mockImplementation(
+      async ({ where }: { where: { merchantId_provider: { merchantId: keyof typeof rows } } }) =>
+        rows[where.merchantId_provider.merchantId]
+    );
 
     const keys: string[] = [];
     const makeClient = (key: string) => {
@@ -71,7 +74,7 @@ describe("upgradeAllWebhookEvents", () => {
   });
 
   it("skips a product on a local address", async () => {
-    findUnique.mockResolvedValue(merchant("a", { domain: "shop.localhost:3000" }));
+    findUnique.mockResolvedValue(connection("a", { merchant: { domain: "shop.localhost:3000" } }));
     const makeClient = vi.fn();
     await upgradeMerchantWebhookEvents("a", makeClient);
     expect(makeClient).not.toHaveBeenCalled();
@@ -79,7 +82,7 @@ describe("upgradeAllWebhookEvents", () => {
   });
 
   it("warns when the endpoint is missing from Stripe, naming the fix", async () => {
-    findUnique.mockResolvedValue(merchant("a"));
+    findUnique.mockResolvedValue(connection("a"));
     await upgradeMerchantWebhookEvents("a", () => ({
       webhookEndpoints: {
         retrieve: async () => {
@@ -95,7 +98,7 @@ describe("upgradeAllWebhookEvents", () => {
   });
 
   it("does not warn once the endpoint already has every event", async () => {
-    findUnique.mockResolvedValue(merchant("a"));
+    findUnique.mockResolvedValue(connection("a"));
     await upgradeMerchantWebhookEvents("a", () => ({
       webhookEndpoints: {
         retrieve: async (id: string) => ({ id, url: "", enabled_events: ["*"] }),

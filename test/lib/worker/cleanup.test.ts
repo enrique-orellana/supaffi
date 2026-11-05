@@ -49,7 +49,7 @@ async function seedMerchant() {
 
 function row(merchantId: string, status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED", createdAt: Date) {
   return db.webhookEvent.create({
-    data: { merchantId, stripeEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
+    data: { merchantId, provider: "STRIPE", providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
   });
 }
 

@@ -24,7 +24,13 @@ describe("claimBatch", () => {
 
   function event(data: { status: "PENDING" | "PROCESSING"; nextAttemptAt: Date; attempts?: number }) {
     return db.webhookEvent.create({
-      data: { merchantId: merchant.id, stripeEventId: `evt_${crypto.randomUUID()}`, payload: {}, ...data },
+      data: {
+        merchantId: merchant.id,
+        provider: "STRIPE",
+        providerEventId: `evt_${crypto.randomUUID()}`,
+        payload: {},
+        ...data,
+      },
     });
   }
 

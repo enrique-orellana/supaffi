@@ -31,6 +31,7 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
 
@@ -44,8 +45,15 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
         name: "TestCo",
         domain: "refcode-test.example.com",
         websiteUrl: "https://refcode-test.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     merchantId = merchant.id;
@@ -67,6 +75,7 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();

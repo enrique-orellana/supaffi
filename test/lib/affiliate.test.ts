@@ -53,6 +53,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
 
@@ -71,8 +72,15 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         name: "TestCo",
         domain: "affiliate-lib-test.example.com",
         websiteUrl: "https://affiliate-lib-test.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     merchantId = merchant.id;
@@ -108,8 +116,15 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         name: "OtherCo",
         domain: "affiliate-lib-other.example.com",
         websiteUrl: "https://affiliate-lib-other.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     otherMerchantId = otherMerchant.id;
@@ -135,6 +150,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();

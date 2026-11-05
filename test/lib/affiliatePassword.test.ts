@@ -37,6 +37,7 @@ async function clearAll() {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.paymentConnection.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }
@@ -50,8 +51,15 @@ async function seedProduct(ownerEmail: string, domain: string, affiliateEmail: s
       name: "TestCo",
       domain,
       websiteUrl: `https://${domain}`,
-      stripeSecretKeyEnc: "x",
-      stripeWebhookSecretEnc: "x",
+      paymentConnections: {
+        create: {
+          provider: "STRIPE",
+          apiKeyEnc: "x",
+          webhookSecretEnc: "x",
+          status: "CONNECTED",
+          enabled: true,
+        },
+      },
     },
   });
   const program = await db.program.create({

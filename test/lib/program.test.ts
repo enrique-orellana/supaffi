@@ -58,6 +58,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
 
@@ -72,8 +73,15 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "M",
         domain: "program-test.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     merchantId = merchant.id;
@@ -88,8 +96,15 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "M2",
         domain: "program-test-2.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     merchantId2 = merchant2.id;
@@ -105,8 +120,15 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "OM",
         domain: "program-test-other.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentConnections: {
+          create: {
+            provider: "STRIPE",
+            apiKeyEnc: "x",
+            webhookSecretEnc: "x",
+            status: "CONNECTED",
+            enabled: true,
+          },
+        },
       },
     });
     otherMerchantId = otherMerchant.id;
@@ -116,6 +138,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();

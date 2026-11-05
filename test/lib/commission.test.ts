@@ -51,8 +51,15 @@ async function makeMerchant(ownerId: string, suffix: string) {
       name: `Merchant ${suffix}`,
       domain: `commission-test-${suffix}.example.com`,
       websiteUrl: `https://commission-test-${suffix}.example.com`,
-      stripeSecretKeyEnc: "x",
-      stripeWebhookSecretEnc: "x",
+      paymentConnections: {
+        create: {
+          provider: "STRIPE",
+          apiKeyEnc: "x",
+          webhookSecretEnc: "x",
+          status: "CONNECTED",
+          enabled: true,
+        },
+      },
     },
   });
 }
@@ -152,6 +159,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
 
@@ -174,6 +182,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
+    await db.paymentConnection.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();

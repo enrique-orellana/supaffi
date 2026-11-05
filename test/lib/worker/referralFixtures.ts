@@ -15,6 +15,7 @@ export async function clearReferralTables(): Promise<void> {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.paymentConnection.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }
@@ -33,7 +34,7 @@ export async function seedMerchant(ownerId: string): Promise<Merchant> {
       name: "Product",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://product.example.com",
-      stripeSecretKeyEnc: "x",
+      paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
     },
   });
 }

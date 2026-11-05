@@ -18,8 +18,19 @@ async function seedMerchant(stripeConnected: boolean) {
       name: "InstantGradient",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://instantgradient.com",
-      stripeSecretKeyEnc: stripeConnected ? "enc" : null,
-      stripeWebhookSecretEnc: stripeConnected ? "enc" : null,
+      ...(stripeConnected
+        ? {
+            paymentConnections: {
+              create: {
+                provider: "STRIPE",
+                apiKeyEnc: "enc",
+                webhookSecretEnc: "enc",
+                status: "CONNECTED",
+                enabled: true,
+              },
+            },
+          }
+        : {}),
     },
   });
   return { owner, merchant };
@@ -32,6 +43,7 @@ async function clearAll() {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.paymentConnection.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }

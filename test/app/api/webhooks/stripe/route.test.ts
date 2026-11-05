@@ -5,9 +5,9 @@ import { NextRequest } from "next/server";
 // The database and decryption are stood in for: this suite is about what the
 // route does with a signature, not about storage, which the worker suites
 // already cover against a real database.
-const findUnique = vi.fn();
+const findFirst = vi.fn();
 const create = vi.fn();
-vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique }, webhookEvent: { create } } }));
+vi.mock("@/lib/db", () => ({ db: { paymentConnection: { findFirst }, webhookEvent: { create } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => value }));
 
 const { POST } = await import("@/app/api/webhooks/stripe/route");
@@ -41,9 +41,9 @@ describe("POST /api/webhooks/stripe signature handling", () => {
 
   beforeEach(() => {
     merchantId = `m_${crypto.randomUUID()}`;
-    findUnique.mockReset();
+    findFirst.mockReset();
     create.mockReset();
-    findUnique.mockResolvedValue({ id: merchantId, stripeWebhookSecretEnc: SECRET });
+    findFirst.mockResolvedValue({ merchantId, webhookSecretEnc: SECRET });
     create.mockResolvedValue({});
     warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
