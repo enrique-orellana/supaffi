@@ -289,6 +289,9 @@ enum CommissionStatus {
 model Commission {
   id          String    @id @default(cuid())
   affiliateId String
+  // A migration-owned composite FK also matches affiliateId and merchantId.
+  // Keep Prisma's relation single-column so merchantId stays optional in
+  // generated create inputs; the Click trigger supplies the authoritative value.
   affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
   // Filled from the required Click by a database trigger. Nullable in the
   // Prisma model so inserts can leave the authoritative value to the database.
