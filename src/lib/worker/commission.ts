@@ -1,10 +1,15 @@
 import { Prisma } from "@prisma/client";
-import type { Affiliate, AffiliateLink, Program } from "@prisma/client";
+import type { Affiliate, AffiliateLink, Click, Program } from "@prisma/client";
 import type Stripe from "stripe";
 import { minorUnitsToMajor } from "@/lib/stripe";
 
-export function commissionRateFor(affiliate: Affiliate, program: Program, link?: Pick<AffiliateLink, "commissionRateOverride"> | null): number {
-  return Number(link?.commissionRateOverride ?? affiliate.customCommissionRate ?? program.defaultCommissionRate);
+export function commissionRateFor(
+  affiliate: Affiliate,
+  program: Program,
+  link?: Pick<AffiliateLink, "commissionRateOverride"> | null,
+  click?: Pick<Click, "commissionRateSnapshot"> | null
+): number {
+  return Number(click?.commissionRateSnapshot ?? link?.commissionRateOverride ?? affiliate.customCommissionRate ?? program.defaultCommissionRate);
 }
 
 // Decimal rather than float arithmetic: an exact half cent is often held as
@@ -26,8 +31,12 @@ export function saleAmountFor(paidAmountMinor: number, currency: string): number
   return minorUnitsToMajor(paidAmountMinor, currency);
 }
 
-export function computePayableAt(program: Program, from: Date = new Date()): Date {
-  return new Date(from.getTime() + program.holdingPeriodDays * 24 * 60 * 60 * 1000);
+export function computePayableAt(
+  program: Program,
+  from: Date = new Date(),
+  holdingPeriodDays: number = program.holdingPeriodDays
+): Date {
+  return new Date(from.getTime() + holdingPeriodDays * 24 * 60 * 60 * 1000);
 }
 
 /** A payment Supaffi can recognise again: its Stripe id and when it was charged. */

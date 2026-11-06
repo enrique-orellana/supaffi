@@ -214,7 +214,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // to spend it on a sale that cannot pay anything.
   const affiliate = click.affiliate;
   const program = affiliate.program;
-  const rate = commissionRateFor(affiliate, program, click.link);
+  const rate = commissionRateFor(affiliate, program, click.link, click);
   if (rate <= 0) return;
 
   // Earned on the sale before tax and shipping. A subscription's first payment
@@ -318,7 +318,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         stripePaymentRef,
         currency: session.currency,
         saleAmount: saleAmountFor(baseMinor, session.currency),
-        payableAt: computePayableAt(program),
+        payableAt: computePayableAt(program, undefined, click.holdingPeriodDaysSnapshot ?? undefined),
         flagReason,
         // Stored through storableReferredShare exactly as invoicePaid.ts
         // does, matching renewals: a bigint column, never a null/too-large

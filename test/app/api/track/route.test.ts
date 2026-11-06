@@ -29,7 +29,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/app/api/track/route.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -126,6 +125,27 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 
+  it("snapshots the code's commission, attribution window, and hold on each new click", async () => {
+    const a = await seedMerchantWithAffiliate("terms");
+    await db.affiliateLink.update({
+      where: { id: a.link.id },
+      data: {
+        commissionRateOverride: "12.50",
+        attributionWindowDaysOverride: 14,
+        holdingPeriodDaysOverride: 7,
+      },
+    });
+
+    const response = await GET(requestFor(a.merchant.domain, a.link.code));
+    const { referralToken } = await response.json();
+    const click = await db.click.findUniqueOrThrow({ where: { referralToken } });
+
+    expect(click.commissionRateSnapshot?.toFixed(2)).toBe("12.50");
+    expect(click.holdingPeriodDaysSnapshot).toBe(7);
+    expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeGreaterThanOrEqual(14 * 24 * 60 * 60 * 1000);
+    expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeLessThan(14 * 24 * 60 * 60 * 1000 + 1000);
+  });
+
   it("gives two visitors behind one address their own clicks", async () => {
     const a = await seedMerchantWithAffiliate("a");
     const office = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };
@@ -180,7 +200,7 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("starts a new click when the token sent back belongs to another link", async () => {
     const a = await seedMerchantWithAffiliate("a");
     const other = await db.affiliateLink.create({
-      data: { code: "track-route-a-second", affiliateId: a.affiliate.id },
+      data: { code: "track-route-a-second", affiliateId: a.affiliate.id, merchantId: a.merchant.id },
     });
 
     const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();

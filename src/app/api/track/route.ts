@@ -57,10 +57,20 @@ export async function GET(req: NextRequest) {
         importSourceIdentity: true,
         activeFrom: true,
         activeUntil: true,
+        commissionRateOverride: true,
+        attributionWindowDaysOverride: true,
+        holdingPeriodDaysOverride: true,
         affiliate: {
           select: {
             id: true,
-            program: { select: { attributionWindowDays: true } },
+            customCommissionRate: true,
+            program: {
+              select: {
+                defaultCommissionRate: true,
+                attributionWindowDays: true,
+                holdingPeriodDays: true,
+              },
+            },
           },
         },
       },
@@ -79,17 +89,27 @@ export async function GET(req: NextRequest) {
         importSourceIdentity: true,
         activeFrom: true,
         activeUntil: true,
+        commissionRateOverride: true,
+        attributionWindowDaysOverride: true,
+        holdingPeriodDaysOverride: true,
         affiliate: {
           select: {
             id: true,
-            program: { select: { attributionWindowDays: true } },
+            customCommissionRate: true,
+            program: {
+              select: {
+                defaultCommissionRate: true,
+                attributionWindowDays: true,
+                holdingPeriodDays: true,
+              },
+            },
           },
         },
       },
     }) : Promise.resolve([]),
   ]);
-  const candidates = [...directCandidates, ...legacyCandidates];
-  const matchingById = new Map<string, (typeof candidates)[number]>();
+  type Candidate = (typeof directCandidates)[number] | (typeof legacyCandidates)[number];
+  const matchingById = new Map<string, Candidate>();
   for (const candidate of directCandidates) {
     if (referralCode && (candidate.code === referralCode || (candidate.importSourceIdentity !== null && candidate.legacyAliases.includes(referralCode)))) {
       matchingById.set(candidate.id, candidate);
@@ -138,9 +158,15 @@ export async function GET(req: NextRequest) {
   }
 
   const referralToken = randomUUID();
-  const expiresAt = new Date(
-    Date.now() + link.affiliate.program.attributionWindowDays * 24 * 60 * 60 * 1000
-  );
+  const createdAt = new Date();
+  const attributionWindowDays = link.attributionWindowDaysOverride ?? link.affiliate.program.attributionWindowDays;
+  const commissionRateSnapshot =
+    link.commissionRateOverride ??
+    link.affiliate.customCommissionRate ??
+    link.affiliate.program.defaultCommissionRate;
+  const holdingPeriodDaysSnapshot =
+    link.holdingPeriodDaysOverride ?? link.affiliate.program.holdingPeriodDays;
+  const expiresAt = new Date(createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000);
 
   if (throttled) rememberClick(throttled);
   await db.click.create({
@@ -150,6 +176,9 @@ export async function GET(req: NextRequest) {
       linkId: link.id,
       referralToken,
       expiresAt,
+      commissionRateSnapshot,
+      holdingPeriodDaysSnapshot,
+      createdAt,
     },
   });
 

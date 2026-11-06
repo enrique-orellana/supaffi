@@ -13,7 +13,7 @@ import {
 import { getProductMetrics } from "@/lib/analytics";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
-import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
+import { linkUrl, listLinksWithStats, listOwnerLinkTerms } from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -152,11 +152,14 @@ export default async function AffiliatesPage({
 
   let sheetAffiliate: SheetAffiliate | null = null;
   if (selected) {
-    const [details, links] = await Promise.all([
+    const [details, links, linkTerms] = await Promise.all([
       getAffiliateDetails(ownerId, merchant.id, [selected.id]),
       listLinksWithStats(selected.id),
+      listOwnerLinkTerms(ownerId, merchant.id, selected.id),
     ]);
     const detail = details[selected.id];
+    const termsByLinkId = new Map(linkTerms.map((terms) => [terms.id, terms]));
+    const program = programs.find((candidate) => candidate.id === selected.programId);
     sheetAffiliate = {
       id: selected.id,
       name: selected.name,
@@ -166,12 +169,21 @@ export default async function AffiliatesPage({
       programName: selected.programName,
       rate: selected.commissionRate,
       rateIsOverride: selected.rateIsOverride,
+      attributionWindowDays: program?.attributionWindowDays ?? 60,
+      holdingPeriodDays: program?.holdingPeriodDays ?? 30,
       payoutDetails: detail?.payoutDetails ?? null,
       hasPassword: detail?.hasPassword ?? true,
-      links: links.map((l) => ({
-        url: linkUrl(merchant.websiteUrl, l),
-        clicks: l.clicks,
-      })),
+      links: links.map((l) => {
+        const terms = termsByLinkId.get(l.id);
+        return {
+          id: l.id,
+          url: linkUrl(merchant.websiteUrl, l),
+          clicks: l.clicks,
+          commissionRateOverride: terms?.commissionRateOverride ?? null,
+          attributionWindowDaysOverride: terms?.attributionWindowDaysOverride ?? null,
+          holdingPeriodDaysOverride: terms?.holdingPeriodDaysOverride ?? null,
+        };
+      }),
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),

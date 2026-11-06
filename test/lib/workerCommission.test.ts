@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { inspect } from "node:util";
-import type { Program } from "@prisma/client";
+import { Prisma, type Affiliate, type AffiliateLink, type Click, type Program } from "@prisma/client";
 import type Stripe from "stripe";
 import {
   addMonthsClamped,
+  commissionRateFor,
   computeCommissionAmount,
+  computePayableAt,
   isExcluded,
   isPaymentWithinCommissionDuration,
   saleAmountFor,
@@ -15,6 +17,29 @@ function programOf(type: Program["commissionDurationType"], months: number | nul
 }
 
 const at = (iso: string) => new Date(iso);
+
+describe("per-click referral terms", () => {
+  it("keeps the commission rate recorded on the click after code terms change", () => {
+    const rate = commissionRateFor(
+      { customCommissionRate: new Prisma.Decimal(20) } as Affiliate,
+      { defaultCommissionRate: new Prisma.Decimal(10) } as Program,
+      { commissionRateOverride: new Prisma.Decimal(30) } as AffiliateLink,
+      { commissionRateSnapshot: new Prisma.Decimal(12.5) } as Click,
+    );
+
+    expect(rate).toBe(12.5);
+  });
+
+  it("uses the hold recorded on the click when setting a commission payable date", () => {
+    const payableAt = computePayableAt(
+      { holdingPeriodDays: 30 } as Program,
+      at("2026-11-06T12:00:00.000Z"),
+      7,
+    );
+
+    expect(payableAt.toISOString()).toBe("2026-11-13T12:00:00.000Z");
+  });
+});
 
 describe("computeCommissionAmount", () => {
   it("rounds a half cent up, where float arithmetic lands just under it", () => {

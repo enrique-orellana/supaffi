@@ -22,7 +22,7 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import type { CommissionStatus } from "@/lib/commission";
-import { changeProgramAction, createPasswordLinkAction, setCustomRateAction } from "./affiliateActions";
+import { changeProgramAction, createPasswordLinkAction, setCustomRateAction, setLinkTermAction } from "./affiliateActions";
 
 /**
  * Everything about one affiliate, in one place, without leaving the list.
@@ -43,9 +43,18 @@ export type SheetAffiliate = {
   /** Without the percent sign. */
   rate: string;
   rateIsOverride: boolean;
+  attributionWindowDays: number;
+  holdingPeriodDays: number;
   payoutDetails: string | null;
   hasPassword: boolean;
-  links: { url: string; clicks: number }[];
+  links: {
+    id: string;
+    url: string;
+    clicks: number;
+    commissionRateOverride: string | null;
+    attributionWindowDaysOverride: number | null;
+    holdingPeriodDaysOverride: number | null;
+  }[];
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -159,11 +168,45 @@ export function AffiliateSheet({
             <p className="text-sm font-medium">Links</p>
             <ul className="flex flex-col gap-1 text-sm">
               {affiliate.links.map((l) => (
-                <li key={l.url} className="flex justify-between gap-3">
-                  <code className="truncate font-mono text-xs">{l.url}</code>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {l.clicks} clicks
-                  </span>
+                <li key={l.id} className="flex flex-col gap-2 border-b border-border/60 py-3 last:border-0">
+                  <div className="flex justify-between gap-3">
+                    <code className="truncate font-mono text-xs">{l.url}</code>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">{l.clicks} clicks</span>
+                  </div>
+                  <LinkTermEditor
+                    product={product}
+                    affiliateId={affiliate.id}
+                    linkId={l.id}
+                    term="commission"
+                    label="Commission (%)"
+                    value={l.commissionRateOverride}
+                    inheritedValue={affiliate.rate}
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                  />
+                  <LinkTermEditor
+                    product={product}
+                    affiliateId={affiliate.id}
+                    linkId={l.id}
+                    term="timeToBuy"
+                    label="Time to buy (days)"
+                    value={l.attributionWindowDaysOverride?.toString() ?? null}
+                    inheritedValue={affiliate.attributionWindowDays.toString()}
+                    min="1"
+                    step="1"
+                  />
+                  <LinkTermEditor
+                    product={product}
+                    affiliateId={affiliate.id}
+                    linkId={l.id}
+                    term="holdBeforePaying"
+                    label="Hold before paying (days)"
+                    value={l.holdingPeriodDaysOverride?.toString() ?? null}
+                    inheritedValue={affiliate.holdingPeriodDays.toString()}
+                    min="1"
+                    step="1"
+                  />
                 </li>
               ))}
             </ul>
@@ -189,6 +232,75 @@ export function AffiliateSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function LinkTermEditor({
+  product,
+  affiliateId,
+  linkId,
+  term,
+  label,
+  value,
+  inheritedValue,
+  min,
+  max,
+  step,
+}: {
+  product: { id: string; slug: string };
+  affiliateId: string;
+  linkId: string;
+  term: "commission" | "timeToBuy" | "holdBeforePaying";
+  label: string;
+  value: string | null;
+  inheritedValue: string;
+  min: string;
+  max?: string;
+  step: string;
+}) {
+  const inputId = `${linkId}-${term}`;
+
+  return (
+    <form
+      action={setLinkTermAction.bind(null, product, affiliateId, linkId, term)}
+      className="flex flex-col gap-1.5 rounded-md bg-muted/40 p-2 text-xs"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={inputId} className="font-medium">{label}</label>
+        <span className="text-muted-foreground">
+          {value === null ? `Inherits ${inheritedValue}${term === "commission" ? "%" : " days"}` : `This code: ${value}${term === "commission" ? "%" : " days"}`}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          id={inputId}
+          name="value"
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          defaultValue={value ?? ""}
+          placeholder={inheritedValue}
+          className="h-8 w-28 bg-background"
+          aria-label={label}
+        />
+        <Button type="submit" size="sm" variant="secondary" className="h-8 cursor-pointer">
+          Save
+        </Button>
+        {value !== null && (
+          <Button
+            type="submit"
+            size="sm"
+            variant="ghost"
+            className="h-8 cursor-pointer px-2"
+            name="intent"
+            value="inherit"
+          >
+            Use inherited
+          </Button>
+        )}
+      </div>
+    </form>
   );
 }
 

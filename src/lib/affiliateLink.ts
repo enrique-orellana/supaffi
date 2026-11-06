@@ -36,6 +36,34 @@ export async function listLinks(affiliateId: string): Promise<AffiliateLinkRow[]
   });
 }
 
+export type OwnerAffiliateLinkTerms = {
+  id: string;
+  commissionRateOverride: string | null;
+  attributionWindowDaysOverride: number | null;
+  holdingPeriodDaysOverride: number | null;
+};
+
+/** Per-code settings for one Owner's affiliate, kept out of the Affiliate dashboard payload. */
+export async function listOwnerLinkTerms(
+  ownerId: string,
+  merchantId: string,
+  affiliateId: string
+): Promise<OwnerAffiliateLinkTerms[]> {
+  const links = await db.affiliateLink.findMany({
+    where: { merchantId, affiliateId, affiliate: { merchant: { ownerId } } },
+    select: {
+      id: true,
+      commissionRateOverride: true,
+      attributionWindowDaysOverride: true,
+      holdingPeriodDaysOverride: true,
+    },
+  });
+  return links.map((link) => ({
+    ...link,
+    commissionRateOverride: link.commissionRateOverride?.toString() ?? null,
+  }));
+}
+
 /**
  * A ceiling, not a product rule. Links are free to create and each one is a
  * Merchant-unique code, so an unbounded allowance is a way to exhaust the code
@@ -232,7 +260,7 @@ export async function createLink(
       if (await isLinkCodeTaken(tx, merchantId, code, undefined, affiliateId)) return { error: CODE_TAKEN };
 
       const created = await tx.affiliateLink.create({
-        data: { affiliateId, code, destinationPath, isPrimary: false },
+        data: { merchantId, affiliateId, code, destinationPath, isPrimary: false },
         select: { id: true },
       });
       await tx.retiredLinkCode.deleteMany({ where: { merchantId, code, affiliateId } });

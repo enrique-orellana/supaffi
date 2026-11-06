@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 
@@ -53,6 +54,53 @@ export async function setCustomRateAction(
   const rate = Number(raw);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return;
   await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: rate });
+  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+}
+
+type LinkTerm = "commission" | "timeToBuy" | "holdBeforePaying";
+
+/** Owner-only per-code terms. An explicit inherit action clears that override. */
+export async function setLinkTermAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  linkId: string,
+  term: LinkTerm,
+  formData: FormData
+): Promise<void> {
+  const ownerId = await owner();
+  if (!(["commission", "timeToBuy", "holdBeforePaying"] as string[]).includes(term)) return;
+
+  const inherit = formData.get("intent") === "inherit";
+  let value: number | null = null;
+  if (!inherit) {
+    const raw = String(formData.get("value") ?? "").trim();
+    if (raw === "") return;
+    value = Number(raw);
+    if (!Number.isFinite(value)) return;
+
+    if (term === "commission") {
+      if (value <= 0 || value > 100 || Math.round(value * 100) !== value * 100) return;
+    } else if (value <= 0 || !Number.isInteger(value)) {
+      return;
+    }
+  }
+
+  const data = term === "commission"
+    ? { commissionRateOverride: value }
+    : term === "timeToBuy"
+      ? { attributionWindowDaysOverride: value }
+      : { holdingPeriodDaysOverride: value };
+  const updated = await db.affiliateLink.updateMany({
+    where: {
+      id: linkId,
+      affiliateId,
+      merchantId: product.id,
+      affiliate: { merchant: { ownerId } },
+    },
+    data,
+  });
+  if (updated.count === 0) return;
+
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
 }
 

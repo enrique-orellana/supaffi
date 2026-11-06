@@ -153,6 +153,8 @@ model AffiliateLink {
   importSourceIdentity String? @unique
 
   commissionRateOverride Decimal?  @db.Decimal(5, 2)
+  attributionWindowDaysOverride Int?
+  holdingPeriodDaysOverride    Int?
   activeFrom              DateTime?
   activeUntil             DateTime?
 
@@ -196,6 +198,8 @@ model Click {
   affiliate     Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
   referralToken String    @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
   expiresAt     DateTime // createdAt + Program.attributionWindowDays, computed at insert
+  commissionRateSnapshot Decimal? @db.Decimal(5, 2)
+  holdingPeriodDaysSnapshot Int?
   createdAt     DateTime  @default(now())
 
   // Which link the visitor arrived through. Nullable so deleting a link does

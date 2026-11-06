@@ -9,7 +9,7 @@ import {
   recordCommerceCheckoutReference,
   releaseCheckoutConflictHold,
 } from "@/lib/commerceCheckoutReferences";
-import { computePayableAt } from "../commission";
+import { commissionRateFor, computePayableAt } from "../commission";
 import { referralStillEarns } from "../referralDuration";
 
 type JsonObject = Record<string, unknown>;
@@ -333,9 +333,10 @@ async function createCommissionIfEligible(
   const linkActiveAtClick =
     (!click.link?.activeFrom || click.createdAt >= click.link.activeFrom) &&
     (!click.link?.activeUntil || click.createdAt <= click.link.activeUntil);
-  const rate = linkActiveAtClick && click.link?.commissionRateOverride
-    ? click.link.commissionRateOverride
-    : click.affiliate.customCommissionRate ?? click.affiliate.program.defaultCommissionRate;
+  const linkForRate = linkActiveAtClick ? click.link : null;
+  const rate = new Prisma.Decimal(
+    commissionRateFor(click.affiliate, click.affiliate.program, linkForRate, click)
+  );
   if (rate.lte(0)) return;
 
   const sale = { ref: event.paymentRef, at: event.occurredAt };
@@ -356,7 +357,11 @@ async function createCommissionIfEligible(
     currency: input.paymentRecord.saleCurrency,
     saleAmount,
     status: "PENDING" as const,
-    payableAt: computePayableAt(click.affiliate.program),
+    payableAt: computePayableAt(
+      click.affiliate.program,
+      undefined,
+      click.holdingPeriodDaysSnapshot ?? undefined,
+    ),
     paidAt: null,
     voidedAt: null,
     voidReason: null,
