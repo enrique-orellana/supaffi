@@ -61,6 +61,10 @@ export type SheetCommission = {
   /** The link that click came through, when it still has one. */
   linkLabel: string | null;
   reference: { text: string; href: string | null } | null;
+  paymentProvider?: string | null;
+  cryptoAmount?: string | null;
+  cryptoCurrency?: string | null;
+  cryptoNetwork?: string | null;
   /** A refund adjustment row an older version wrote. It has no referral to confirm. */
   isAdjustment?: boolean;
   /** The Owner already confirmed this commission's referral as a self referral. */
@@ -263,6 +267,15 @@ export function CommissionSheet({
                 <span className="text-muted-foreground">No reference</span>
               )}
             </Line>
+            {commission.paymentProvider && <Line label="Provider">{commission.paymentProvider}</Line>}
+            {commission.cryptoAmount && commission.cryptoCurrency && (
+              <Line label="Crypto paid">
+                <span className="font-mono text-xs">
+                  {commission.cryptoAmount} {commission.cryptoCurrency.toUpperCase()}
+                  {commission.cryptoNetwork ? ` · ${commission.cryptoNetwork.toUpperCase()}` : ""}
+                </span>
+              </Line>
+            )}
             <Line label="Click">{commission.clickLabel}</Line>
             {commission.linkLabel && (
               <Line label="Link">

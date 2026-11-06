@@ -70,8 +70,7 @@ export async function saveFoundCommerceInvoiceAction(
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (
-      message === "Enter a valid NOWPayments invoice ID and hosted invoice URL." ||
-      message === "The invoice ID does not match the provider reference already recorded."
+      message === "Enter a valid NOWPayments invoice ID and hosted invoice URL."
     ) return { error: message };
     return { error: "Unable to reconcile this checkout. Refresh the page and try again." };
   }

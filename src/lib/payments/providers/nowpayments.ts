@@ -421,8 +421,7 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
     const priceAmount = exactDecimalField(rawValues, payload, "price_amount");
     const priceCurrency = currencyCode(payload.price_currency, /^[a-z]{3}$/i);
     const cryptoCurrency = currencyCode(payload.pay_currency, /^[a-z0-9_-]{2,20}$/i);
-    const cryptoAmount = exactDecimalField(rawValues, payload, "actually_paid") ??
-      exactDecimalField(rawValues, payload, "pay_amount");
+    const cryptoAmount = exactDecimalField(rawValues, payload, "actually_paid");
 
     if (
       !paymentId ||

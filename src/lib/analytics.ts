@@ -320,7 +320,13 @@ async function owedTotals(
 
   const rows = await db.commission.groupBy({
     by: ["currency"],
-    where: { ...where, status: { in: [...statuses] }, adjustsCommissionId: null, amount: { gt: 0 } },
+    where: {
+      ...where,
+      status: { in: [...statuses] },
+      ...(statuses.includes("PAYABLE") ? { checkoutConflictHeldAt: null } : {}),
+      adjustsCommissionId: null,
+      amount: { gt: 0 },
+    },
     _sum: { amount: true },
   });
   return totalsByCurrency(rows);
@@ -680,6 +686,7 @@ export async function getPayableGroups(
       // A disputed commission is never PAYABLE, so this matches nothing today.
       // It stays as a guard: a payout button must never offer a held row.
       disputeOpenedAt: null,
+      checkoutConflictHeldAt: null,
       affiliate: { merchantId },
     },
     select: {
@@ -732,6 +739,7 @@ export async function countPayouts(merchantId: string): Promise<number> {
       adjustsCommissionId: null,
       amount: { gt: 0 },
       disputeOpenedAt: null,
+      checkoutConflictHeldAt: null,
       affiliate: { merchantId },
     },
   });

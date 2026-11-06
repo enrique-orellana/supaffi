@@ -336,10 +336,14 @@ model Commission {
   // dispute moves a PAYABLE row back to PENDING, and neither the sweep nor a
   // dismissed flag promotes a held row. See src/lib/worker/disputes.ts.
   disputeOpenedAt DateTime?
+  // Holds this commission while its associated hosted checkout has conflicting
+  // provider invoice references. Separate from dispute and fraud review holds.
+  checkoutConflictHeldAt DateTime?
 
   createdAt DateTime @default(now())
 
   @@index([status, payableAt])
+  @@index([status, checkoutConflictHeldAt], map: "Commission_status_conflictHold_idx")
   // The sale handlers read a click's earlier commissions on every sale of a
   // program with a limited duration (src/lib/worker/referralDuration.ts).
   @@index([clickId, createdAt])
@@ -457,6 +461,7 @@ model CommerceCheckout {
   successUrl         String
   cancelUrl          String
   hostedCheckoutRef  String?
+  alternateCheckoutRef String?
   hostedCheckoutUrl  String?
   status             String            @default("PENDING")
   idempotencyDigest  String
@@ -464,6 +469,7 @@ model CommerceCheckout {
   lastCreationError  String?
   nextAttemptAt      DateTime?
   reconciliationResolution String?
+  refundReconciliationPendingAt DateTime?
   reconciledAt       DateTime?
   reconciledByOwnerId String?
   reconciledByOwner  Owner?            @relation("CommerceCheckoutReconciler", fields: [reconciledByOwnerId], references: [id], onDelete: SetNull)
@@ -545,10 +551,12 @@ model CommerceEventDelivery {
   attempts      Int                          @default(0)
   lastError     String?
   nextAttemptAt DateTime                     @default(now())
+  checkoutConflictHeldAt DateTime?
   createdAt     DateTime                     @default(now())
   deliveredAt   DateTime?
 
   @@index([status, nextAttemptAt, createdAt])
+  @@index([status, checkoutConflictHeldAt, nextAttemptAt], map: "CommerceEventDelivery_status_conflictHold_nextAttempt_idx")
   @@index([merchantId, createdAt])
 }
 

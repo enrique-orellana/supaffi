@@ -46,6 +46,16 @@ export type CommissionRow = {
   /** What the customer paid for this sale. Null on rows older than the column. */
   saleAmount: string | null;
   stripePaymentRef: string | null;
+  paymentRecord: {
+    provider: string;
+    paymentRef: string | null;
+    checkoutRef: string | null;
+    saleAmount: string;
+    saleCurrency: string;
+    cryptoAmount: string | null;
+    cryptoCurrency: string | null;
+    cryptoNetwork: string | null;
+  } | null;
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
@@ -71,6 +81,7 @@ function whereFor(merchantId: string, filters: CommissionFilters) {
       ...(filters.affiliateId ? { id: filters.affiliateId } : {}),
     },
     ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.status === "PAYABLE" ? { checkoutConflictHeldAt: null } : {}),
     ...(filters.currency ? { currency: filters.currency } : {}),
     ...(query
       ? {
@@ -120,6 +131,18 @@ export async function listCommissions(
         grossAmount: true,
         saleAmount: true,
         stripePaymentRef: true,
+        paymentRecord: {
+          select: {
+            provider: true,
+            paymentRef: true,
+            checkoutRef: true,
+            saleAmount: true,
+            saleCurrency: true,
+            cryptoAmount: true,
+            cryptoCurrency: true,
+            cryptoNetwork: true,
+          },
+        },
         adjustsCommissionId: true,
         disputeOpenedAt: true,
         affiliate: { select: { id: true, name: true, email: true } },
@@ -162,6 +185,18 @@ export async function listCommissions(
       grossAmount: c.grossAmount ? c.grossAmount.toFixed(2) : null,
       saleAmount: c.saleAmount ? c.saleAmount.toFixed(2) : null,
       stripePaymentRef: c.stripePaymentRef,
+      paymentRecord: c.paymentRecord
+        ? {
+            provider: c.paymentRecord.provider,
+            paymentRef: c.paymentRecord.paymentRef,
+            checkoutRef: c.paymentRecord.checkoutRef,
+            saleAmount: c.paymentRecord.saleAmount.toFixed(2),
+            saleCurrency: c.paymentRecord.saleCurrency,
+            cryptoAmount: c.paymentRecord.cryptoAmount?.toString() ?? null,
+            cryptoCurrency: c.paymentRecord.cryptoCurrency,
+            cryptoNetwork: c.paymentRecord.cryptoNetwork,
+          }
+        : null,
       affiliateId: c.affiliate.id,
       affiliateName: c.affiliate.name,
       affiliateEmail: c.affiliate.email,
@@ -289,6 +324,7 @@ type PayoutRow = {
   voidReason: string | null;
   adjustsCommissionId: string | null;
   disputeOpenedAt: Date | null;
+  checkoutConflictHeldAt: Date | null;
   paidAt: Date | null;
 };
 
@@ -330,6 +366,7 @@ type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
  */
 function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Payout {
   if (row.status === "PAID") return "already paid";
+  if (row.checkoutConflictHeldAt !== null) return "skip";
   if (row.adjustsCommissionId !== null) return "skip";
   if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
 
@@ -450,6 +487,7 @@ export async function markCommissionsPaid(
         voidReason: true,
         adjustsCommissionId: true,
         disputeOpenedAt: true,
+        checkoutConflictHeldAt: true,
         paidAt: true,
       },
     });
@@ -665,7 +703,13 @@ export async function dismissCommissionFlag(
   // Still FLAGGED at write time in both writes, so a commission a refund voided
   // in between is not brought back to life.
   const payable = await db.commission.updateMany({
-    where: { id: commissionId, status: "FLAGGED", disputeOpenedAt: null, payableAt: { lte: new Date() } },
+    where: {
+      id: commissionId,
+      status: "FLAGGED",
+      disputeOpenedAt: null,
+      checkoutConflictHeldAt: null,
+      payableAt: { lte: new Date() },
+    },
     data: { status: "PAYABLE", flagReason: null },
   });
   if (payable.count > 0) return;

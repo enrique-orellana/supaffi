@@ -6,6 +6,11 @@ import { getPaymentProviderAdapter } from "@/lib/payments/registry";
 import { CheckoutProviderError } from "@/lib/payments/types";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { publicHttpsUrl } from "@/lib/publicHttpsUrl";
+import {
+  holdCheckoutDeliveries,
+  holdUnpaidCheckoutCommissions,
+  recordCommerceCheckoutReference,
+} from "@/lib/commerceCheckoutReferences";
 
 const CHECKOUT_PROVIDER = "NOWPAYMENTS" as const;
 const CHECKOUT_LEASE_MS = 10 * 60 * 1000;
@@ -35,7 +40,8 @@ export type UncertainCommerceCheckout = {
   currency: string;
   createdAt: Date;
   updatedAt: Date;
-  possibleInvoiceRef: string | null;
+  primaryInvoiceRef: string | null;
+  alternateInvoiceRef: string | null;
 };
 
 export type UncertainCommerceCheckoutPage = {
@@ -148,10 +154,13 @@ function existingResult(checkout: {
   idempotencyDigest: string;
   hostedCheckoutUrl: string | null;
   hostedCheckoutRef: string | null;
+  alternateCheckoutRef: string | null;
   status: string;
   nextAttemptAt: Date | null;
 }, digest: string, now: Date): ClaimResult | null {
   if (checkout.idempotencyDigest !== digest) return { kind: "conflict" };
+  if (checkout.alternateCheckoutRef) return { kind: "uncertain" };
+  if (checkout.hostedCheckoutRef && !checkout.hostedCheckoutUrl) return { kind: "uncertain" };
   if (checkout.hostedCheckoutUrl) {
     return {
       kind: "ready",
@@ -191,12 +200,33 @@ async function readExisting(merchantId: string, sourceOrderId: string, digest: s
         idempotencyDigest: true,
         hostedCheckoutUrl: true,
         hostedCheckoutRef: true,
+        alternateCheckoutRef: true,
         status: true,
         nextAttemptAt: true,
         attempts: true,
       },
     });
     if (!checkout) return null;
+
+    if (
+      (checkout.alternateCheckoutRef || (checkout.hostedCheckoutRef && !checkout.hostedCheckoutUrl)) &&
+      checkout.status !== "UNCERTAIN"
+    ) {
+      await tx.commerceCheckout.updateMany({
+        where: {
+          id: checkout.id,
+          hostedCheckoutRef: checkout.hostedCheckoutRef,
+          alternateCheckoutRef: checkout.alternateCheckoutRef,
+        },
+        data: {
+          status: "UNCERTAIN",
+          hostedCheckoutUrl: null,
+          lastCreationError: "Multiple provider invoice references require reconciliation",
+          nextAttemptAt: null,
+        },
+      });
+      return { kind: "uncertain" };
+    }
 
     const result = existingResult(checkout, digest, now);
     if (result) return result;
@@ -243,12 +273,32 @@ async function claimCheckout(input: {
             idempotencyDigest: true,
             hostedCheckoutUrl: true,
             hostedCheckoutRef: true,
+            alternateCheckoutRef: true,
             status: true,
             nextAttemptAt: true,
             attempts: true,
           },
         });
         if (!existing) throw new Error("Checkout disappeared");
+        if (
+          (existing.alternateCheckoutRef || (existing.hostedCheckoutRef && !existing.hostedCheckoutUrl)) &&
+          existing.status !== "UNCERTAIN"
+        ) {
+          await tx.commerceCheckout.updateMany({
+            where: {
+              id: existing.id,
+              hostedCheckoutRef: existing.hostedCheckoutRef,
+              alternateCheckoutRef: existing.alternateCheckoutRef,
+            },
+            data: {
+              status: "UNCERTAIN",
+              hostedCheckoutUrl: null,
+              lastCreationError: "Multiple provider invoice references require reconciliation",
+              nextAttemptAt: null,
+            },
+          });
+          return { kind: "uncertain" };
+        }
         const result = existingResult(existing, input.digest, now);
         if (result) return result;
         if (existing.status === "RETRYABLE") {
@@ -315,15 +365,27 @@ async function persistUncertain(
   attempts: number,
   providerRef: string | null = null
 ): Promise<void> {
-  await db.commerceCheckout.updateMany({
-    where: { id: checkoutId, status: "CREATING", attempts },
-    data: {
-      status: "UNCERTAIN",
-      hostedCheckoutRef: providerRef,
-      hostedCheckoutUrl: null,
-      lastCreationError: "Provider outcome requires reconciliation",
-      nextAttemptAt: null,
-    },
+  await db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ attempts: number; status: string }[]>`
+      SELECT "attempts", "status" FROM "CommerceCheckout" WHERE "id" = ${checkoutId} FOR UPDATE
+    `;
+    const checkout = rows[0];
+    if (!checkout) return;
+    if (providerRef) {
+      await recordCommerceCheckoutReference(tx, checkoutId, providerRef, true);
+      return;
+    }
+    if (checkout.status === "CREATING" && checkout.attempts === attempts) {
+      await tx.commerceCheckout.updateMany({
+        where: { id: checkoutId, status: "CREATING", attempts },
+        data: {
+          status: "UNCERTAIN",
+          hostedCheckoutUrl: null,
+          lastCreationError: "Provider outcome requires reconciliation",
+          nextAttemptAt: null,
+        },
+      });
+    }
   });
 }
 
@@ -334,10 +396,15 @@ function retryDelay(attempts: number): number {
 async function persistDefiniteRejection(checkoutId: string, attempts: number): Promise<Date | null> {
   const retryAt = new Date(Date.now() + retryDelay(attempts));
   const updated = await db.commerceCheckout.updateMany({
-    where: { id: checkoutId, status: "CREATING", attempts },
+    where: {
+      id: checkoutId,
+      status: "CREATING",
+      attempts,
+      hostedCheckoutRef: null,
+      alternateCheckoutRef: null,
+    },
     data: {
       status: "RETRYABLE",
-      hostedCheckoutRef: null,
       hostedCheckoutUrl: null,
       lastCreationError: "Provider rejected the request before creating an invoice",
       nextAttemptAt: retryAt,
@@ -376,6 +443,7 @@ export async function getUncertainCommerceCheckouts(
       createdAt: true,
       updatedAt: true,
       hostedCheckoutRef: true,
+      alternateCheckoutRef: true,
     },
   });
   return {
@@ -386,7 +454,8 @@ export async function getUncertainCommerceCheckouts(
       currency: row.currency,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-      possibleInvoiceRef: row.hostedCheckoutRef,
+      primaryInvoiceRef: row.hostedCheckoutRef,
+      alternateInvoiceRef: row.alternateCheckoutRef,
     })),
     page,
     pageCount,
@@ -426,9 +495,22 @@ async function lockOwnedUncertainCheckout(
   ownerId: string,
   merchantId: string,
   checkoutId: string
-): Promise<{ id: string; hostedCheckoutRef: string | null; updatedAt: Date } | null> {
-  const rows = await tx.$queryRaw<{ id: string; hostedCheckoutRef: string | null; updatedAt: Date }[]>`
-    SELECT checkout."id", checkout."hostedCheckoutRef", checkout."updatedAt"
+): Promise<{
+  id: string;
+  sourceOrderId: string;
+  hostedCheckoutRef: string | null;
+  alternateCheckoutRef: string | null;
+  updatedAt: Date;
+} | null> {
+  const rows = await tx.$queryRaw<{
+    id: string;
+    sourceOrderId: string;
+    hostedCheckoutRef: string | null;
+    alternateCheckoutRef: string | null;
+    updatedAt: Date;
+  }[]>`
+    SELECT checkout."id", checkout."sourceOrderId", checkout."hostedCheckoutRef",
+      checkout."alternateCheckoutRef", checkout."updatedAt"
     FROM "CommerceCheckout" AS checkout
     INNER JOIN "Merchant" AS merchant ON merchant."id" = checkout."merchantId"
     WHERE checkout."id" = ${checkoutId}
@@ -439,6 +521,210 @@ async function lockOwnedUncertainCheckout(
     FOR UPDATE OF checkout
   `;
   return rows[0] ?? null;
+}
+
+async function queueTerminalCheckoutResolution(
+  tx: Prisma.TransactionClient,
+  merchantId: string,
+  checkout: { id: string; sourceOrderId: string },
+  invoiceRef: string
+): Promise<{
+  unappliedRefund: boolean;
+  terminalSnapshot: {
+    paymentRef: string;
+    invoiceRef: string | null;
+    status: string;
+    saleAmount: string;
+    saleCurrency: string;
+    cryptoAmount: string | null;
+    cryptoCurrency: string | null;
+    cryptoNetwork: string | null;
+  } | null;
+}> {
+  const payment = await tx.paymentRecord.findUnique({
+    where: {
+      merchantId_provider_sourceOrderId: {
+        merchantId,
+        provider: CHECKOUT_PROVIDER,
+        sourceOrderId: checkout.sourceOrderId,
+      },
+    },
+    select: {
+      id: true,
+      paymentRef: true,
+      status: true,
+    },
+  });
+  const nullInvoicePaymentMatch = payment?.paymentRef
+    ? Prisma.sql`AND w."payload"->>'paymentRef' = ${payment.paymentRef}`
+    : Prisma.sql`AND FALSE`;
+
+  const terminalEvents = await tx.$queryRaw<{
+    providerEventId: string;
+    payload: Prisma.JsonValue;
+  }[]>(Prisma.sql`
+    SELECT w."providerEventId", w."payload"
+    FROM "WebhookEvent" AS w
+    WHERE w."merchantId" = ${merchantId}
+      AND w."provider" = 'NOWPAYMENTS'::"PaymentProvider"
+      AND w."status" IN (
+        'PENDING'::"WebhookEventStatus",
+        'PROCESSING'::"WebhookEventStatus",
+        'PROCESSED'::"WebhookEventStatus",
+        'FAILED'::"WebhookEventStatus"
+      )
+      AND w."payload"->>'provider' = 'nowpayments'
+      AND w."payload"->>'eventId' = w."providerEventId"
+      AND w."payload"->'rawPayload'->>'order_id' = ${checkout.sourceOrderId}
+      AND (
+        w."payload"->'rawPayload'->>'invoice_id' = ${invoiceRef}
+        OR (
+          COALESCE(w."payload"->'rawPayload'->>'invoice_id', '') = ''
+          ${nullInvoicePaymentMatch}
+        )
+      )
+      AND lower(w."payload"->'rawPayload'->>'payment_status') IN ('finished', 'refunded')
+    ORDER BY CASE WHEN w."payload"->'rawPayload'->>'invoice_id' = ${invoiceRef} THEN 0 ELSE 1 END,
+      CASE lower(w."payload"->'rawPayload'->>'payment_status')
+      WHEN 'refunded' THEN 0 ELSE 1 END, w."createdAt" DESC
+    LIMIT 50
+  `);
+
+  const validEvents: { original: Prisma.JsonObject; paymentRef: string; status: string; invoiceRef: string | null }[] = [];
+  for (const candidate of terminalEvents) {
+    if (!candidate.payload || typeof candidate.payload !== "object" || Array.isArray(candidate.payload)) continue;
+    const original = candidate.payload as Prisma.JsonObject;
+    const originalRaw = original.rawPayload;
+    if (!originalRaw || typeof originalRaw !== "object" || Array.isArray(originalRaw)) continue;
+    const raw = originalRaw as Prisma.JsonObject;
+    const providerStatus = raw.payment_status;
+    const paymentRef = original.paymentRef;
+    const rawPaymentRef = typeof raw.payment_id === "string"
+      ? raw.payment_id
+      : typeof raw.payment_id === "number" && Number.isSafeInteger(raw.payment_id)
+        ? String(raw.payment_id)
+        : null;
+    const rawInvoiceRef = typeof raw.invoice_id === "string"
+      ? raw.invoice_id
+      : typeof raw.invoice_id === "number" && Number.isSafeInteger(raw.invoice_id)
+        ? String(raw.invoice_id)
+        : null;
+    const baseEventIdMatches = original.eventId === `${paymentRef}:${providerStatus}`;
+    const reconciliationEventIdMatches =
+      original.reconciliation === true &&
+      typeof original.eventId === "string" &&
+      /^owner-reconcile:[a-f0-9]{64}$/.test(original.eventId);
+    if (
+      typeof providerStatus !== "string" ||
+      !["finished", "refunded"].includes(providerStatus.toLowerCase()) ||
+      typeof paymentRef !== "string" ||
+      !paymentRef.trim() ||
+      rawPaymentRef !== paymentRef ||
+      (rawInvoiceRef !== null && rawInvoiceRef !== invoiceRef) ||
+      raw.order_id !== checkout.sourceOrderId ||
+      original.provider !== "nowpayments" ||
+      original.eventId !== candidate.providerEventId ||
+      (!baseEventIdMatches && !reconciliationEventIdMatches) ||
+      typeof original.kind !== "string" ||
+      typeof original.saleAmount !== "string" ||
+      typeof original.saleCurrency !== "string" ||
+      typeof original.occurredAt !== "string" ||
+      Number.isNaN(new Date(original.occurredAt).getTime())
+    ) continue;
+    if (rawInvoiceRef === null && (!payment?.paymentRef || payment.paymentRef !== paymentRef)) continue;
+    validEvents.push({ original, paymentRef, status: providerStatus.toLowerCase(), invoiceRef: rawInvoiceRef });
+  }
+  const explicitInvoiceEvents = validEvents.filter((event) => event.invoiceRef === invoiceRef);
+  const fallbackInvoiceEvents = validEvents.filter((event) => event.invoiceRef === null);
+  const selectedInvoiceEvents = explicitInvoiceEvents.length > 0
+    ? explicitInvoiceEvents
+    : fallbackInvoiceEvents;
+  const knownPaymentRef = explicitInvoiceEvents[0]?.paymentRef ??
+    payment?.paymentRef ??
+    fallbackInvoiceEvents[0]?.paymentRef;
+  if (!knownPaymentRef) return { unappliedRefund: false, terminalSnapshot: null };
+  const matchingEvents = selectedInvoiceEvents.filter((event) => event.paymentRef === knownPaymentRef);
+  let unappliedRefund = false;
+  const byStatus = new Map<string, Prisma.JsonObject>();
+  for (const event of matchingEvents) {
+    const samePaymentRecord = payment?.paymentRef === event.paymentRef;
+    if (event.status === "refunded" && (!samePaymentRecord || payment?.status.toLowerCase() !== "refunded")) {
+      unappliedRefund = true;
+    }
+    if (!byStatus.has(event.status)) byStatus.set(event.status, event.original);
+  }
+
+  const selectedTerminal = matchingEvents.find((event) => event.status === "refunded") ??
+    matchingEvents.find((event) => event.status === "finished");
+  const storedStatus = payment && payment.paymentRef === knownPaymentRef
+    ? payment.status.toLowerCase()
+    : undefined;
+  const terminalStatus = storedStatus === "refunded" || storedStatus === "finished"
+    ? storedStatus
+    : selectedTerminal?.status ?? storedStatus ?? "finished";
+  const snapshotPayload = selectedTerminal?.original;
+  const snapshotRaw = snapshotPayload?.rawPayload;
+  const terminalSnapshot =
+    snapshotPayload &&
+    typeof snapshotPayload.saleAmount === "string" &&
+    typeof snapshotPayload.saleCurrency === "string" &&
+    snapshotRaw &&
+    typeof snapshotRaw === "object" &&
+    !Array.isArray(snapshotRaw)
+    ? {
+        paymentRef: knownPaymentRef,
+        invoiceRef: selectedTerminal.invoiceRef,
+        status: terminalStatus,
+        saleAmount: snapshotPayload.saleAmount,
+        saleCurrency: snapshotPayload.saleCurrency,
+        cryptoAmount: typeof snapshotPayload.cryptoAmount === "string" ? snapshotPayload.cryptoAmount : null,
+        cryptoCurrency: typeof snapshotPayload.cryptoCurrency === "string" ? snapshotPayload.cryptoCurrency : null,
+        cryptoNetwork: typeof (snapshotRaw as Prisma.JsonObject).network === "string"
+          ? String((snapshotRaw as Prisma.JsonObject).network).toLowerCase()
+          : null,
+      }
+    : null;
+
+  for (const [status, original] of byStatus) {
+    const originalRaw = original.rawPayload as Prisma.InputJsonObject;
+    const reconciliationEventId = `owner-reconcile:${createHash("sha256")
+      .update(`${checkout.id}\0${knownPaymentRef}\0${status}\0${invoiceRef}`, "utf8")
+      .digest("hex")}`;
+    const payload = {
+      ...(original as unknown as Prisma.InputJsonObject),
+      eventId: reconciliationEventId,
+      reconciliation: true,
+      checkoutRef: invoiceRef,
+      rawPayload: { ...originalRaw, invoice_id: invoiceRef },
+    } satisfies Prisma.InputJsonObject;
+
+    const existing = await tx.webhookEvent.findUnique({
+      where: {
+        merchantId_provider_providerEventId: {
+          merchantId,
+          provider: CHECKOUT_PROVIDER,
+          providerEventId: reconciliationEventId,
+        },
+      },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      await tx.webhookEvent.create({
+        data: {
+          merchantId,
+          provider: CHECKOUT_PROVIDER,
+          providerEventId: reconciliationEventId,
+          payload,
+        },
+      });
+    } else if (existing.status === "FAILED" || existing.status === "PROCESSED") {
+      await tx.webhookEvent.updateMany({
+        where: { id: existing.id, status: existing.status },
+        data: { status: "PENDING", attempts: 0, lastError: null, nextAttemptAt: new Date(), processedAt: null },
+      });
+    }
+  }
+  return { unappliedRefund, terminalSnapshot };
 }
 
 /** Attach an invoice the owner located in the provider dashboard to its order. */
@@ -457,13 +743,11 @@ export async function reconcileCommerceCheckoutAsFound(
   await db.$transaction(async (tx) => {
     const checkout = await lockOwnedUncertainCheckout(tx, ownerId, merchantId, checkoutId);
     if (!checkout) throw new Error("This checkout is no longer available for reconciliation.");
-    if (checkout.hostedCheckoutRef && checkout.hostedCheckoutRef !== normalized.invoiceRef) {
-      throw new Error("The invoice ID does not match the provider reference already recorded.");
-    }
     const updated = await tx.commerceCheckout.updateMany({
       where: { id: checkout.id, merchantId, status: "UNCERTAIN", attempts: { gt: 0 } },
       data: {
         hostedCheckoutRef: normalized.invoiceRef,
+        alternateCheckoutRef: null,
         hostedCheckoutUrl: normalized.invoiceUrl,
         status: "READY",
         lastCreationError: null,
@@ -474,6 +758,15 @@ export async function reconcileCommerceCheckoutAsFound(
       },
     });
     if (updated.count !== 1) throw new Error("This checkout is no longer available for reconciliation.");
+    const replay = await queueTerminalCheckoutResolution(tx, merchantId, checkout, normalized.invoiceRef);
+    await tx.commerceCheckout.update({
+      where: { id: checkout.id },
+      data: { refundReconciliationPendingAt: replay.unappliedRefund ? new Date() : null },
+    });
+    if (replay.unappliedRefund) {
+      await holdUnpaidCheckoutCommissions(tx, checkout.id);
+      await holdCheckoutDeliveries(tx, merchantId, checkout.sourceOrderId);
+    }
   });
 }
 
@@ -486,7 +779,7 @@ export async function reconcileCommerceCheckoutAsAbsent(
   await db.$transaction(async (tx) => {
     const checkout = await lockOwnedUncertainCheckout(tx, ownerId, merchantId, checkoutId);
     if (!checkout) throw new Error("This checkout is no longer available for reconciliation.");
-    if (checkout.hostedCheckoutRef) {
+    if (checkout.hostedCheckoutRef || checkout.alternateCheckoutRef) {
       throw new Error("A provider invoice reference is already recorded. Reconcile that invoice instead.");
     }
     const retryEligibleAt = checkout.updatedAt.getTime() + CHECKOUT_LEASE_MS + RECONCILIATION_GRACE_MS;
@@ -494,7 +787,14 @@ export async function reconcileCommerceCheckoutAsAbsent(
       throw new Error("Wait 15 minutes from the last update before confirming that no invoice exists.");
     }
     const updated = await tx.commerceCheckout.updateMany({
-      where: { id: checkout.id, merchantId, status: "UNCERTAIN", hostedCheckoutRef: null, attempts: { gt: 0 } },
+      where: {
+        id: checkout.id,
+        merchantId,
+        status: "UNCERTAIN",
+        hostedCheckoutRef: null,
+        alternateCheckoutRef: null,
+        attempts: { gt: 0 },
+      },
       data: {
         status: "RETRYABLE",
         nextAttemptAt: new Date(),
@@ -586,32 +886,102 @@ export async function createCommerceCheckout(
     return { kind: "uncertain" };
   }
 
-  const updated = await db.commerceCheckout.updateMany({
-    where: {
-      id: claim.checkoutId,
-      attempts: claim.attempts,
-      status: { in: ["CREATING", "UNCERTAIN"] },
-      hostedCheckoutUrl: null,
-    },
-    data: {
-      hostedCheckoutRef: hosted.checkoutRef,
-      hostedCheckoutUrl: checkoutUrl,
-      status: "READY",
-      lastCreationError: null,
-      nextAttemptAt: null,
-    },
-  });
-  if (updated.count !== 1) {
-    // A result may only settle the exact attempt that sent it. In particular,
-    // an expired lease can become uncertain while this request is still live.
-    const settled = await db.commerceCheckout.findUnique({
-      where: { id: claim.checkoutId },
-      select: { attempts: true, status: true, hostedCheckoutUrl: true, hostedCheckoutRef: true, nextAttemptAt: true },
+  return db.$transaction(async (tx): Promise<CommerceCheckoutResult> => {
+    const rows = await tx.$queryRaw<{
+      attempts: number;
+      status: string;
+      hostedCheckoutUrl: string | null;
+      hostedCheckoutRef: string | null;
+      alternateCheckoutRef: string | null;
+    }[]>`
+      SELECT "attempts", "status", "hostedCheckoutUrl", "hostedCheckoutRef", "alternateCheckoutRef"
+      FROM "CommerceCheckout" WHERE "id" = ${claim.checkoutId} FOR UPDATE
+    `;
+    const checkout = rows[0];
+    if (!checkout) return { kind: "uncertain" };
+
+    if (
+      checkout.attempts === claim.attempts &&
+      checkout.status === "READY" &&
+      checkout.hostedCheckoutUrl &&
+      checkout.hostedCheckoutRef === hosted.checkoutRef &&
+      checkout.alternateCheckoutRef === null
+    ) {
+      return {
+        kind: "ready",
+        checkoutUrl: checkout.hostedCheckoutUrl,
+        checkoutRef: checkout.hostedCheckoutRef,
+      };
+    }
+
+    if (
+      checkout.alternateCheckoutRef ||
+      (checkout.hostedCheckoutRef && checkout.hostedCheckoutRef !== hosted.checkoutRef) ||
+      checkout.attempts !== claim.attempts ||
+      !["CREATING", "UNCERTAIN"].includes(checkout.status)
+    ) {
+      await recordCommerceCheckoutReference(tx, claim.checkoutId, hosted.checkoutRef, true);
+      return { kind: "uncertain" };
+    }
+
+    const updated = await tx.commerceCheckout.updateMany({
+      where: {
+        id: claim.checkoutId,
+        attempts: claim.attempts,
+        status: { in: ["CREATING", "UNCERTAIN"] },
+        hostedCheckoutUrl: null,
+        alternateCheckoutRef: null,
+        OR: [
+          { hostedCheckoutRef: null },
+          { hostedCheckoutRef: hosted.checkoutRef },
+        ],
+      },
+      data: {
+        hostedCheckoutRef: hosted.checkoutRef,
+        hostedCheckoutUrl: checkoutUrl,
+        status: "READY",
+        lastCreationError: null,
+        nextAttemptAt: null,
+      },
     });
-    if (settled?.attempts === claim.attempts && settled.hostedCheckoutUrl && settled.status === "READY") {
+    if (updated.count === 1) {
+      const replay = await queueTerminalCheckoutResolution(
+        tx,
+        merchantId,
+        { id: claim.checkoutId, sourceOrderId: input.sourceOrderId },
+        hosted.checkoutRef
+      );
+      await tx.commerceCheckout.update({
+        where: { id: claim.checkoutId },
+        data: { refundReconciliationPendingAt: replay.unappliedRefund ? new Date() : null },
+      });
+      if (replay.unappliedRefund) {
+        await holdUnpaidCheckoutCommissions(tx, claim.checkoutId);
+        await holdCheckoutDeliveries(tx, merchantId, input.sourceOrderId);
+      }
+      return { kind: "ready", checkoutUrl, checkoutRef: hosted.checkoutRef };
+    }
+
+    const settled = await tx.commerceCheckout.findUnique({
+      where: { id: claim.checkoutId },
+      select: {
+        attempts: true,
+        status: true,
+        hostedCheckoutUrl: true,
+        hostedCheckoutRef: true,
+        alternateCheckoutRef: true,
+      },
+    });
+    if (
+      settled?.attempts === claim.attempts &&
+      settled.hostedCheckoutUrl &&
+      settled.status === "READY" &&
+      settled.hostedCheckoutRef === hosted.checkoutRef &&
+      settled.alternateCheckoutRef === null
+    ) {
       return { kind: "ready", checkoutUrl: settled.hostedCheckoutUrl, checkoutRef: settled.hostedCheckoutRef };
     }
+    await recordCommerceCheckoutReference(tx, claim.checkoutId, hosted.checkoutRef, true);
     return { kind: "uncertain" };
-  }
-  return { kind: "ready", checkoutUrl, checkoutRef: hosted.checkoutRef };
+  });
 }

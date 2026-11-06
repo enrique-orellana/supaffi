@@ -7,10 +7,12 @@ import { db } from "@/lib/db";
  * Only PROCESSED rows go. PENDING and PROCESSING rows are still owed work,
  * and FAILED rows keep the error that explains a missing sale. Nothing reads
  * an old processed row: commissions and tracking verification live in their
- * own columns, and Stripe retries a delivery for three days at most, so it
- * cannot resend an event whose row is gone. The one reader of "any row at
- * all" is the settings light that says Stripe is sending events, so each
- * product's newest row is always kept.
+ * own columns, and signed provider retries are not needed once an order is
+ * settled. NOWPayments events for a checkout still marked UNCERTAIN are the
+ * exception: owner reconciliation can replay their verified payload, so
+ * those source rows stay until the checkout is resolved. The one reader of
+ * "any row at all" is the settings light that says Stripe is sending events,
+ * so each product's newest row is always kept.
  *
  * Batched, so a first run on an install with years of rows does not hold one
  * huge delete open against the table the webhook route is writing to. A run
@@ -38,6 +40,16 @@ export async function cleanupProcessedEvents(
             SELECT 1 FROM "WebhookEvent" newer
             WHERE newer."merchantId" = w."merchantId"
               AND newer."createdAt" > w."createdAt"
+          )
+          AND NOT (
+            w."provider" = 'NOWPAYMENTS'::"PaymentProvider"
+            AND EXISTS (
+              SELECT 1 FROM "CommerceCheckout" checkout
+              WHERE checkout."merchantId" = w."merchantId"
+                AND checkout."provider" = w."provider"
+                AND checkout."sourceOrderId" = w."payload"->'rawPayload'->>'order_id'
+                AND checkout."status" = 'UNCERTAIN'
+            )
           )
         LIMIT ${batchSize}
       )

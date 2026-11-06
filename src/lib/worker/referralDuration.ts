@@ -3,6 +3,8 @@ import type { Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isPaymentWithinCommissionDuration, type PaymentRef } from "./commission";
 
+type ReferralHistoryClient = Pick<typeof db, "$queryRaw">;
+
 /**
  * What a referral already did before the payment being judged.
  *
@@ -75,10 +77,11 @@ export async function readReferralHistory(
    * returns earlier whenever a row exists under the sale's other reference, so
    * in practice this never excludes anything by the time this runs.
    */
-  ownOtherRefs: readonly string[] = []
+  ownOtherRefs: readonly string[] = [],
+  client: ReferralHistoryClient = db
 ): Promise<ReferralHistory> {
   const ownRefs = [paymentRef, ...ownOtherRefs];
-  const rows = await db.$queryRaw<HistoryRow[]>`
+  const rows = await client.$queryRaw<HistoryRow[]>`
     WITH payments AS (
       SELECT "firstPaymentRef" AS ref, "firstPaidAt" AS at, 'subscription' AS source
       FROM "ReferredSubscription"
@@ -93,6 +96,16 @@ export async function readReferralHistory(
       WHERE "Commission"."clickId" = ${clickId}
         AND "Commission"."adjustsCommissionId" IS NULL
         AND "Commission"."stripePaymentRef" IS NOT NULL
+      UNION ALL
+      SELECT payment."paymentRef" AS ref, "Commission"."createdAt" AS at, 'commission' AS source
+      FROM "Commission"
+      JOIN "PaymentRecord" payment ON payment.id = "Commission"."paymentRecordId"
+      JOIN "Affiliate" a ON a.id = "Commission"."affiliateId" AND a."merchantId" = ${merchantId}
+      WHERE "Commission"."clickId" = ${clickId}
+        AND "Commission"."adjustsCommissionId" IS NULL
+        AND payment."merchantId" = ${merchantId}
+        AND payment."provider" = 'NOWPAYMENTS'::"PaymentProvider"
+        AND payment."paymentRef" IS NOT NULL
     )
     SELECT
       (SELECT ref FROM payments ORDER BY at ASC, ref ASC LIMIT 1) AS "startRef",
@@ -124,9 +137,10 @@ export async function referralStillEarns(
   program: Program,
   payment: PaymentRef,
   /** The sale's other reference, when it has one (see readReferralHistory). */
-  ownOtherRefs: readonly string[] = []
+  ownOtherRefs: readonly string[] = [],
+  client: ReferralHistoryClient = db
 ): Promise<boolean> {
   if (program.commissionDurationType === "FOREVER") return true;
-  const history = await readReferralHistory(merchantId, clickId, payment.ref, ownOtherRefs);
+  const history = await readReferralHistory(merchantId, clickId, payment.ref, ownOtherRefs, client);
   return isWithinReferralDuration(program, history, payment);
 }

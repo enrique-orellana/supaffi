@@ -67,6 +67,7 @@ async function claimCommerceDeliveryBatch(): Promise<CommerceEventDelivery[]> {
       SELECT id
       FROM "CommerceEventDelivery"
       WHERE status IN ('PENDING', 'PROCESSING')
+        AND "checkoutConflictHeldAt" IS NULL
         AND "nextAttemptAt" <= now()
         AND attempts < ${MAX_ATTEMPTS}
       ORDER BY "createdAt" ASC
@@ -81,6 +82,100 @@ async function claimCommerceDeliveryBatch(): Promise<CommerceEventDelivery[]> {
     WHERE delivery.id = claimed.id
     RETURNING delivery.*;
   `);
+}
+
+function referenceNoticeId(sourceOrderId: string, status: "invoice_conflict" | "invoice_reconciled", refs: string[]): string {
+  const orderHash = createHash("sha256").update(sourceOrderId, "utf8").digest("hex");
+  const refsHash = createHash("sha256").update([...new Set(refs)].sort().join("\0"), "utf8").digest("hex");
+  return `nowpayments-order:${orderHash}:${status}:${refsHash}`;
+}
+
+type CommercePaymentSnapshot = {
+  paymentRef: string;
+  status: string;
+  saleAmount: string;
+  saleCurrency: string;
+  cryptoAmount: string | null;
+  cryptoCurrency: string | null;
+  cryptoNetwork: string | null;
+};
+
+async function paymentSnapshot(
+  tx: Prisma.TransactionClient,
+  merchantId: string,
+  sourceOrderId: string
+): Promise<CommercePaymentSnapshot | null> {
+  const payment = await tx.paymentRecord.findUnique({
+    where: { merchantId_provider_sourceOrderId: { merchantId, provider: "NOWPAYMENTS", sourceOrderId } },
+    select: {
+      paymentRef: true,
+      status: true,
+      saleAmount: true,
+      saleCurrency: true,
+      cryptoAmount: true,
+      cryptoCurrency: true,
+      cryptoNetwork: true,
+    },
+  });
+  if (!payment) return null;
+  return {
+    paymentRef: payment.paymentRef,
+    status: payment.status.toLowerCase(),
+    saleAmount: payment.saleAmount.toString(),
+    saleCurrency: payment.saleCurrency,
+    cryptoAmount: payment.cryptoAmount?.toString() ?? null,
+    cryptoCurrency: payment.cryptoCurrency,
+    cryptoNetwork: payment.cryptoNetwork,
+  };
+}
+
+async function enqueueCheckoutReferenceNotice(
+  tx: Prisma.TransactionClient,
+  input: {
+    merchantId: string;
+    sourceOrderId: string;
+    paymentRef: string | null;
+    status: "invoice_conflict" | "invoice_reconciled";
+    primaryRef: string | null;
+    alternateRef: string | null;
+    additionalRefs?: string[];
+    selectedRef?: string;
+    payment?: CommercePaymentSnapshot | null;
+  }
+): Promise<void> {
+  const refs = [input.primaryRef, input.alternateRef, input.selectedRef, ...(input.additionalRefs ?? [])]
+    .filter((ref): ref is string => Boolean(ref));
+  const eventId = referenceNoticeId(
+    input.sourceOrderId,
+    input.status,
+    [
+      ...refs,
+      `payment:${input.payment?.paymentRef ?? input.paymentRef ?? "unknown"}`,
+      `paymentStatus:${input.payment?.status ?? "unknown"}`,
+    ]
+  );
+  await enqueueCommerceEvent(tx, {
+    merchantId: input.merchantId,
+    eventId,
+    payload: {
+      provider: "nowpayments",
+      eventId,
+      status: input.status,
+      sourceOrderId: input.sourceOrderId,
+      paymentRef: input.payment?.paymentRef ?? input.paymentRef,
+      checkoutRef: input.primaryRef,
+      alternateCheckoutRef: input.alternateRef,
+      selectedInvoiceRef: input.selectedRef ?? null,
+      conflictingInvoiceRefs: input.status === "invoice_conflict" ? [...new Set(refs)] : [],
+      paymentStatus: input.payment?.status ?? null,
+      saleAmount: input.payment?.saleAmount ?? null,
+      saleCurrency: input.payment?.saleCurrency ?? null,
+      cryptoAmount: input.payment?.cryptoAmount ?? null,
+      cryptoCurrency: input.payment?.cryptoCurrency ?? null,
+      cryptoNetwork: input.payment?.cryptoNetwork ?? null,
+      occurredAt: new Date().toISOString(),
+    },
+  });
 }
 
 function stableJson(value: unknown): string {
@@ -104,14 +199,129 @@ function backoffMs(attempts: number): number {
 }
 
 async function markCommerceDeliveryDelivered(id: string, attempts: number): Promise<void> {
-  await db.commerceEventDelivery.updateMany({
-    where: { id, status: "PROCESSING", attempts },
-    data: {
-      status: "DELIVERED",
-      deliveredAt: new Date(),
-      lastError: null,
-    },
+  const heldOrder = await db.$transaction(async (tx) => {
+    const updated = await tx.commerceEventDelivery.updateMany({
+      where: { id, status: "PROCESSING", attempts },
+      data: {
+        status: "DELIVERED",
+        deliveredAt: new Date(),
+        lastError: null,
+      },
+    });
+    if (updated.count !== 1) return null;
+
+    const delivery = await tx.commerceEventDelivery.findUnique({
+      where: { id },
+      select: { merchantId: true, payload: true, checkoutConflictHeldAt: true },
+    });
+    if (!delivery?.checkoutConflictHeldAt || !delivery.payload || typeof delivery.payload !== "object" || Array.isArray(delivery.payload)) return null;
+
+    const payload = delivery.payload as Prisma.JsonObject;
+    const sourceOrderId = payload.sourceOrderId;
+    if (typeof sourceOrderId !== "string" || payload.provider !== "nowpayments") return null;
+    const checkout = await tx.commerceCheckout.findUnique({
+      where: {
+        merchantId_provider_sourceOrderId: {
+          merchantId: delivery.merchantId,
+          provider: "NOWPAYMENTS",
+          sourceOrderId,
+        },
+      },
+      select: {
+        status: true,
+        hostedCheckoutRef: true,
+        alternateCheckoutRef: true,
+        reconciliationResolution: true,
+        refundReconciliationPendingAt: true,
+      },
+    });
+
+    if (checkout && (checkout.status === "UNCERTAIN" || checkout.alternateCheckoutRef)) {
+      const payment = await paymentSnapshot(tx, delivery.merchantId, sourceOrderId);
+      await enqueueCheckoutReferenceNotice(tx, {
+        merchantId: delivery.merchantId,
+        sourceOrderId,
+        paymentRef: typeof payload.paymentRef === "string" ? payload.paymentRef : null,
+        status: "invoice_conflict",
+        primaryRef: checkout.hostedCheckoutRef,
+        alternateRef: checkout.alternateCheckoutRef,
+        additionalRefs: typeof payload.checkoutRef === "string" ? [payload.checkoutRef] : [],
+        payment,
+      });
+    } else if (
+      checkout?.status === "READY" &&
+      checkout.reconciliationResolution === "FOUND" &&
+      !checkout.refundReconciliationPendingAt
+    ) {
+      const payment = await paymentSnapshot(tx, delivery.merchantId, sourceOrderId);
+      await enqueueCheckoutReferenceNotice(tx, {
+        merchantId: delivery.merchantId,
+        sourceOrderId,
+        paymentRef: typeof payload.paymentRef === "string" ? payload.paymentRef : null,
+        status: "invoice_reconciled",
+        primaryRef: checkout.hostedCheckoutRef,
+        alternateRef: checkout.alternateCheckoutRef,
+        selectedRef: checkout.hostedCheckoutRef ?? undefined,
+        payment,
+      });
+    } else if (
+      checkout?.status === "READY" &&
+      checkout.reconciliationResolution === "FOUND" &&
+      checkout.refundReconciliationPendingAt
+    ) {
+      // A verified refund has been queued; retain the hold until it is applied.
+      return null;
+    }
+    await tx.commerceEventDelivery.updateMany({
+      where: { id, checkoutConflictHeldAt: { not: null } },
+      data: { checkoutConflictHeldAt: null },
+    });
+    return {
+      merchantId: delivery.merchantId,
+      sourceOrderId,
+      paymentRef: typeof payload.paymentRef === "string" ? payload.paymentRef : null,
+    };
   });
+
+  // Close the race where an owner resolves the checkout while this delivery
+  // is completing. The resolver either observed PROCESSING, or this follow-up
+  // sees the committed resolution; the stable event ID deduplicates both.
+  if (heldOrder) {
+    await db.$transaction(async (tx) => {
+      const checkout = await tx.commerceCheckout.findUnique({
+        where: {
+          merchantId_provider_sourceOrderId: {
+            merchantId: heldOrder.merchantId,
+            provider: "NOWPAYMENTS",
+            sourceOrderId: heldOrder.sourceOrderId,
+          },
+        },
+        select: {
+          status: true,
+          hostedCheckoutRef: true,
+          alternateCheckoutRef: true,
+          reconciliationResolution: true,
+          refundReconciliationPendingAt: true,
+        },
+      });
+      if (
+        checkout?.status !== "READY" ||
+        checkout.reconciliationResolution !== "FOUND" ||
+        checkout.refundReconciliationPendingAt
+      ) return;
+      const payment = await paymentSnapshot(tx, heldOrder.merchantId, heldOrder.sourceOrderId);
+      await enqueueCheckoutReferenceNotice(tx, {
+        merchantId: heldOrder.merchantId,
+        sourceOrderId: heldOrder.sourceOrderId,
+        paymentRef: heldOrder.paymentRef,
+        status: "invoice_reconciled",
+        primaryRef: checkout.hostedCheckoutRef,
+        alternateRef: checkout.alternateCheckoutRef,
+        selectedRef: checkout.hostedCheckoutRef ?? undefined,
+        payment,
+      });
+    });
+  }
 }
 
 async function markCommerceDeliveryFailed(
@@ -121,13 +331,94 @@ async function markCommerceDeliveryFailed(
 ): Promise<void> {
   const terminal = attempts >= MAX_ATTEMPTS;
   const message = error instanceof Error ? error.message : "Commerce event delivery failed";
-  await db.commerceEventDelivery.updateMany({
-    where: { id, status: "PROCESSING", attempts },
-    data: {
-      status: terminal ? "FAILED" : "PENDING",
-      lastError: message.slice(0, 1000),
-      nextAttemptAt: terminal ? new Date() : new Date(Date.now() + backoffMs(attempts)),
-    },
+  await db.$transaction(async (tx) => {
+    const delivery = await tx.commerceEventDelivery.findUnique({
+      where: { id },
+      select: { merchantId: true, payload: true, checkoutConflictHeldAt: true, status: true, attempts: true },
+    });
+    if (!delivery || delivery.status !== "PROCESSING" || delivery.attempts !== attempts) return;
+
+    if (delivery.checkoutConflictHeldAt && delivery.payload && typeof delivery.payload === "object" && !Array.isArray(delivery.payload)) {
+      const payload = delivery.payload as Prisma.JsonObject;
+      const sourceOrderId = payload.sourceOrderId;
+      if (payload.provider === "nowpayments" && typeof sourceOrderId === "string") {
+        await tx.$queryRaw`
+          SELECT "id" FROM "CommerceCheckout"
+          WHERE "merchantId" = ${delivery.merchantId}
+            AND "provider" = 'NOWPAYMENTS'::"PaymentProvider"
+            AND "sourceOrderId" = ${sourceOrderId}
+          FOR UPDATE
+        `;
+        const checkout = await tx.commerceCheckout.findUnique({
+          where: {
+            merchantId_provider_sourceOrderId: {
+              merchantId: delivery.merchantId,
+              provider: "NOWPAYMENTS",
+              sourceOrderId,
+            },
+          },
+          select: {
+            status: true,
+            hostedCheckoutRef: true,
+            alternateCheckoutRef: true,
+            reconciliationResolution: true,
+            refundReconciliationPendingAt: true,
+          },
+        });
+        if (checkout?.status === "READY" && checkout.reconciliationResolution === "FOUND") {
+          const payment = await paymentSnapshot(tx, delivery.merchantId, sourceOrderId);
+          const isWaitingForRefund = Boolean(checkout.refundReconciliationPendingAt);
+          if (!isWaitingForRefund) {
+            await enqueueCheckoutReferenceNotice(tx, {
+              merchantId: delivery.merchantId,
+              sourceOrderId,
+              paymentRef: typeof payload.paymentRef === "string" ? payload.paymentRef : null,
+              status: "invoice_reconciled",
+              primaryRef: checkout.hostedCheckoutRef,
+              alternateRef: checkout.alternateCheckoutRef,
+              selectedRef: checkout.hostedCheckoutRef ?? undefined,
+              payment,
+            });
+          }
+          await tx.commerceEventDelivery.updateMany({
+            where: { id, status: "PROCESSING", attempts, checkoutConflictHeldAt: { not: null } },
+            data: {
+              // Keep the original request body/event ID immutable. The
+              // reconciliation notice has a distinct event ID and terminal
+              // payment snapshot for receivers that missed this POST.
+              checkoutConflictHeldAt: isWaitingForRefund ? delivery.checkoutConflictHeldAt : null,
+              status: "FAILED",
+              lastError: message.slice(0, 1000),
+              nextAttemptAt: new Date(),
+            },
+          });
+          return;
+        }
+
+        if (checkout) {
+          const payment = await paymentSnapshot(tx, delivery.merchantId, sourceOrderId);
+          await enqueueCheckoutReferenceNotice(tx, {
+            merchantId: delivery.merchantId,
+            sourceOrderId,
+            paymentRef: typeof payload.paymentRef === "string" ? payload.paymentRef : null,
+            status: "invoice_conflict",
+            primaryRef: checkout.hostedCheckoutRef,
+            alternateRef: checkout.alternateCheckoutRef,
+            additionalRefs: typeof payload.checkoutRef === "string" ? [payload.checkoutRef] : [],
+            payment,
+          });
+        }
+      }
+    }
+
+    await tx.commerceEventDelivery.updateMany({
+      where: { id, status: "PROCESSING", attempts },
+      data: {
+        status: terminal ? "FAILED" : "PENDING",
+        lastError: message.slice(0, 1000),
+        nextAttemptAt: terminal ? new Date() : new Date(Date.now() + backoffMs(attempts)),
+      },
+    });
   });
 }
 

@@ -15,6 +15,7 @@ export async function sweepPayableCommissions(): Promise<number> {
     SET status = 'PAYABLE'
     WHERE status = 'PENDING'
       AND "payableAt" <= now()
-      AND "disputeOpenedAt" IS NULL;
+      AND "disputeOpenedAt" IS NULL
+      AND "checkoutConflictHeldAt" IS NULL;
   `;
 }

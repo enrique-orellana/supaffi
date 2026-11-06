@@ -180,18 +180,23 @@ function CheckoutReconciliationRow({
         <span className="text-xs text-muted-foreground">
           {checkout.amount} {checkout.currency.toUpperCase()} · updated {checkout.updatedAt.toLocaleString()}
         </span>
-        {checkout.possibleInvoiceRef && (
-          <span className="text-xs text-muted-foreground">Possible invoice ID: {checkout.possibleInvoiceRef}</span>
+        {checkout.primaryInvoiceRef && (
+          <span className="text-xs text-muted-foreground">Recorded invoice ID: {checkout.primaryInvoiceRef}</span>
+        )}
+        {checkout.alternateInvoiceRef && (
+          <span className="text-xs text-muted-foreground">Alternate invoice ID: {checkout.alternateInvoiceRef}</span>
         )}
       </div>
 
       <form action={saveFoundAction} className="grid gap-2">
-        <Label htmlFor={`invoice-ref-${checkout.id}`}>Invoice ID and hosted URL, if found</Label>
+        <Label htmlFor={`invoice-ref-${checkout.id}`}>Verified invoice ID and hosted URL</Label>
+        <p className="text-xs text-muted-foreground">
+          Enter the invoice you verified in the provider list. It may differ from either recorded reference.
+        </p>
         <Input
           id={`invoice-ref-${checkout.id}`}
           name="invoiceRef"
-          defaultValue={checkout.possibleInvoiceRef ?? ""}
-          placeholder="Invoice ID"
+          placeholder="Verified invoice ID"
           required
           autoComplete="off"
         />
@@ -208,7 +213,7 @@ function CheckoutReconciliationRow({
         </Button>
       </form>
 
-      {!checkout.possibleInvoiceRef && (
+      {!checkout.primaryInvoiceRef && !checkout.alternateInvoiceRef && (
         <form action={confirmAbsentAction} className="grid gap-2 border-t border-neutral-200 pt-3">
           <p className="text-xs text-muted-foreground">
             If no invoice appears after searching by this order ID, an identical request can be retried after {retryEligibleAt.toLocaleString()}.

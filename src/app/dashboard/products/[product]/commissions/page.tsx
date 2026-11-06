@@ -189,6 +189,7 @@ export default async function CommissionsPage({
   // Only a commission on the page being read can be opened: the id in the URL
   // is a selection within this list, not a route of its own.
   const selected = query.commission ? rows.find((r) => r.id === query.commission) ?? null : null;
+  const paymentRecordReference = selected?.paymentRecord?.paymentRef ?? selected?.paymentRecord?.checkoutRef ?? null;
   const sheetCommission: SheetCommission | null = selected
     ? {
         id: selected.id,
@@ -210,7 +211,19 @@ export default async function CommissionsPage({
         voidReason: selected.voidReason,
         flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
-        reference: referenceFor(selected.stripePaymentRef),
+        reference: selected.paymentRecord
+          ? paymentRecordReference ? { text: paymentRecordReference, href: null } : null
+          : referenceFor(selected.stripePaymentRef),
+        paymentProvider: selected.paymentRecord
+          ? selected.paymentRecord.provider === "NOWPAYMENTS"
+            ? "NOWPayments"
+            : selected.paymentRecord.provider
+          : selected.stripePaymentRef
+            ? "Stripe"
+            : null,
+        cryptoAmount: selected.paymentRecord?.cryptoAmount ?? null,
+        cryptoCurrency: selected.paymentRecord?.cryptoCurrency ?? null,
+        cryptoNetwork: selected.paymentRecord?.cryptoNetwork ?? null,
         clickLabel: formatDate(selected.click.at),
         linkLabel: selected.click.linkCode
           ? `${selected.click.linkCode} · ${selected.click.destinationPath ?? "/"}`

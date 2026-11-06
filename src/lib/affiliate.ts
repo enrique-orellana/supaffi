@@ -165,7 +165,9 @@ function affiliateStatusWhere(status: AffiliateCommissionStatus | null | undefin
   if (status === "PENDING") {
     return { status: { in: ["PENDING", "FLAGGED"] as CommissionStatus[] } };
   }
-  return { status: status as CommissionStatus };
+  return status === "PAYABLE"
+    ? { status: status as CommissionStatus, checkoutConflictHeldAt: null }
+    : { status: status as CommissionStatus };
 }
 
 export async function listAffiliateCommissions(

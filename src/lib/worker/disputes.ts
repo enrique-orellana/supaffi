@@ -161,7 +161,13 @@ export async function holdForDispute(commissionId: string, now: Date = new Date(
  */
 export async function releaseDisputeHold(commissionId: string, now: Date = new Date()): Promise<void> {
   await db.commission.updateMany({
-    where: { id: commissionId, status: "PENDING", disputeOpenedAt: { not: null }, payableAt: { lte: now } },
+    where: {
+      id: commissionId,
+      status: "PENDING",
+      disputeOpenedAt: { not: null },
+      checkoutConflictHeldAt: null,
+      payableAt: { lte: now },
+    },
     data: { status: "PAYABLE", disputeOpenedAt: null },
   });
   await db.commission.updateMany({
