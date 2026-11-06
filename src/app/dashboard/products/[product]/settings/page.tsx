@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
 import { getNowPaymentsConnectionStatus } from "@/lib/paymentConnections";
 import { getCommerceIntegrationStatus } from "@/lib/commerceIntegrationAuth";
+import { getUncertainCommerceCheckouts } from "@/lib/commerceCheckouts";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
@@ -46,6 +47,12 @@ function freshSection(raw: string | undefined): CheckSection | null {
   return SECTIONS.find((section) => section === raw) ?? null;
 }
 
+function checkoutPageNumber(raw: string | undefined): number {
+  if (!raw || !/^\d{1,9}$/.test(raw)) return 0;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : 0;
+}
+
 const KEY_LABEL = {
   restricted: "Restricted key",
   secret: "Full account key",
@@ -56,7 +63,7 @@ export default async function SettingsPage({
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ replace?: string; fresh?: string }>;
+  searchParams: Promise<{ replace?: string; fresh?: string; checkoutPage?: string }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -68,17 +75,25 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup, nowPayments, commerceIntegration] = await Promise.all([
+  const [checks, keyKind, setup, nowPayments, commerceIntegration, uncertainCheckoutPage] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
     getNowPaymentsConnectionStatus(ownerId, merchant.id),
     getCommerceIntegrationStatus(ownerId, merchant.id),
+    getUncertainCommerceCheckouts(ownerId, merchant.id, checkoutPageNumber(query.checkoutPage)),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
   const productRef = { id: merchant.id, slug: merchant.slug };
   const settingsHref = `/dashboard/products/${merchant.slug}/settings`;
+  const checkoutPageHref = (page: number) => {
+    const params = new URLSearchParams();
+    if (query.replace) params.set("replace", query.replace);
+    if (query.fresh) params.set("fresh", query.fresh);
+    params.set("checkoutPage", String(page));
+    return `${settingsHref}?${params.toString()}`;
+  };
 
   const replaceLink = (which: string) => (
     <Button variant="secondary" size="sm" render={<Link href={`${settingsHref}?replace=${which}`} />}>
@@ -185,6 +200,18 @@ export default async function SettingsPage({
             integrationId={commerceIntegration.integrationId}
             configured={commerceIntegration.configured}
             eventDestination={commerceIntegration.eventDestination}
+            uncertainCheckouts={uncertainCheckoutPage.checkouts}
+            uncertainCheckoutPage={uncertainCheckoutPage.page}
+            uncertainCheckoutPageCount={uncertainCheckoutPage.pageCount}
+            uncertainCheckoutTotal={uncertainCheckoutPage.totalCount}
+            previousUncertainCheckoutHref={
+              uncertainCheckoutPage.page > 0 ? checkoutPageHref(uncertainCheckoutPage.page - 1) : null
+            }
+            nextUncertainCheckoutHref={
+              uncertainCheckoutPage.page + 1 < uncertainCheckoutPage.pageCount
+                ? checkoutPageHref(uncertainCheckoutPage.page + 1)
+                : null
+            }
           />
         </div>
       </Section>

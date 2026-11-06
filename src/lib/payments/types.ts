@@ -28,6 +28,17 @@ export type CheckoutResponse = {
   checkoutUrl: string;
 };
 
+export class CheckoutProviderError extends Error {
+  constructor(
+    readonly outcome: "rejected" | "uncertain",
+    message = "Hosted checkout creation failed",
+    readonly providerRef?: string
+  ) {
+    super(message);
+    this.name = "CheckoutProviderError";
+  }
+}
+
 export type VerifiedProviderEvent = {
   provider: PaymentProviderId;
   eventId: string;

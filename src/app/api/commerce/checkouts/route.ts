@@ -69,10 +69,14 @@ export async function POST(request: Request) {
         { status: "pending", retryAfter: retryAfterSeconds(result.retryAt) },
         { status: 202, headers: { "Retry-After": retryAfterSeconds(result.retryAt) } }
       );
-    case "retry_later":
+    case "uncertain":
       return NextResponse.json(
-        { error: "Checkout creation is temporarily unavailable." },
-        { status: 503, headers: { "Retry-After": retryAfterSeconds(result.retryAt) } }
+        {
+          status: "uncertain",
+          reconciliationRequired: true,
+          message: "An invoice may already exist for this order. Repeating this request returns the same uncertain status and does not query NOWPayments. Reconcile the order in product settings before retrying.",
+        },
+        { status: 202 }
       );
     case "conflict":
       return NextResponse.json({ error: "This order ID already has a different checkout request." }, { status: 409 });

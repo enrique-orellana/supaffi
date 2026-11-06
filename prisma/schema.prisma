@@ -17,6 +17,7 @@ model Owner {
   passwordChangedAt DateTime?
   createdAt         DateTime   @default(now())
   merchants         Merchant[]
+  reconciledCommerceCheckouts CommerceCheckout[] @relation("CommerceCheckoutReconciler")
 }
 
 model Merchant {
@@ -462,6 +463,10 @@ model CommerceCheckout {
   attempts           Int              @default(0)
   lastCreationError  String?
   nextAttemptAt      DateTime?
+  reconciliationResolution String?
+  reconciledAt       DateTime?
+  reconciledByOwnerId String?
+  reconciledByOwner  Owner?            @relation("CommerceCheckoutReconciler", fields: [reconciledByOwnerId], references: [id], onDelete: SetNull)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -470,6 +475,8 @@ model CommerceCheckout {
   @@unique([merchantId, provider, sourceOrderId])
   @@unique([id, merchantId])
   @@index([status, nextAttemptAt])
+  @@index([reconciliationResolution, reconciledAt])
+  @@index([merchantId, provider, status, updatedAt, id])
 }
 
 /// Provider-neutral facts about a payment, separate from the affiliate ledger.

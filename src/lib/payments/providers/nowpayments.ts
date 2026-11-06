@@ -4,6 +4,7 @@ import type {
   PaymentProviderAdapter,
   VerifiedProviderEvent,
 } from "../types";
+import { CheckoutProviderError } from "../types";
 
 const INVOICE_API_URL = "https://api.nowpayments.io/v1/invoice";
 const STATUS_KIND: Readonly<Record<string, VerifiedProviderEvent["kind"]>> = {
@@ -310,8 +311,13 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
   checkoutRef: string;
   checkoutUrl: string;
 }> {
-  if (!apiKey?.trim()) throw new Error("Payment connection is unavailable");
-  const valid = validateCheckout(input);
+  if (!apiKey?.trim()) throw new CheckoutProviderError("rejected", "Payment connection is unavailable");
+  let valid: ReturnType<typeof validateCheckout>;
+  try {
+    valid = validateCheckout(input);
+  } catch {
+    throw new CheckoutProviderError("rejected", "Checkout details are invalid");
+  }
   // price_amount is a JSON number in the provider API. Insert the already
   // validated two-decimal token directly so no JS Number can round it.
   const body = `{"price_amount":${valid.amount},"price_currency":${JSON.stringify(valid.currency)},"order_id":${JSON.stringify(input.sourceOrderId)},"ipn_callback_url":${JSON.stringify(valid.callbackUrl)},"success_url":${JSON.stringify(valid.successUrl)},"cancel_url":${JSON.stringify(valid.cancelUrl)}}`;
@@ -326,11 +332,19 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
       },
       body,
       cache: "no-store",
+      redirect: "manual",
+      signal: AbortSignal.timeout(30_000),
     });
   } catch {
-    throw new Error("Unable to create hosted checkout");
+    throw new CheckoutProviderError("uncertain");
   }
-  if (!response.ok) throw new Error("Unable to create hosted checkout");
+  if (!response.ok) {
+    const definitiveRejection =
+      response.status >= 400 &&
+      response.status < 500 &&
+      ![408, 409, 425, 429].includes(response.status);
+    throw new CheckoutProviderError(definitiveRejection ? "rejected" : "uncertain");
+  }
 
   let result: unknown;
   let resultRawValues: Map<string, string>;
@@ -339,9 +353,9 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
     result = JSON.parse(responseBody) as unknown;
     resultRawValues = topLevelRawValues(responseBody);
   } catch {
-    throw new Error("Unable to create hosted checkout");
+    throw new CheckoutProviderError("uncertain");
   }
-  if (!isObject(result)) throw new Error("Unable to create hosted checkout");
+  if (!isObject(result)) throw new CheckoutProviderError("uncertain");
   const checkoutRef = stringId(result.id, resultRawValues, "id");
   let checkoutUrl: string | null = null;
   if (typeof result.invoice_url === "string") {
@@ -352,7 +366,9 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
       // A malformed provider destination is treated as an unsuccessful call.
     }
   }
-  if (!checkoutRef || !checkoutUrl) throw new Error("Unable to create hosted checkout");
+  if (!checkoutRef || !checkoutUrl) {
+    throw new CheckoutProviderError("uncertain", "Hosted invoice response was incomplete", checkoutRef ?? undefined);
+  }
   return { checkoutRef, checkoutUrl };
 }
 
