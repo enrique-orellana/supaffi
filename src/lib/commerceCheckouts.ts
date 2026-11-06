@@ -1,9 +1,11 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getNowPaymentsCheckoutConnection } from "@/lib/paymentConnections";
 import { getPaymentProviderAdapter } from "@/lib/payments/registry";
 import { CheckoutProviderError } from "@/lib/payments/types";
+import { SqlSchema } from "@/lib/sqlSchema";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { publicHttpsUrl } from "@/lib/publicHttpsUrl";
 import {
@@ -12,7 +14,7 @@ import {
   recordCommerceCheckoutReference,
 } from "@/lib/commerceCheckoutReferences";
 
-const CHECKOUT_PROVIDER = "NOWPAYMENTS" as const;
+const CHECKOUT_PROVIDER = PaymentProvider.NOWPAYMENTS.database;
 const CHECKOUT_LEASE_MS = 10 * 60 * 1000;
 const RECONCILIATION_GRACE_MS = 5 * 60 * 1000;
 
@@ -184,13 +186,14 @@ function existingResult(checkout: {
 async function readExisting(merchantId: string, sourceOrderId: string, digest: string): Promise<ClaimResult | null> {
   const now = new Date();
   return db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "CommerceCheckout"
-      WHERE "merchantId" = ${merchantId}
-        AND "provider" = 'NOWPAYMENTS'::"PaymentProvider"
-        AND "sourceOrderId" = ${sourceOrderId}
+    const locked = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.CommerceCheckout.id}
+      FROM ${SqlSchema.tables.CommerceCheckout.name}
+      WHERE ${SqlSchema.tables.CommerceCheckout.merchantId} = ${merchantId}
+        AND ${SqlSchema.tables.CommerceCheckout.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+        AND ${SqlSchema.tables.CommerceCheckout.sourceOrderId} = ${sourceOrderId}
       FOR UPDATE
-    `;
+    `);
     if (!locked[0]) return null;
 
     const checkout = await tx.commerceCheckout.findUnique({
@@ -258,13 +261,14 @@ async function claimCheckout(input: {
   const leaseUntil = new Date(now.getTime() + CHECKOUT_LEASE_MS);
   try {
     return await db.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "CommerceCheckout"
-        WHERE "merchantId" = ${input.merchantId}
-          AND "provider" = 'NOWPAYMENTS'::"PaymentProvider"
-          AND "sourceOrderId" = ${input.checkout.sourceOrderId}
+      const locked = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+        SELECT ${SqlSchema.tables.CommerceCheckout.id}
+        FROM ${SqlSchema.tables.CommerceCheckout.name}
+        WHERE ${SqlSchema.tables.CommerceCheckout.merchantId} = ${input.merchantId}
+          AND ${SqlSchema.tables.CommerceCheckout.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+          AND ${SqlSchema.tables.CommerceCheckout.sourceOrderId} = ${input.checkout.sourceOrderId}
         FOR UPDATE
-      `;
+      `);
       if (locked[0]) {
         const existing = await tx.commerceCheckout.findUnique({
           where: { id: locked[0].id },
@@ -366,9 +370,12 @@ async function persistUncertain(
   providerRef: string | null = null
 ): Promise<void> {
   await db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ attempts: number; status: string }[]>`
-      SELECT "attempts", "status" FROM "CommerceCheckout" WHERE "id" = ${checkoutId} FOR UPDATE
-    `;
+    const rows = await tx.$queryRaw<{ attempts: number; status: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.CommerceCheckout.attempts}, ${SqlSchema.tables.CommerceCheckout.status}
+      FROM ${SqlSchema.tables.CommerceCheckout.name}
+      WHERE ${SqlSchema.tables.CommerceCheckout.id} = ${checkoutId}
+      FOR UPDATE
+    `);
     const checkout = rows[0];
     if (!checkout) return;
     if (providerRef) {
@@ -508,18 +515,22 @@ async function lockOwnedUncertainCheckout(
     hostedCheckoutRef: string | null;
     alternateCheckoutRef: string | null;
     updatedAt: Date;
-  }[]>`
-    SELECT checkout."id", checkout."sourceOrderId", checkout."hostedCheckoutRef",
-      checkout."alternateCheckoutRef", checkout."updatedAt"
-    FROM "CommerceCheckout" AS checkout
-    INNER JOIN "Merchant" AS merchant ON merchant."id" = checkout."merchantId"
-    WHERE checkout."id" = ${checkoutId}
-      AND checkout."merchantId" = ${merchantId}
-      AND merchant."ownerId" = ${ownerId}
-      AND checkout."provider" = 'NOWPAYMENTS'::"PaymentProvider"
-      AND checkout."status" = 'UNCERTAIN'
+  }[]>(Prisma.sql`
+    SELECT checkout.${SqlSchema.tables.CommerceCheckout.id},
+      checkout.${SqlSchema.tables.CommerceCheckout.sourceOrderId},
+      checkout.${SqlSchema.tables.CommerceCheckout.hostedCheckoutRef},
+      checkout.${SqlSchema.tables.CommerceCheckout.alternateCheckoutRef},
+      checkout.${SqlSchema.tables.CommerceCheckout.updatedAt}
+    FROM ${SqlSchema.tables.CommerceCheckout.name} AS checkout
+    INNER JOIN ${SqlSchema.tables.Merchant.name} AS merchant
+      ON merchant.${SqlSchema.tables.Merchant.id} = checkout.${SqlSchema.tables.CommerceCheckout.merchantId}
+    WHERE checkout.${SqlSchema.tables.CommerceCheckout.id} = ${checkoutId}
+      AND checkout.${SqlSchema.tables.CommerceCheckout.merchantId} = ${merchantId}
+      AND merchant.${SqlSchema.tables.Merchant.ownerId} = ${ownerId}
+      AND checkout.${SqlSchema.tables.CommerceCheckout.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+      AND checkout.${SqlSchema.tables.CommerceCheckout.status} = 'UNCERTAIN'
     FOR UPDATE OF checkout
-  `;
+  `);
   return rows[0] ?? null;
 }
 
@@ -556,37 +567,37 @@ async function queueTerminalCheckoutResolution(
     },
   });
   const nullInvoicePaymentMatch = payment?.paymentRef
-    ? Prisma.sql`AND w."payload"->>'paymentRef' = ${payment.paymentRef}`
+    ? Prisma.sql`AND w.${SqlSchema.tables.WebhookEvent.payload}->>'paymentRef' = ${payment.paymentRef}`
     : Prisma.sql`AND FALSE`;
 
   const terminalEvents = await tx.$queryRaw<{
     providerEventId: string;
     payload: Prisma.JsonValue;
   }[]>(Prisma.sql`
-    SELECT w."providerEventId", w."payload"
-    FROM "WebhookEvent" AS w
-    WHERE w."merchantId" = ${merchantId}
-      AND w."provider" = 'NOWPAYMENTS'::"PaymentProvider"
-      AND w."status" IN (
-        'PENDING'::"WebhookEventStatus",
-        'PROCESSING'::"WebhookEventStatus",
-        'PROCESSED'::"WebhookEventStatus",
-        'FAILED'::"WebhookEventStatus"
+    SELECT w.${SqlSchema.tables.WebhookEvent.providerEventId}, w.${SqlSchema.tables.WebhookEvent.payload}
+    FROM ${SqlSchema.tables.WebhookEvent.name} AS w
+    WHERE w.${SqlSchema.tables.WebhookEvent.merchantId} = ${merchantId}
+      AND w.${SqlSchema.tables.WebhookEvent.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+      AND w.${SqlSchema.tables.WebhookEvent.status} IN (
+        'PENDING'::${SqlSchema.types.WebhookEventStatus},
+        'PROCESSING'::${SqlSchema.types.WebhookEventStatus},
+        'PROCESSED'::${SqlSchema.types.WebhookEventStatus},
+        'FAILED'::${SqlSchema.types.WebhookEventStatus}
       )
-      AND w."payload"->>'provider' = 'nowpayments'
-      AND w."payload"->>'eventId' = w."providerEventId"
-      AND w."payload"->'rawPayload'->>'order_id' = ${checkout.sourceOrderId}
+      AND w.${SqlSchema.tables.WebhookEvent.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+      AND w.${SqlSchema.tables.WebhookEvent.payload}->>'eventId' = w.${SqlSchema.tables.WebhookEvent.providerEventId}
+      AND w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'order_id' = ${checkout.sourceOrderId}
       AND (
-        w."payload"->'rawPayload'->>'invoice_id' = ${invoiceRef}
+        w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'invoice_id' = ${invoiceRef}
         OR (
-          COALESCE(w."payload"->'rawPayload'->>'invoice_id', '') = ''
+          COALESCE(w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'invoice_id', '') = ''
           ${nullInvoicePaymentMatch}
         )
       )
-      AND lower(w."payload"->'rawPayload'->>'payment_status') IN ('finished', 'refunded')
-    ORDER BY CASE WHEN w."payload"->'rawPayload'->>'invoice_id' = ${invoiceRef} THEN 0 ELSE 1 END,
-      CASE lower(w."payload"->'rawPayload'->>'payment_status')
-      WHEN 'refunded' THEN 0 ELSE 1 END, w."createdAt" DESC
+      AND lower(w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'payment_status') IN ('finished', 'refunded')
+    ORDER BY CASE WHEN w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'invoice_id' = ${invoiceRef} THEN 0 ELSE 1 END,
+      CASE lower(w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'payment_status')
+      WHEN 'refunded' THEN 0 ELSE 1 END, w.${SqlSchema.tables.WebhookEvent.createdAt} DESC
     LIMIT 50
   `);
 
@@ -622,7 +633,7 @@ async function queueTerminalCheckoutResolution(
       rawPaymentRef !== paymentRef ||
       (rawInvoiceRef !== null && rawInvoiceRef !== invoiceRef) ||
       raw.order_id !== checkout.sourceOrderId ||
-      original.provider !== "nowpayments" ||
+      original.provider !== PaymentProvider.NOWPAYMENTS.id ||
       original.eventId !== candidate.providerEventId ||
       (!baseEventIdMatches && !reconciliationEventIdMatches) ||
       typeof original.kind !== "string" ||
@@ -840,7 +851,7 @@ export async function createCommerceCheckout(
   const callbackUrl = await publicHttpsUrl(connection.callbackUrl);
   if (!callbackUrl) return { kind: "unavailable" };
 
-  const adapter = getPaymentProviderAdapter("nowpayments");
+  const adapter = getPaymentProviderAdapter(PaymentProvider.NOWPAYMENTS.id);
   if (!adapter?.createCheckout) return { kind: "unavailable" };
   const claim = await claimCheckout({
     merchantId,
@@ -893,10 +904,17 @@ export async function createCommerceCheckout(
       hostedCheckoutUrl: string | null;
       hostedCheckoutRef: string | null;
       alternateCheckoutRef: string | null;
-    }[]>`
-      SELECT "attempts", "status", "hostedCheckoutUrl", "hostedCheckoutRef", "alternateCheckoutRef"
-      FROM "CommerceCheckout" WHERE "id" = ${claim.checkoutId} FOR UPDATE
-    `;
+    }[]>(Prisma.sql`
+      SELECT
+        ${SqlSchema.tables.CommerceCheckout.attempts},
+        ${SqlSchema.tables.CommerceCheckout.status},
+        ${SqlSchema.tables.CommerceCheckout.hostedCheckoutUrl},
+        ${SqlSchema.tables.CommerceCheckout.hostedCheckoutRef},
+        ${SqlSchema.tables.CommerceCheckout.alternateCheckoutRef}
+      FROM ${SqlSchema.tables.CommerceCheckout.name}
+      WHERE ${SqlSchema.tables.CommerceCheckout.id} = ${claim.checkoutId}
+      FOR UPDATE
+    `);
     const checkout = rows[0];
     if (!checkout) return { kind: "uncertain" };
 

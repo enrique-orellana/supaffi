@@ -1,6 +1,8 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { enqueueCommerceEvent } from "@/lib/commerceOutbox";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 type CheckoutReferenceRow = {
   merchantId: string;
@@ -22,22 +24,22 @@ function refDigest(refs: string[]): string {
 }
 
 export async function holdUnpaidCheckoutCommissions(tx: Prisma.TransactionClient, checkoutId: string): Promise<void> {
-  await tx.$executeRaw`
-    UPDATE "Commission" AS commission
-    SET "checkoutConflictHeldAt" = COALESCE(commission."checkoutConflictHeldAt", now()),
-        "status" = CASE
-          WHEN commission."status" = 'PAYABLE'::"CommissionStatus" THEN 'PENDING'::"CommissionStatus"
-          ELSE commission."status"
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.Commission.name} AS commission
+    SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = COALESCE(commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt}, now()),
+        ${SqlSchema.tables.Commission.status} = CASE
+          WHEN commission.${SqlSchema.tables.Commission.status} = 'PAYABLE'::${SqlSchema.types.CommissionStatus} THEN 'PENDING'::${SqlSchema.types.CommissionStatus}
+          ELSE commission.${SqlSchema.tables.Commission.status}
         END
-    FROM "PaymentRecord" AS payment
-    WHERE payment."checkoutId" = ${checkoutId}
-      AND payment."id" = commission."paymentRecordId"
-      AND commission."status" IN (
-        'PENDING'::"CommissionStatus",
-        'PAYABLE'::"CommissionStatus",
-        'FLAGGED'::"CommissionStatus"
+    FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
+    WHERE payment.${SqlSchema.tables.PaymentRecord.checkoutId} = ${checkoutId}
+      AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
+      AND commission.${SqlSchema.tables.Commission.status} IN (
+        'PENDING'::${SqlSchema.types.CommissionStatus},
+        'PAYABLE'::${SqlSchema.types.CommissionStatus},
+        'FLAGGED'::${SqlSchema.types.CommissionStatus}
       )
-  `;
+  `);
 }
 
 export async function holdCheckoutDeliveries(
@@ -45,19 +47,19 @@ export async function holdCheckoutDeliveries(
   merchantId: string,
   sourceOrderId: string
 ): Promise<void> {
-  await tx.$executeRaw`
-    UPDATE "CommerceEventDelivery"
-    SET "checkoutConflictHeldAt" = COALESCE("checkoutConflictHeldAt", now())
-    WHERE "merchantId" = ${merchantId}
-      AND "payload"->>'provider' = 'nowpayments'
-      AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-      AND "payload"->>'status' IN ('finished', 'refunded')
-      AND "status" IN (
-        'PENDING'::"CommerceEventDeliveryStatus",
-        'PROCESSING'::"CommerceEventDeliveryStatus",
-        'FAILED'::"CommerceEventDeliveryStatus"
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name}
+    SET ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} = COALESCE(${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt}, now())
+    WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+      AND ${SqlSchema.tables.CommerceEventDelivery.status} IN (
+        'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus}
       )
-  `;
+  `);
 }
 
 async function enqueueReferenceNotice(
@@ -94,7 +96,7 @@ async function enqueueReferenceNotice(
     merchantId: input.merchantId,
     eventId,
     payload: {
-      provider: "nowpayments",
+      provider: PaymentProvider.NOWPAYMENTS.id,
       eventId,
       status: input.status,
       sourceOrderId: input.sourceOrderId,
@@ -141,7 +143,7 @@ export async function releaseCheckoutConflictHold(
   if (checkout.refundReconciliationPendingAt && appliedTerminalStatus !== "refunded") return;
 
   const payment = await tx.paymentRecord.findUnique({
-    where: { merchantId_provider_sourceOrderId: { merchantId, provider: "NOWPAYMENTS", sourceOrderId } },
+    where: { merchantId_provider_sourceOrderId: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database, sourceOrderId } },
     select: {
       paymentRef: true,
       checkoutRef: true,
@@ -192,107 +194,107 @@ export async function releaseCheckoutConflictHold(
 
   if (payment && paymentMatchesSelectedPayment) {
     if (finalStatus === "refunded") {
-      await tx.$executeRaw`
-        UPDATE "Commission" AS commission
-        SET "checkoutConflictHeldAt" = NULL
-        FROM "PaymentRecord" AS payment
-        WHERE payment."checkoutId" = ${checkoutId}
-          AND payment."id" = ${payment.id}
-          AND payment."paymentRef" = ${selectedPaymentRef}
-          AND payment."checkoutRef" = ${selectedRef}
-          AND payment."id" = commission."paymentRecordId"
-          AND commission."checkoutConflictHeldAt" IS NOT NULL
-          AND commission."status" = 'VOIDED'::"CommissionStatus"
-      `;
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE ${SqlSchema.tables.Commission.name} AS commission
+        SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = NULL
+        FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
+        WHERE payment.${SqlSchema.tables.PaymentRecord.checkoutId} = ${checkoutId}
+          AND payment.${SqlSchema.tables.PaymentRecord.id} = ${payment.id}
+          AND payment.${SqlSchema.tables.PaymentRecord.paymentRef} = ${selectedPaymentRef}
+          AND payment.${SqlSchema.tables.PaymentRecord.checkoutRef} = ${selectedRef}
+          AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
+          AND commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NOT NULL
+          AND commission.${SqlSchema.tables.Commission.status} = 'VOIDED'::${SqlSchema.types.CommissionStatus}
+      `);
     } else {
-      await tx.$executeRaw`
-        UPDATE "Commission" AS commission
-        SET "checkoutConflictHeldAt" = NULL,
-            "status" = CASE
-              WHEN commission."status" = 'PENDING'::"CommissionStatus"
-                AND commission."payableAt" <= ${now}
-                AND commission."disputeOpenedAt" IS NULL
-                THEN 'PAYABLE'::"CommissionStatus"
-              ELSE commission."status"
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE ${SqlSchema.tables.Commission.name} AS commission
+        SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = NULL,
+            ${SqlSchema.tables.Commission.status} = CASE
+              WHEN commission.${SqlSchema.tables.Commission.status} = 'PENDING'::${SqlSchema.types.CommissionStatus}
+                AND commission.${SqlSchema.tables.Commission.payableAt} <= ${now}
+                AND commission.${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
+                THEN 'PAYABLE'::${SqlSchema.types.CommissionStatus}
+              ELSE commission.${SqlSchema.tables.Commission.status}
             END
-        FROM "PaymentRecord" AS payment
-        WHERE payment."checkoutId" = ${checkoutId}
-          AND payment."id" = ${payment.id}
-          AND payment."paymentRef" = ${selectedPaymentRef}
-          AND payment."checkoutRef" = ${selectedRef}
-          AND payment."id" = commission."paymentRecordId"
-          AND commission."checkoutConflictHeldAt" IS NOT NULL
-          AND commission."status" IN (
-            'PENDING'::"CommissionStatus",
-            'PAYABLE'::"CommissionStatus",
-            'FLAGGED'::"CommissionStatus",
-            'VOIDED'::"CommissionStatus"
+        FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
+        WHERE payment.${SqlSchema.tables.PaymentRecord.checkoutId} = ${checkoutId}
+          AND payment.${SqlSchema.tables.PaymentRecord.id} = ${payment.id}
+          AND payment.${SqlSchema.tables.PaymentRecord.paymentRef} = ${selectedPaymentRef}
+          AND payment.${SqlSchema.tables.PaymentRecord.checkoutRef} = ${selectedRef}
+          AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
+          AND commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NOT NULL
+          AND commission.${SqlSchema.tables.Commission.status} IN (
+            'PENDING'::${SqlSchema.types.CommissionStatus},
+            'PAYABLE'::${SqlSchema.types.CommissionStatus},
+            'FLAGGED'::${SqlSchema.types.CommissionStatus},
+            'VOIDED'::${SqlSchema.types.CommissionStatus}
           )
-      `;
+      `);
     }
   }
 
   // A body is immutable once a request may have reached the receiver. Only
   // never-attempted terminal events can be linked and released in place.
-  await tx.$executeRaw`
-    UPDATE "CommerceEventDelivery"
-    SET "payload" = jsonb_set("payload", '{checkoutRef}', to_jsonb(${selectedRef}::text), true),
-        "checkoutConflictHeldAt" = NULL,
-        "nextAttemptAt" = ${now}
-    WHERE "merchantId" = ${merchantId}
-      AND "payload"->>'provider' = 'nowpayments'
-      AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-      AND "payload"->>'paymentRef' = ${selectedPaymentRef}
-      AND "payload"->>'status' = ${finalStatus}
-      AND "status" = 'PENDING'::"CommerceEventDeliveryStatus"
-      AND attempts = 0
-      AND "checkoutConflictHeldAt" IS NOT NULL
-  `;
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name}
+    SET ${SqlSchema.tables.CommerceEventDelivery.payload} = jsonb_set(${SqlSchema.tables.CommerceEventDelivery.payload}, '{checkoutRef}', to_jsonb(${selectedRef}::text), true),
+        ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} = NULL,
+        ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} = ${now}
+    WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' = ${selectedPaymentRef}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' = ${finalStatus}
+      AND ${SqlSchema.tables.CommerceEventDelivery.status} = 'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus}
+      AND ${SqlSchema.tables.CommerceEventDelivery.attempts} = 0
+      AND ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} IS NOT NULL
+  `);
 
   // Stale, attempted, or in-flight events are retained as evidence but never
   // retried under an event ID whose body may already have been observed.
-  await tx.$executeRaw`
-    UPDATE "CommerceEventDelivery"
-    SET "status" = 'FAILED'::"CommerceEventDeliveryStatus",
-        "checkoutConflictHeldAt" = NULL,
-        "lastError" = COALESCE("lastError", 'Superseded by the reconciled terminal payment status.'),
-        "nextAttemptAt" = ${now}
-    WHERE "merchantId" = ${merchantId}
-      AND "payload"->>'provider' = 'nowpayments'
-      AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-      AND "payload"->>'paymentRef' = ${selectedPaymentRef}
-      AND "payload"->>'status' IN ('finished', 'refunded')
-      AND "checkoutConflictHeldAt" IS NOT NULL
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name}
+    SET ${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} = NULL,
+        ${SqlSchema.tables.CommerceEventDelivery.lastError} = COALESCE(${SqlSchema.tables.CommerceEventDelivery.lastError}, 'Superseded by the reconciled terminal payment status.'),
+        ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} = ${now}
+    WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' = ${selectedPaymentRef}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+      AND ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} IS NOT NULL
       AND (
-        "status" = 'PROCESSING'::"CommerceEventDeliveryStatus"
-        OR "status" = 'FAILED'::"CommerceEventDeliveryStatus"
-        OR ("status" = 'PENDING'::"CommerceEventDeliveryStatus" AND attempts > 0)
-        OR ("status" = 'PENDING'::"CommerceEventDeliveryStatus" AND attempts = 0 AND "payload"->>'status' <> ${finalStatus})
+        ${SqlSchema.tables.CommerceEventDelivery.status} = 'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus}
+        OR ${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus}
+        OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
+        OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} = 0 AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' <> ${finalStatus})
       )
-  `;
+  `);
 
   // Retire held events for a losing payment without changing their body or ID.
   // If one may already have reached the receiver, the selected payment notice
   // below carries the correction under its own payment-scoped event ID.
-  await tx.$executeRaw`
-    UPDATE "CommerceEventDelivery"
-    SET "status" = 'FAILED'::"CommerceEventDeliveryStatus",
-        "checkoutConflictHeldAt" = NULL,
-        "lastError" = COALESCE("lastError", 'Superseded by the owner-selected provider payment.'),
-        "nextAttemptAt" = ${now}
-    WHERE "merchantId" = ${merchantId}
-      AND "payload"->>'provider' = 'nowpayments'
-      AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-      AND "payload"->>'paymentRef' IS NOT NULL
-      AND "payload"->>'paymentRef' <> ${selectedPaymentRef}
-      AND "payload"->>'status' IN ('finished', 'refunded')
-      AND "checkoutConflictHeldAt" IS NOT NULL
-      AND "status" IN (
-        'PENDING'::"CommerceEventDeliveryStatus",
-        'PROCESSING'::"CommerceEventDeliveryStatus",
-        'FAILED'::"CommerceEventDeliveryStatus"
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name}
+    SET ${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} = NULL,
+        ${SqlSchema.tables.CommerceEventDelivery.lastError} = COALESCE(${SqlSchema.tables.CommerceEventDelivery.lastError}, 'Superseded by the owner-selected provider payment.'),
+        ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} = ${now}
+    WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' IS NOT NULL
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' <> ${selectedPaymentRef}
+      AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+      AND ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} IS NOT NULL
+      AND ${SqlSchema.tables.CommerceEventDelivery.status} IN (
+        'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+        'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus}
       )
-  `;
+  `);
 
   const exposure = await tx.$queryRaw<{
     deliveredTerminal: boolean;
@@ -300,69 +302,70 @@ export async function releaseCheckoutConflictHold(
     supersededExposure: boolean;
     conflictNoticeExists: boolean;
     paymentRef: string | null;
-  }[]>`
+  }[]>(Prisma.sql`
     SELECT
       EXISTS (
-        SELECT 1 FROM "CommerceEventDelivery"
-        WHERE "merchantId" = ${merchantId}
-          AND "payload"->>'provider' = 'nowpayments'
-          AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-          AND "payload"->>'paymentRef' = ${selectedPaymentRef}
-          AND "payload"->>'status' IN ('finished', 'refunded')
-          AND "status" = 'DELIVERED'::"CommerceEventDeliveryStatus"
+        SELECT 1 FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+        WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' = ${selectedPaymentRef}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+          AND ${SqlSchema.tables.CommerceEventDelivery.status} = 'DELIVERED'::${SqlSchema.types.CommerceEventDeliveryStatus}
       ) AS "deliveredTerminal",
       EXISTS (
-        SELECT 1 FROM "CommerceEventDelivery"
-        WHERE "merchantId" = ${merchantId}
-          AND "payload"->>'provider' = 'nowpayments'
-          AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-          AND "payload"->>'paymentRef' = ${selectedPaymentRef}
-          AND "payload"->>'status' IN ('finished', 'refunded')
+        SELECT 1 FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+        WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' = ${selectedPaymentRef}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
           AND (
-            "status" = 'PROCESSING'::"CommerceEventDeliveryStatus"
-            OR ("status" = 'FAILED'::"CommerceEventDeliveryStatus" AND attempts > 0)
-            OR ("status" = 'PENDING'::"CommerceEventDeliveryStatus" AND attempts > 0)
+            ${SqlSchema.tables.CommerceEventDelivery.status} = 'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus}
+            OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
+            OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
           )
       ) AS "uncertainTerminal",
       EXISTS (
-        SELECT 1 FROM "CommerceEventDelivery"
-        WHERE "merchantId" = ${merchantId}
-          AND "payload"->>'provider' = 'nowpayments'
-          AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-          AND "payload"->>'paymentRef' <> ${selectedPaymentRef}
-          AND "payload"->>'status' IN ('finished', 'refunded')
+        SELECT 1 FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+        WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' <> ${selectedPaymentRef}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
           AND (
-            "status" = 'DELIVERED'::"CommerceEventDeliveryStatus"
-            OR "status" = 'PROCESSING'::"CommerceEventDeliveryStatus"
-            OR ("status" = 'FAILED'::"CommerceEventDeliveryStatus" AND attempts > 0)
-            OR ("status" = 'PENDING'::"CommerceEventDeliveryStatus" AND attempts > 0)
+            ${SqlSchema.tables.CommerceEventDelivery.status} = 'DELIVERED'::${SqlSchema.types.CommerceEventDeliveryStatus}
+            OR ${SqlSchema.tables.CommerceEventDelivery.status} = 'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus}
+            OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
+            OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
           )
       ) AS "supersededExposure",
       EXISTS (
-        SELECT 1 FROM "CommerceEventDelivery"
-        WHERE "merchantId" = ${merchantId}
-          AND "payload"->>'provider' = 'nowpayments'
-          AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-          AND "payload"->>'status' = 'invoice_conflict'
+        SELECT 1 FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+        WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' = 'invoice_conflict'
           AND (
-            "status" IN (
-              'PENDING'::"CommerceEventDeliveryStatus",
-              'PROCESSING'::"CommerceEventDeliveryStatus",
-              'DELIVERED'::"CommerceEventDeliveryStatus"
+            ${SqlSchema.tables.CommerceEventDelivery.status} IN (
+              'PENDING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+              'PROCESSING'::${SqlSchema.types.CommerceEventDeliveryStatus},
+              'DELIVERED'::${SqlSchema.types.CommerceEventDeliveryStatus}
             )
-            OR ("status" = 'FAILED'::"CommerceEventDeliveryStatus" AND attempts > 0)
+            OR (${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED'::${SqlSchema.types.CommerceEventDeliveryStatus} AND ${SqlSchema.tables.CommerceEventDelivery.attempts} > 0)
           )
       ) AS "conflictNoticeExists",
       (
-        SELECT "payload"->>'paymentRef' FROM "CommerceEventDelivery"
-        WHERE "merchantId" = ${merchantId}
-          AND "payload"->>'provider' = 'nowpayments'
-          AND "payload"->>'sourceOrderId' = ${sourceOrderId}
-          AND "payload"->>'paymentRef' = ${selectedPaymentRef}
-          AND "payload"->>'status' IN ('finished', 'refunded')
-        ORDER BY "createdAt" DESC LIMIT 1
+        SELECT ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef'
+        FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+        WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${merchantId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${sourceOrderId}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' = ${selectedPaymentRef}
+          AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+        ORDER BY ${SqlSchema.tables.CommerceEventDelivery.createdAt} DESC LIMIT 1
       ) AS "paymentRef"
-  `;
+  `);
   const state = exposure[0];
   if (state && (
     state.deliveredTerminal ||
@@ -390,12 +393,17 @@ export async function recordCommerceCheckoutReference(
   providerRef: string,
   forceUncertain = false
 ): Promise<{ matchesPrimary: boolean; hasConflict: boolean }> {
-  const rows = await tx.$queryRaw<CheckoutReferenceRow[]>`
-    SELECT "merchantId", "sourceOrderId", "status", "hostedCheckoutRef", "alternateCheckoutRef"
-    FROM "CommerceCheckout"
-    WHERE "id" = ${checkoutId}
+  const rows = await tx.$queryRaw<CheckoutReferenceRow[]>(Prisma.sql`
+    SELECT
+      ${SqlSchema.tables.CommerceCheckout.merchantId},
+      ${SqlSchema.tables.CommerceCheckout.sourceOrderId},
+      ${SqlSchema.tables.CommerceCheckout.status},
+      ${SqlSchema.tables.CommerceCheckout.hostedCheckoutRef},
+      ${SqlSchema.tables.CommerceCheckout.alternateCheckoutRef}
+    FROM ${SqlSchema.tables.CommerceCheckout.name}
+    WHERE ${SqlSchema.tables.CommerceCheckout.id} = ${checkoutId}
     FOR UPDATE
-  `;
+  `);
   const row = rows[0];
   if (!row) return { matchesPrimary: false, hasConflict: true };
 
@@ -426,16 +434,16 @@ export async function recordCommerceCheckoutReference(
   if (hasConflict) {
     await holdUnpaidCheckoutCommissions(tx, checkoutId);
     await holdCheckoutDeliveries(tx, row.merchantId, row.sourceOrderId);
-    const delivered = await tx.$queryRaw<{ paymentRef: string | null }[]>`
-      SELECT "payload"->>'paymentRef' AS "paymentRef"
-      FROM "CommerceEventDelivery"
-      WHERE "merchantId" = ${row.merchantId}
-        AND "payload"->>'provider' = 'nowpayments'
-        AND "payload"->>'sourceOrderId' = ${row.sourceOrderId}
-        AND "payload"->>'status' IN ('finished', 'refunded')
-        AND "status" = 'DELIVERED'::"CommerceEventDeliveryStatus"
+    const delivered = await tx.$queryRaw<{ paymentRef: string | null }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.CommerceEventDelivery.payload}->>'paymentRef' AS "paymentRef"
+      FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+      WHERE ${SqlSchema.tables.CommerceEventDelivery.merchantId} = ${row.merchantId}
+        AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'provider' = ${PaymentProvider.NOWPAYMENTS.id}
+        AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'sourceOrderId' = ${row.sourceOrderId}
+        AND ${SqlSchema.tables.CommerceEventDelivery.payload}->>'status' IN ('finished', 'refunded')
+        AND ${SqlSchema.tables.CommerceEventDelivery.status} = 'DELIVERED'::${SqlSchema.types.CommerceEventDeliveryStatus}
       LIMIT 1
-    `;
+    `);
     if (delivered.length > 0) {
       await enqueueReferenceNotice(tx, {
         merchantId: row.merchantId,

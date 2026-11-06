@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -69,7 +70,7 @@ export async function POST(
   const connection = await db.paymentConnection.findFirst({
     where: {
       webhookRouteId: connectionId,
-      provider: "NOWPAYMENTS",
+      provider: PaymentProvider.NOWPAYMENTS.database,
       enabled: true,
       status: "CONNECTED",
     },
@@ -80,7 +81,7 @@ export async function POST(
   const rawBody = await readBoundedBody(request);
   if (!rawBody) return new NextResponse(null, { status: 413 });
 
-  const adapter = getPaymentProviderAdapter("nowpayments");
+  const adapter = getPaymentProviderAdapter(PaymentProvider.NOWPAYMENTS.id);
   if (!adapter) return new NextResponse(null, { status: 404 });
 
   let event: VerifiedProviderEvent | null;
@@ -96,7 +97,7 @@ export async function POST(
   } catch {
     return new NextResponse(null, { status: 400 });
   }
-  if (!event || event.provider !== "nowpayments" || !event.paymentRef) {
+  if (!event || event.provider !== PaymentProvider.NOWPAYMENTS.id || !event.paymentRef) {
     return new NextResponse(null, { status: 400 });
   }
   const providerPayload = event.rawPayload as Record<string, unknown>;
@@ -111,7 +112,7 @@ export async function POST(
     await db.webhookEvent.create({
       data: {
         merchantId: connection.merchantId,
-        provider: "NOWPAYMENTS",
+        provider: PaymentProvider.NOWPAYMENTS.database,
         providerEventId: event.eventId,
         payload: queuedPayload(event),
       },

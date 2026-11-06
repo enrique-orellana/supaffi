@@ -10,6 +10,7 @@
 // (src/app/affiliates/signup/[program]/createAffiliateSignup.ts) can only
 // be proven correct by exercising that catch block itself against a real
 // P2002 from Postgres.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 
@@ -122,7 +123,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
         websiteUrl: "https://signup-action-test.example.com",
         paymentConnections: {
           create: {
-            provider: "STRIPE",
+            provider: PaymentProvider.STRIPE.database,
             apiKeyEnc: "x",
             webhookSecretEnc: "x",
             status: "CONNECTED",

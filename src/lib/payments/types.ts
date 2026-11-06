@@ -1,4 +1,11 @@
-export type PaymentProviderId = "stripe" | "nowpayments";
+export const PaymentProvider = {
+  STRIPE: { id: "stripe", database: "STRIPE" },
+  NOWPAYMENTS: { id: "nowpayments", database: "NOWPAYMENTS" },
+} as const;
+
+export type PaymentProviderId = (typeof PaymentProvider)[keyof typeof PaymentProvider]["id"];
+export type PaymentProviderDatabaseValue =
+  (typeof PaymentProvider)[keyof typeof PaymentProvider]["database"];
 
 export type PaymentProviderCapabilities = {
   webhooks: boolean;

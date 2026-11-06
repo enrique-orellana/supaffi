@@ -6,6 +6,7 @@ import { stableStringify } from "@/lib/imports/canonical";
 import type { AffiliateImportAdapter } from "@/lib/imports/adapters/types";
 import { adapterSupportsBundle } from "@/lib/imports/adapters/types";
 import { getAffiliateImportAdapter } from "@/lib/imports/adapters/registry";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 export type ImportTarget = { merchantId: string; programId: string };
 export type AffiliateImportApplyChoices = {
@@ -577,10 +578,19 @@ async function processPayoutChunk(tx: Prisma.TransactionClient, batchId: string,
 
 async function runChunk(input: { batchId: string; ownerId: string; sourceMerchantId: string; bundle: AffiliateProgramImportBundle; choices: AffiliateImportApplyChoices; adapter: AffiliateImportAdapter; index: ApplyIndex }): Promise<AffiliateImportApplyReport> {
   return db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; status: string; ownerId: string; merchantId: string; applyProgress: Prisma.JsonValue | null }[]>`
-      SELECT "id", "status", "ownerId", "merchantId", "applyProgress" FROM "AffiliateImportBatch"
-      WHERE "id" = ${input.batchId} AND "ownerId" = ${input.ownerId} AND "merchantId" = ${input.sourceMerchantId}
-      FOR UPDATE`;
+    const locked = await tx.$queryRaw<{ id: string; status: string; ownerId: string; merchantId: string; applyProgress: Prisma.JsonValue | null }[]>(Prisma.sql`
+      SELECT
+        ${SqlSchema.tables.AffiliateImportBatch.id},
+        ${SqlSchema.tables.AffiliateImportBatch.status},
+        ${SqlSchema.tables.AffiliateImportBatch.ownerId},
+        ${SqlSchema.tables.AffiliateImportBatch.merchantId},
+        ${SqlSchema.tables.AffiliateImportBatch.applyProgress}
+      FROM ${SqlSchema.tables.AffiliateImportBatch.name}
+      WHERE ${SqlSchema.tables.AffiliateImportBatch.id} = ${input.batchId}
+        AND ${SqlSchema.tables.AffiliateImportBatch.ownerId} = ${input.ownerId}
+        AND ${SqlSchema.tables.AffiliateImportBatch.merchantId} = ${input.sourceMerchantId}
+      FOR UPDATE
+    `);
     const batch = locked[0];
     if (!batch) throw new Error("Import batch not found.");
     if (batch.status === "COMPLETED") return report(batch.id, "COMPLETED", readProgress(batch.applyProgress));
@@ -640,10 +650,16 @@ export async function applyAffiliateImportBatch(input: {
   if (batch.status === "PREVIEW") {
     const submittedChoices = normalizeChoices(input.mappingChoices ?? {});
     const started = await db.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ status: string; mappingChoices: Prisma.JsonValue | null; completedAt: Date | null }[]>`
-        SELECT "status", "mappingChoices", "completedAt" FROM "AffiliateImportBatch"
-        WHERE "id" = ${batch.id} AND "ownerId" = ${input.ownerId}
-        FOR UPDATE`;
+      const locked = await tx.$queryRaw<{ status: string; mappingChoices: Prisma.JsonValue | null; completedAt: Date | null }[]>(Prisma.sql`
+        SELECT
+          ${SqlSchema.tables.AffiliateImportBatch.status},
+          ${SqlSchema.tables.AffiliateImportBatch.mappingChoices},
+          ${SqlSchema.tables.AffiliateImportBatch.completedAt}
+        FROM ${SqlSchema.tables.AffiliateImportBatch.name}
+        WHERE ${SqlSchema.tables.AffiliateImportBatch.id} = ${batch.id}
+          AND ${SqlSchema.tables.AffiliateImportBatch.ownerId} = ${input.ownerId}
+        FOR UPDATE
+      `);
       const current = locked[0];
       if (!current || current.status !== "PREVIEW" || current.completedAt !== null) throw new Error("The preview changed; reload the batch before confirming.");
       const savedChoices = normalizeChoices(current.mappingChoices ?? {});

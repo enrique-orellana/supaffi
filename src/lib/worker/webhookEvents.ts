@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { loggableError } from "@/lib/stripeErrors";
@@ -35,7 +36,7 @@ export async function upgradeMerchantWebhookEvents(
 ): Promise<void> {
   try {
     const connection = await db.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
       select: {
         apiKeyEnc: true,
         webhookSecretEnc: true,
@@ -92,7 +93,7 @@ export async function upgradeAllWebhookEvents(makeClient: MakeClient = defaultCl
   try {
     merchants = await db.paymentConnection.findMany({
       where: {
-        provider: "STRIPE",
+        provider: PaymentProvider.STRIPE.database,
         apiKeyEnc: { not: null },
         webhookSecretEnc: { not: null },
       },

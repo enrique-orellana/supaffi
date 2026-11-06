@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
@@ -215,7 +216,7 @@ export default async function CommissionsPage({
           ? paymentRecordReference ? { text: paymentRecordReference, href: null } : null
           : referenceFor(selected.stripePaymentRef),
         paymentProvider: selected.paymentRecord
-          ? selected.paymentRecord.provider === "NOWPAYMENTS"
+          ? selected.paymentRecord.provider === PaymentProvider.NOWPAYMENTS.database
             ? "NOWPayments"
             : selected.paymentRecord.provider
           : selected.stripePaymentRef

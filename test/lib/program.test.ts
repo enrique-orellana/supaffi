@@ -2,6 +2,7 @@
 // db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
 // before every test. Point DATABASE_URL at a disposable database, never a
 // real deployment's data.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -75,7 +76,7 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         paymentConnections: {
           create: {
-            provider: "STRIPE",
+            provider: PaymentProvider.STRIPE.database,
             apiKeyEnc: "x",
             webhookSecretEnc: "x",
             status: "CONNECTED",
@@ -98,7 +99,7 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         paymentConnections: {
           create: {
-            provider: "STRIPE",
+            provider: PaymentProvider.STRIPE.database,
             apiKeyEnc: "x",
             webhookSecretEnc: "x",
             status: "CONNECTED",
@@ -122,7 +123,7 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         paymentConnections: {
           create: {
-            provider: "STRIPE",
+            provider: PaymentProvider.STRIPE.database,
             apiKeyEnc: "x",
             webhookSecretEnc: "x",
             status: "CONNECTED",

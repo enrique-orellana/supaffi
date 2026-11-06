@@ -1,8 +1,10 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CommerceCheckout, PaymentRecord, WebhookEvent } from "@prisma/client";
 import { db } from "@/lib/db";
 import { enqueueCommerceEvent } from "@/lib/commerceOutbox";
+import { SqlSchema } from "@/lib/sqlSchema";
 import {
   recordCommerceCheckoutReference,
   releaseCheckoutConflictHold,
@@ -13,7 +15,7 @@ import { referralStillEarns } from "../referralDuration";
 type JsonObject = Record<string, unknown>;
 
 type QueuedNowPaymentsEvent = {
-  provider: "nowpayments";
+  provider: typeof PaymentProvider.NOWPAYMENTS.id;
   eventId: string;
   kind: "payment_succeeded" | "payment_failed" | "payment_refunded" | "payment_pending";
   paymentRef: string;
@@ -53,7 +55,7 @@ function decimalText(value: unknown, maxIntegerDigits: number, maxFractionDigits
 }
 
 function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
-  if (!isObject(payload) || payload.provider !== "nowpayments") return null;
+  if (!isObject(payload) || payload.provider !== PaymentProvider.NOWPAYMENTS.id) return null;
   if (
     typeof payload.eventId !== "string" ||
     typeof payload.kind !== "string" ||
@@ -111,7 +113,7 @@ function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
       : null;
 
   return {
-    provider: "nowpayments",
+    provider: PaymentProvider.NOWPAYMENTS.id,
     eventId: payload.eventId,
     kind: payload.kind as QueuedNowPaymentsEvent["kind"],
     paymentRef: payload.paymentRef,
@@ -149,7 +151,7 @@ function commissionAmount(saleAmount: Prisma.Decimal, rate: Prisma.Decimal): Pri
 
 function jsonPayload(event: QueuedNowPaymentsEvent, status: string): Prisma.InputJsonObject {
   return {
-    provider: "nowpayments",
+    provider: PaymentProvider.NOWPAYMENTS.id,
     eventId: event.eventId,
     status,
     sourceOrderId: event.sourceOrderId,
@@ -217,7 +219,7 @@ async function upsertPaymentRecord(
     where: {
       merchantId_provider_sourceOrderId: {
         merchantId: input.merchantId,
-        provider: "NOWPAYMENTS",
+        provider: PaymentProvider.NOWPAYMENTS.database,
         sourceOrderId: input.sourceOrderId,
       },
     },
@@ -254,7 +256,7 @@ async function upsertPaymentRecord(
         data: {
           merchantId: input.merchantId,
           connectionId: input.connectionId,
-          provider: "NOWPAYMENTS",
+          provider: PaymentProvider.NOWPAYMENTS.database,
           sourceOrderId: input.sourceOrderId,
           checkoutId: input.checkoutId,
           paymentRef: input.paymentRef,
@@ -309,11 +311,13 @@ async function createCommissionIfEligible(
   );
   if (existing && !restoreRefundVoid) return;
 
-  const lockedClicks = await tx.$queryRaw<{ fraudConfirmedAt: Date | null }[]>`
-    SELECT "fraudConfirmedAt" FROM "Click"
-    WHERE "id" = ${checkout.clickId} AND "merchantId" = ${input.merchantId}
+  const lockedClicks = await tx.$queryRaw<{ fraudConfirmedAt: Date | null }[]>(Prisma.sql`
+    SELECT ${SqlSchema.tables.Click.fraudConfirmedAt}
+    FROM ${SqlSchema.tables.Click.name}
+    WHERE ${SqlSchema.tables.Click.id} = ${checkout.clickId}
+      AND ${SqlSchema.tables.Click.merchantId} = ${input.merchantId}
     FOR UPDATE
-  `;
+  `);
   const lockedClick = lockedClicks[0];
   if (!lockedClick || lockedClick.fraudConfirmedAt !== null) return;
 
@@ -400,7 +404,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     `;
 
     const connection = await tx.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId: row.merchantId, provider: "NOWPAYMENTS" } },
+      where: { merchantId_provider: { merchantId: row.merchantId, provider: PaymentProvider.NOWPAYMENTS.database } },
       select: { id: true },
     });
     if (!connection) throw new Error("NOWPayments connection is missing for the queued payment event");
@@ -409,7 +413,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       where: {
         merchantId_provider_sourceOrderId: {
           merchantId: row.merchantId,
-          provider: "NOWPAYMENTS",
+          provider: PaymentProvider.NOWPAYMENTS.database,
           sourceOrderId: event.sourceOrderId,
         },
       },
@@ -428,9 +432,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       | "refundReconciliationPendingAt"
     > | null = null;
     if (checkoutKey) {
-      await tx.$queryRaw`
-        SELECT "id" FROM "CommerceCheckout" WHERE "id" = ${checkoutKey.id} FOR UPDATE
-      `;
+      await tx.$queryRaw(Prisma.sql`
+        SELECT ${SqlSchema.tables.CommerceCheckout.id}
+        FROM ${SqlSchema.tables.CommerceCheckout.name}
+        WHERE ${SqlSchema.tables.CommerceCheckout.id} = ${checkoutKey.id}
+        FOR UPDATE
+      `);
       checkout = await tx.commerceCheckout.findUnique({
         where: { id: checkoutKey.id },
         select: {
@@ -488,7 +495,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       where: {
         merchantId_provider_sourceOrderId: {
           merchantId: row.merchantId,
-          provider: "NOWPAYMENTS",
+          provider: PaymentProvider.NOWPAYMENTS.database,
           sourceOrderId: event.sourceOrderId,
         },
       },

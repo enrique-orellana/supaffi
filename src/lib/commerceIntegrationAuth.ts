@@ -1,7 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { publicHttpsUrl } from "@/lib/publicHttpsUrl";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 const SIGNATURE_WINDOW_SECONDS = 5 * 60;
 
@@ -25,11 +27,13 @@ export async function rotateCommerceIntegrationSecret(
   const secretEnc = encrypt(secret);
 
   const integrationId = await db.$transaction(async (tx) => {
-    const owned = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Merchant"
-      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+    const owned = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.Merchant.id}
+      FROM ${SqlSchema.tables.Merchant.name}
+      WHERE ${SqlSchema.tables.Merchant.id} = ${merchantId}
+        AND ${SqlSchema.tables.Merchant.ownerId} = ${ownerId}
       FOR UPDATE
-    `;
+    `);
     if (!owned[0]) throw new Error("Merchant not found");
 
     const integration = await tx.commerceIntegration.upsert({
@@ -63,11 +67,13 @@ export async function setCommerceEventDestination(
   }
 
   await db.$transaction(async (tx) => {
-    const owned = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Merchant"
-      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+    const owned = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.Merchant.id}
+      FROM ${SqlSchema.tables.Merchant.name}
+      WHERE ${SqlSchema.tables.Merchant.id} = ${merchantId}
+        AND ${SqlSchema.tables.Merchant.ownerId} = ${ownerId}
       FOR UPDATE
-    `;
+    `);
     if (!owned[0]) throw new Error("Merchant not found");
 
     const integration = await tx.commerceIntegration.findUnique({

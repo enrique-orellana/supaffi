@@ -1,6 +1,8 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
 import type { Program } from "@prisma/client";
 import { db } from "@/lib/db";
+import { SqlSchema } from "@/lib/sqlSchema";
 import { isPaymentWithinCommissionDuration, type PaymentRef } from "./commission";
 
 type ReferralHistoryClient = Pick<typeof db, "$queryRaw">;
@@ -81,31 +83,39 @@ export async function readReferralHistory(
   client: ReferralHistoryClient = db
 ): Promise<ReferralHistory> {
   const ownRefs = [paymentRef, ...ownOtherRefs];
-  const rows = await client.$queryRaw<HistoryRow[]>`
+  const rows = await client.$queryRaw<HistoryRow[]>(Prisma.sql`
     WITH payments AS (
-      SELECT "firstPaymentRef" AS ref, "firstPaidAt" AS at, 'subscription' AS source
-      FROM "ReferredSubscription"
-      WHERE "clickId" = ${clickId}
-        AND "merchantId" = ${merchantId}
-        AND "firstPaymentRef" IS NOT NULL
-        AND "firstPaidAt" IS NOT NULL
+      SELECT ${SqlSchema.tables.ReferredSubscription.firstPaymentRef} AS ref,
+        ${SqlSchema.tables.ReferredSubscription.firstPaidAt} AS at, 'subscription' AS source
+      FROM ${SqlSchema.tables.ReferredSubscription.name}
+      WHERE ${SqlSchema.tables.ReferredSubscription.clickId} = ${clickId}
+        AND ${SqlSchema.tables.ReferredSubscription.merchantId} = ${merchantId}
+        AND ${SqlSchema.tables.ReferredSubscription.firstPaymentRef} IS NOT NULL
+        AND ${SqlSchema.tables.ReferredSubscription.firstPaidAt} IS NOT NULL
       UNION ALL
-      SELECT "Commission"."stripePaymentRef" AS ref, "Commission"."createdAt" AS at, 'commission' AS source
-      FROM "Commission"
-      JOIN "Affiliate" a ON a.id = "Commission"."affiliateId" AND a."merchantId" = ${merchantId}
-      WHERE "Commission"."clickId" = ${clickId}
-        AND "Commission"."adjustsCommissionId" IS NULL
-        AND "Commission"."stripePaymentRef" IS NOT NULL
+      SELECT ${SqlSchema.tables.Commission.stripePaymentRef} AS ref,
+        ${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
+      FROM ${SqlSchema.tables.Commission.name}
+      JOIN ${SqlSchema.tables.Affiliate.name} a
+        ON a.${SqlSchema.tables.Affiliate.id} = ${SqlSchema.tables.Commission.affiliateId}
+        AND a.${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
+      WHERE ${SqlSchema.tables.Commission.clickId} = ${clickId}
+        AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
+        AND ${SqlSchema.tables.Commission.stripePaymentRef} IS NOT NULL
       UNION ALL
-      SELECT payment."paymentRef" AS ref, "Commission"."createdAt" AS at, 'commission' AS source
-      FROM "Commission"
-      JOIN "PaymentRecord" payment ON payment.id = "Commission"."paymentRecordId"
-      JOIN "Affiliate" a ON a.id = "Commission"."affiliateId" AND a."merchantId" = ${merchantId}
-      WHERE "Commission"."clickId" = ${clickId}
-        AND "Commission"."adjustsCommissionId" IS NULL
-        AND payment."merchantId" = ${merchantId}
-        AND payment."provider" = 'NOWPAYMENTS'::"PaymentProvider"
-        AND payment."paymentRef" IS NOT NULL
+      SELECT payment.${SqlSchema.tables.PaymentRecord.paymentRef} AS ref,
+        ${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
+      FROM ${SqlSchema.tables.Commission.name}
+      JOIN ${SqlSchema.tables.PaymentRecord.name} payment
+        ON payment.${SqlSchema.tables.PaymentRecord.id} = ${SqlSchema.tables.Commission.paymentRecordId}
+      JOIN ${SqlSchema.tables.Affiliate.name} a
+        ON a.${SqlSchema.tables.Affiliate.id} = ${SqlSchema.tables.Commission.affiliateId}
+        AND a.${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
+      WHERE ${SqlSchema.tables.Commission.clickId} = ${clickId}
+        AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
+        AND payment.${SqlSchema.tables.PaymentRecord.merchantId} = ${merchantId}
+        AND payment.${SqlSchema.tables.PaymentRecord.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+        AND payment.${SqlSchema.tables.PaymentRecord.paymentRef} IS NOT NULL
     )
     SELECT
       (SELECT ref FROM payments ORDER BY at ASC, ref ASC LIMIT 1) AS "startRef",
@@ -113,7 +123,7 @@ export async function readReferralHistory(
       EXISTS (
         SELECT 1 FROM payments WHERE source = 'commission' AND ref NOT IN (${Prisma.join(ownRefs)})
       ) AS "earnedOnAnotherPayment"
-  `;
+  `);
   const row = rows[0];
   return {
     start: row?.startRef && row.startAt ? { ref: row.startRef, at: row.startAt } : null,

@@ -1,5 +1,6 @@
 // Destructive: clears WebhookEvent / Merchant / Owner. Runs against the
 // scratch DATABASE_URL that test/setup.ts enforces, never the dev one.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import type { Merchant } from "@prisma/client";
 
@@ -26,7 +27,7 @@ describe("claimBatch", () => {
     return db.webhookEvent.create({
       data: {
         merchantId: merchant.id,
-        provider: "STRIPE",
+        provider: PaymentProvider.STRIPE.database,
         providerEventId: `evt_${crypto.randomUUID()}`,
         payload: {},
         ...data,

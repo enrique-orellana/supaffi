@@ -1,5 +1,6 @@
 // Destructive: clears WebhookEvent / Merchant / Owner and the rows between.
 // Runs against the scratch DATABASE_URL that test/setup.ts enforces.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -49,7 +50,7 @@ async function seedMerchant() {
 
 function row(merchantId: string, status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED", createdAt: Date) {
   return db.webhookEvent.create({
-    data: { merchantId, provider: "STRIPE", providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
+    data: { merchantId, provider: PaymentProvider.STRIPE.database, providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
   });
 }
 

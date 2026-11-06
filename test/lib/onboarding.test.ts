@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { PaymentProvider } from "@/lib/payments/types";
 import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName, dnsZone } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
@@ -198,7 +199,7 @@ describe("backToDashboardHref", () => {
 describe("checkSectionFor", () => {
   it("names the one group of checks the step's screen shows", () => {
     expect(checkSectionFor("subdomain")).toBe("dns");
-    expect(checkSectionFor("stripe-key")).toBe("stripe");
+    expect(checkSectionFor("stripe-key")).toBe(PaymentProvider.STRIPE.id);
     expect(checkSectionFor("tracking")).toBe("tracking");
     expect(checkSectionFor("product")).toBeNull();
     expect(checkSectionFor("terms")).toBeNull();

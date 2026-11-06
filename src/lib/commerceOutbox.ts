@@ -1,9 +1,11 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { createHash, createHmac } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CommerceEventDelivery } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { publicHttpsUrl } from "@/lib/publicHttpsUrl";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 20;
@@ -53,33 +55,36 @@ export async function enqueueCommerceEvent(
 
 /** Claim a bounded batch, recovering PROCESSING rows after their lease expires. */
 async function claimCommerceDeliveryBatch(): Promise<CommerceEventDelivery[]> {
-  await db.$executeRaw`
-    UPDATE "CommerceEventDelivery"
-    SET status = 'FAILED',
-        "lastError" = COALESCE("lastError", 'The worker stopped while delivering this event.')
-    WHERE status = 'PROCESSING'
-      AND "nextAttemptAt" <= now()
-      AND attempts >= ${MAX_ATTEMPTS};
-  `;
+  await db.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name}
+    SET ${SqlSchema.tables.CommerceEventDelivery.status} = 'FAILED',
+        ${SqlSchema.tables.CommerceEventDelivery.lastError} = COALESCE(
+          ${SqlSchema.tables.CommerceEventDelivery.lastError},
+          'The worker stopped while delivering this event.'
+        )
+    WHERE ${SqlSchema.tables.CommerceEventDelivery.status} = 'PROCESSING'
+      AND ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} <= now()
+      AND ${SqlSchema.tables.CommerceEventDelivery.attempts} >= ${MAX_ATTEMPTS};
+  `);
 
   return db.$queryRaw<CommerceEventDelivery[]>(Prisma.sql`
     WITH claimed AS (
-      SELECT id
-      FROM "CommerceEventDelivery"
-      WHERE status IN ('PENDING', 'PROCESSING')
-        AND "checkoutConflictHeldAt" IS NULL
-        AND "nextAttemptAt" <= now()
-        AND attempts < ${MAX_ATTEMPTS}
-      ORDER BY "createdAt" ASC
+      SELECT ${SqlSchema.tables.CommerceEventDelivery.id}
+      FROM ${SqlSchema.tables.CommerceEventDelivery.name}
+      WHERE ${SqlSchema.tables.CommerceEventDelivery.status} IN ('PENDING', 'PROCESSING')
+        AND ${SqlSchema.tables.CommerceEventDelivery.checkoutConflictHeldAt} IS NULL
+        AND ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} <= now()
+        AND ${SqlSchema.tables.CommerceEventDelivery.attempts} < ${MAX_ATTEMPTS}
+      ORDER BY ${SqlSchema.tables.CommerceEventDelivery.createdAt} ASC
       FOR UPDATE SKIP LOCKED
       LIMIT ${BATCH_SIZE}
     )
-    UPDATE "CommerceEventDelivery" delivery
-    SET status = 'PROCESSING',
-        attempts = delivery.attempts + 1,
-        "nextAttemptAt" = now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'
+    UPDATE ${SqlSchema.tables.CommerceEventDelivery.name} delivery
+    SET ${SqlSchema.tables.CommerceEventDelivery.status} = 'PROCESSING',
+        ${SqlSchema.tables.CommerceEventDelivery.attempts} = delivery.${SqlSchema.tables.CommerceEventDelivery.attempts} + 1,
+        ${SqlSchema.tables.CommerceEventDelivery.nextAttemptAt} = now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'
     FROM claimed
-    WHERE delivery.id = claimed.id
+    WHERE delivery.${SqlSchema.tables.CommerceEventDelivery.id} = claimed.${SqlSchema.tables.CommerceEventDelivery.id}
     RETURNING delivery.*;
   `);
 }
@@ -106,7 +111,7 @@ async function paymentSnapshot(
   sourceOrderId: string
 ): Promise<CommercePaymentSnapshot | null> {
   const payment = await tx.paymentRecord.findUnique({
-    where: { merchantId_provider_sourceOrderId: { merchantId, provider: "NOWPAYMENTS", sourceOrderId } },
+    where: { merchantId_provider_sourceOrderId: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database, sourceOrderId } },
     select: {
       paymentRef: true,
       status: true,
@@ -158,7 +163,7 @@ async function enqueueCheckoutReferenceNotice(
     merchantId: input.merchantId,
     eventId,
     payload: {
-      provider: "nowpayments",
+      provider: PaymentProvider.NOWPAYMENTS.id,
       eventId,
       status: input.status,
       sourceOrderId: input.sourceOrderId,
@@ -218,12 +223,12 @@ async function markCommerceDeliveryDelivered(id: string, attempts: number): Prom
 
     const payload = delivery.payload as Prisma.JsonObject;
     const sourceOrderId = payload.sourceOrderId;
-    if (typeof sourceOrderId !== "string" || payload.provider !== "nowpayments") return null;
+    if (typeof sourceOrderId !== "string" || payload.provider !== PaymentProvider.NOWPAYMENTS.id) return null;
     const checkout = await tx.commerceCheckout.findUnique({
       where: {
         merchantId_provider_sourceOrderId: {
           merchantId: delivery.merchantId,
-          provider: "NOWPAYMENTS",
+          provider: PaymentProvider.NOWPAYMENTS.database,
           sourceOrderId,
         },
       },
@@ -292,7 +297,7 @@ async function markCommerceDeliveryDelivered(id: string, attempts: number): Prom
         where: {
           merchantId_provider_sourceOrderId: {
             merchantId: heldOrder.merchantId,
-            provider: "NOWPAYMENTS",
+            provider: PaymentProvider.NOWPAYMENTS.database,
             sourceOrderId: heldOrder.sourceOrderId,
           },
         },
@@ -341,19 +346,20 @@ async function markCommerceDeliveryFailed(
     if (delivery.checkoutConflictHeldAt && delivery.payload && typeof delivery.payload === "object" && !Array.isArray(delivery.payload)) {
       const payload = delivery.payload as Prisma.JsonObject;
       const sourceOrderId = payload.sourceOrderId;
-      if (payload.provider === "nowpayments" && typeof sourceOrderId === "string") {
-        await tx.$queryRaw`
-          SELECT "id" FROM "CommerceCheckout"
-          WHERE "merchantId" = ${delivery.merchantId}
-            AND "provider" = 'NOWPAYMENTS'::"PaymentProvider"
-            AND "sourceOrderId" = ${sourceOrderId}
+      if (payload.provider === PaymentProvider.NOWPAYMENTS.id && typeof sourceOrderId === "string") {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT ${SqlSchema.tables.CommerceCheckout.id}
+          FROM ${SqlSchema.tables.CommerceCheckout.name}
+          WHERE ${SqlSchema.tables.CommerceCheckout.merchantId} = ${delivery.merchantId}
+            AND ${SqlSchema.tables.CommerceCheckout.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
+            AND ${SqlSchema.tables.CommerceCheckout.sourceOrderId} = ${sourceOrderId}
           FOR UPDATE
-        `;
+        `);
         const checkout = await tx.commerceCheckout.findUnique({
           where: {
             merchantId_provider_sourceOrderId: {
               merchantId: delivery.merchantId,
-              provider: "NOWPAYMENTS",
+              provider: PaymentProvider.NOWPAYMENTS.database,
               sourceOrderId,
             },
           },

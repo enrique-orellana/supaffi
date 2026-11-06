@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const connection = await db.paymentConnection.findFirst({
-    where: { provider: "STRIPE", merchant: { domain: host } },
+    where: { provider: PaymentProvider.STRIPE.database, merchant: { domain: host } },
     select: {
       merchantId: true,
       webhookSecretEnc: true,
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawBody = await req.text();
-  const adapter = getPaymentProviderAdapter("stripe");
+  const adapter = getPaymentProviderAdapter(PaymentProvider.STRIPE.id);
   if (!adapter) return new NextResponse(null, { status: 404 });
 
   let event: VerifiedProviderEvent | null;
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     await db.webhookEvent.create({
       data: {
         merchantId: connection.merchantId,
-        provider: "STRIPE",
+        provider: PaymentProvider.STRIPE.database,
         providerEventId: event.eventId,
         payload: event.rawPayload as Prisma.InputJsonValue,
       },

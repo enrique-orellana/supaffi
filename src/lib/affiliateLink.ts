@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { validateCode } from "@/lib/linkCode";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 export type AffiliateLinkRow = {
   id: string;
@@ -117,7 +118,12 @@ async function retiredCodesFull(
   affiliateId: string,
   reclaimed: string | null
 ): Promise<boolean> {
-  await tx.$queryRaw`SELECT "id" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+  await tx.$queryRaw(Prisma.sql`
+    SELECT ${SqlSchema.tables.Affiliate.id}
+    FROM ${SqlSchema.tables.Affiliate.name}
+    WHERE ${SqlSchema.tables.Affiliate.id} = ${affiliateId}
+    FOR UPDATE
+  `);
   const count = await tx.retiredLinkCode.count({
     where: { affiliateId, ...(reclaimed ? { code: { not: reclaimed } } : {}) },
   });
@@ -206,8 +212,12 @@ export async function createLink(
       // Locks the Affiliate row first, so parallel requests count one at a
       // time. A count followed by a separate insert let a burst of them all
       // see room for one more and all insert.
-      const locked = await tx.$queryRaw<{ id: string; merchantId: string }[]>`
-        SELECT "id", "merchantId" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+      const locked = await tx.$queryRaw<{ id: string; merchantId: string }[]>(Prisma.sql`
+        SELECT ${SqlSchema.tables.Affiliate.id}, ${SqlSchema.tables.Affiliate.merchantId}
+        FROM ${SqlSchema.tables.Affiliate.name}
+        WHERE ${SqlSchema.tables.Affiliate.id} = ${affiliateId}
+        FOR UPDATE
+      `);
       if (locked.length === 0) return { error: LINK_GONE };
 
       const count = await tx.affiliateLink.count({ where: { affiliateId } });
@@ -290,8 +300,12 @@ export async function deleteLink(
   linkId: string
 ): Promise<{ error: string } | { ok: true }> {
   return db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; merchantId: string }[]>`
-      SELECT "id", "merchantId" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+    const locked = await tx.$queryRaw<{ id: string; merchantId: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.Affiliate.id}, ${SqlSchema.tables.Affiliate.merchantId}
+      FROM ${SqlSchema.tables.Affiliate.name}
+      WHERE ${SqlSchema.tables.Affiliate.id} = ${affiliateId}
+      FOR UPDATE
+    `);
     if (locked.length === 0) return { error: LINK_GONE };
     const link = await tx.affiliateLink.findFirst({
       where: { id: linkId, affiliateId },

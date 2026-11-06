@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
   const merchant = await db.merchant.findFirst({
@@ -471,7 +472,18 @@ export async function markCommissionsPaid(
     // PAID and leaves it alone, so what is decided below is what stays written.
     // Scoped to this merchant's affiliates, so a foreign id never locks
     // another merchant's row before the ownership check below refuses it.
-    await tx.$queryRaw`SELECT id FROM "Commission" WHERE id IN (${Prisma.join(ids)}) AND "affiliateId" IN (SELECT id FROM "Affiliate" WHERE "merchantId" = ${merchantId}) ORDER BY id FOR UPDATE`;
+    await tx.$queryRaw(Prisma.sql`
+      SELECT ${SqlSchema.tables.Commission.id}
+      FROM ${SqlSchema.tables.Commission.name}
+      WHERE ${SqlSchema.tables.Commission.id} IN (${Prisma.join(ids)})
+        AND ${SqlSchema.tables.Commission.affiliateId} IN (
+          SELECT ${SqlSchema.tables.Affiliate.id}
+          FROM ${SqlSchema.tables.Affiliate.name}
+          WHERE ${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
+        )
+      ORDER BY ${SqlSchema.tables.Commission.id}
+      FOR UPDATE
+    `);
 
     const rows = await tx.commission.findMany({
       where: { id: { in: ids }, affiliate: { merchantId } },
@@ -586,12 +598,25 @@ export async function confirmCommissionFraud(
     // writes a commission, so either that row is committed before the void
     // below reads the click's rows, or the worker waits and then finds the
     // click confirmed. Without it a renewal written in between earned.
-    await tx.$queryRaw`SELECT id FROM "Click" WHERE id = ${existing.clickId} FOR UPDATE`;
+    await tx.$queryRaw(Prisma.sql`
+      SELECT ${SqlSchema.tables.Click.id}
+      FROM ${SqlSchema.tables.Click.name}
+      WHERE ${SqlSchema.tables.Click.id} = ${existing.clickId}
+      FOR UPDATE
+    `);
 
     // Locked in id order next, matching Mark paid, so the two can never wait
     // on each other's rows in opposite order: a renewal of this click held by
     // a payout in another tab is waited for here rather than deadlocked.
-    await tx.$queryRaw`SELECT id FROM "Commission" WHERE "clickId" = ${existing.clickId} AND "adjustsCommissionId" IS NULL AND status IN ('PENDING', 'PAYABLE', 'FLAGGED') ORDER BY id FOR UPDATE`;
+    await tx.$queryRaw(Prisma.sql`
+      SELECT ${SqlSchema.tables.Commission.id}
+      FROM ${SqlSchema.tables.Commission.name}
+      WHERE ${SqlSchema.tables.Commission.clickId} = ${existing.clickId}
+        AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
+        AND ${SqlSchema.tables.Commission.status} IN ('PENDING', 'PAYABLE', 'FLAGGED')
+      ORDER BY ${SqlSchema.tables.Commission.id}
+      FOR UPDATE
+    `);
 
     // The referral was the self referral, not only this one payment, so
     // nothing it earned that has not been paid out yet stands. Only unpaid

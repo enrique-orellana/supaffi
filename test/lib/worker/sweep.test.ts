@@ -1,6 +1,7 @@
 // Destructive: clears Commission / ReferredSubscription / Click / AffiliateLink /
 // Affiliate / Program / Merchant / Owner. Runs against the scratch DATABASE_URL
 // that test/setup.ts enforces, never the dev one.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 
 import { db } from "@/lib/db";
@@ -37,7 +38,7 @@ describe("sweepPayableCommissions", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     const program = await db.program.create({

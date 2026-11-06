@@ -1,6 +1,7 @@
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 import { registrableCandidates } from "@/lib/checks/dns";
+import { PaymentProvider } from "@/lib/payments/types";
 
 export type StepId =
   | "product"
@@ -76,7 +77,7 @@ export function checkSectionFor(id: StepId): keyof ProductChecks | null {
     case "subdomain":
       return "dns";
     case "stripe-key":
-      return "stripe";
+      return PaymentProvider.STRIPE.id;
     case "tracking":
       return "tracking";
     case "product":

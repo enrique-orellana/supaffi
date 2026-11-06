@@ -1,5 +1,6 @@
 // Seeding shared by the suites that exercise referred subscriptions. Every
 // helper writes to the scratch DATABASE_URL that test/setup.ts enforces.
+import { PaymentProvider } from "@/lib/payments/types";
 import type { CommissionDurationType, Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
@@ -34,7 +35,7 @@ export async function seedMerchant(ownerId: string): Promise<Merchant> {
       name: "Product",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://product.example.com",
-      paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+      paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
     },
   });
 }

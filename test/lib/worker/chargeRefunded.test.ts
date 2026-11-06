@@ -1,6 +1,7 @@
 // Destructive: clears Commission / Click / AffiliateLink / Affiliate / Program /
 // Merchant / Owner. Runs against the scratch DATABASE_URL that test/setup.ts
 // enforces, never the dev one.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { Prisma } from "@prisma/client";
 import type { Commission, Merchant } from "@prisma/client";
@@ -188,7 +189,7 @@ describe("handleChargeRefunded", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     const program = await db.program.create({
@@ -380,7 +381,7 @@ describe("handleChargeRefunded", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     await handleChargeRefunded(other, chargeFixture(7800));

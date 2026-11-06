@@ -1,3 +1,4 @@
+import { PaymentProvider } from "../types";
 import { createHmac, timingSafeEqual } from "crypto";
 import type {
   CheckoutRequest,
@@ -373,7 +374,7 @@ async function createInvoice(input: CheckoutRequest, apiKey: string | null): Pro
 }
 
 export const nowpaymentsAdapter: PaymentProviderAdapter = {
-  provider: "nowpayments",
+  provider: PaymentProvider.NOWPAYMENTS.id,
   capabilities: {
     webhooks: true,
     hostedCheckout: true,
@@ -433,7 +434,7 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
     }
 
     return {
-      provider: "nowpayments",
+      provider: PaymentProvider.NOWPAYMENTS.id,
       eventId: `${paymentId}:${paymentStatus}`,
       kind,
       paymentRef: paymentId,

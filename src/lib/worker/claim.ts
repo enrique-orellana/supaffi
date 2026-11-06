@@ -2,6 +2,7 @@ import { loggableError } from "@/lib/stripeErrors";
 import { Prisma } from "@prisma/client";
 import type { WebhookEvent } from "@prisma/client";
 import { db } from "@/lib/db";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 20;
@@ -31,31 +32,34 @@ export async function claimBatch(): Promise<WebhookEvent[]> {
   // A row that took the worker down on its last allowed attempt would
   // otherwise be reclaimed, crash it again, and never reach FAILED, since
   // only a handled error goes through markFailed.
-  await db.$executeRaw`
-    UPDATE "WebhookEvent"
-    SET status = 'FAILED',
-        "lastError" = COALESCE("lastError", 'The worker stopped while processing this event.')
-    WHERE status = 'PROCESSING'
-      AND "nextAttemptAt" <= now()
-      AND attempts >= ${MAX_ATTEMPTS};
-  `;
+  await db.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.WebhookEvent.name}
+    SET ${SqlSchema.tables.WebhookEvent.status} = 'FAILED',
+        ${SqlSchema.tables.WebhookEvent.lastError} = COALESCE(
+          ${SqlSchema.tables.WebhookEvent.lastError},
+          'The worker stopped while processing this event.'
+        )
+    WHERE ${SqlSchema.tables.WebhookEvent.status} = 'PROCESSING'
+      AND ${SqlSchema.tables.WebhookEvent.nextAttemptAt} <= now()
+      AND ${SqlSchema.tables.WebhookEvent.attempts} >= ${MAX_ATTEMPTS};
+  `);
 
   return db.$queryRaw<WebhookEvent[]>(Prisma.sql`
     WITH claimed AS (
-      SELECT id
-      FROM "WebhookEvent"
-      WHERE status IN ('PENDING', 'PROCESSING')
-        AND "nextAttemptAt" <= now()
-      ORDER BY "createdAt" ASC
+      SELECT ${SqlSchema.tables.WebhookEvent.id}
+      FROM ${SqlSchema.tables.WebhookEvent.name}
+      WHERE ${SqlSchema.tables.WebhookEvent.status} IN ('PENDING', 'PROCESSING')
+        AND ${SqlSchema.tables.WebhookEvent.nextAttemptAt} <= now()
+      ORDER BY ${SqlSchema.tables.WebhookEvent.createdAt} ASC
       FOR UPDATE SKIP LOCKED
       LIMIT ${BATCH_SIZE}
     )
-    UPDATE "WebhookEvent" w
-    SET status = 'PROCESSING',
-        attempts = w.attempts + 1,
-        "nextAttemptAt" = now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'
+    UPDATE ${SqlSchema.tables.WebhookEvent.name} w
+    SET ${SqlSchema.tables.WebhookEvent.status} = 'PROCESSING',
+        ${SqlSchema.tables.WebhookEvent.attempts} = w.${SqlSchema.tables.WebhookEvent.attempts} + 1,
+        ${SqlSchema.tables.WebhookEvent.nextAttemptAt} = now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'
     FROM claimed
-    WHERE w.id = claimed.id
+    WHERE w.${SqlSchema.tables.WebhookEvent.id} = claimed.${SqlSchema.tables.WebhookEvent.id}
     RETURNING w.*;
   `);
 }

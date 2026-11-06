@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { resolvesTo as resolvesToImpl, httpsReachable as httpsReachableImpl, type CheckResult } from "@/lib/checks/dns";
@@ -145,7 +146,7 @@ function refresh(
         domain: true,
         websiteUrl: true,
         paymentConnections: {
-          where: { provider: "STRIPE" },
+          where: { provider: PaymentProvider.STRIPE.database },
           select: { apiKeyEnc: true },
         },
       },
@@ -167,7 +168,7 @@ function refresh(
             result.dns = { resolves, https: https.reachable, certificate: https.certificate };
           })()
         : null,
-      wanted.has("stripe")
+      wanted.has(PaymentProvider.STRIPE.id)
         ? (async () => {
             const [key, webhook] = await Promise.all([
               stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
@@ -234,10 +235,10 @@ export async function runProductChecks(
   };
   const warm = {
     dns: usable(cached.dns, "dns"),
-    stripe: usable(cached.stripe, "stripe"),
+    stripe: usable(cached.stripe, PaymentProvider.STRIPE.id),
     tracking: usable(cached.tracking, "tracking"),
   };
-  const stale = (["dns", "stripe", "tracking"] as const).filter((s) => !warm[s]);
+  const stale = (["dns", PaymentProvider.STRIPE.id, "tracking"] as const).filter((s) => !warm[s]);
 
   // Nothing to run: no database round trip either, which is the point.
   if (stale.length === 0) {

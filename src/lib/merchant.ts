@@ -1,6 +1,9 @@
+import { PaymentProvider } from "@/lib/payments/types";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 // Creating a Merchant no longer takes any credentials. Connecting Stripe is
 // a separate step, done against a Merchant that
@@ -63,16 +66,18 @@ export async function connectStripe(
   const newWebhookSecretEnc = input.webhookSecret ? encrypt(input.webhookSecret) : undefined;
 
   await db.$transaction(async (tx) => {
-    const merchants = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Merchant"
-      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+    const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.Merchant.id}
+      FROM ${SqlSchema.tables.Merchant.name}
+      WHERE ${SqlSchema.tables.Merchant.id} = ${merchantId}
+        AND ${SqlSchema.tables.Merchant.ownerId} = ${ownerId}
       FOR UPDATE
-    `;
+    `);
     const merchant = merchants[0];
     if (!merchant) throw new Error("Merchant not found");
 
     const existing = await tx.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
       select: { apiKeyEnc: true, webhookSecretEnc: true, externalEndpointId: true },
     });
     const apiKeyEnc = newSecretKeyEnc ?? existing?.apiKeyEnc ?? null;
@@ -85,10 +90,10 @@ export async function connectStripe(
     const status = apiKeyEnc && webhookSecretEnc ? "CONNECTED" : "DISCONNECTED";
 
     await tx.paymentConnection.upsert({
-      where: { merchantId_provider: { merchantId, provider: "STRIPE" } },
+      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
       create: {
         merchantId,
-        provider: "STRIPE",
+        provider: PaymentProvider.STRIPE.database,
         apiKeyEnc,
         webhookSecretEnc,
         externalEndpointId,
@@ -109,15 +114,17 @@ export async function connectStripe(
 /** Clears the connection; deleting an endpoint remotely remains separate. */
 export async function disconnectStripe(ownerId: string, merchantId: string): Promise<void> {
   await db.$transaction(async (tx) => {
-    const merchants = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Merchant"
-      WHERE "id" = ${merchantId} AND "ownerId" = ${ownerId}
+    const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT ${SqlSchema.tables.Merchant.id}
+      FROM ${SqlSchema.tables.Merchant.name}
+      WHERE ${SqlSchema.tables.Merchant.id} = ${merchantId}
+        AND ${SqlSchema.tables.Merchant.ownerId} = ${ownerId}
       FOR UPDATE
-    `;
+    `);
     if (!merchants[0]) throw new Error("Merchant not found");
 
     await tx.paymentConnection.updateMany({
-      where: { merchantId, provider: "STRIPE" },
+      where: { merchantId, provider: PaymentProvider.STRIPE.database },
       data: {
         apiKeyEnc: null,
         webhookSecretEnc: null,
@@ -141,7 +148,7 @@ export async function getIntegrationStatus(
   merchantId: string
 ): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
     select: { apiKeyEnc: true, webhookSecretEnc: true },
   });
   const stripeKey = Boolean(connection?.apiKeyEnc);
@@ -169,7 +176,7 @@ export async function getStripeKeyKind(
   merchantId: string
 ): Promise<StripeKeyKind> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
     select: { apiKeyEnc: true },
   });
   if (!connection?.apiKeyEnc) return null;
@@ -231,7 +238,7 @@ export async function getStripeWebhookEndpointId(
   merchantId: string
 ): Promise<string | null> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: "STRIPE", merchant: { ownerId } },
+    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
     select: { externalEndpointId: true },
   });
   return connection?.externalEndpointId ?? null;

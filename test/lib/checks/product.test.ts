@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+import { PaymentProvider } from "@/lib/payments/types";
 import { db } from "@/lib/db";
 import { createMerchant, connectStripe } from "@/lib/merchant";
 import { runProductChecks } from "@/lib/checks/product";
@@ -29,7 +30,7 @@ if (!hasDatabase) {
 const ok = { ok: true, detail: "ok" };
 const no = { ok: false, detail: "no" };
 
-const ALL_SECTIONS = new Set(["dns", "stripe", "tracking"] as const);
+const ALL_SECTIONS = new Set(["dns", PaymentProvider.STRIPE.id, "tracking"] as const);
 
 describe.skipIf(!hasDatabase)("runProductChecks", () => {
   let previousHostIp: string | undefined;

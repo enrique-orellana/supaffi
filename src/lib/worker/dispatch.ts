@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import type { WebhookEvent } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
@@ -10,8 +11,8 @@ import { handleSubscriptionDeleted } from "./handlers/subscriptionDeleted";
 import { handleNowPaymentsEvent } from "./handlers/nowpayments";
 
 export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
-  if (row.provider === "NOWPAYMENTS") return handleNowPaymentsEvent(row);
-  if (row.provider !== "STRIPE") {
+  if (row.provider === PaymentProvider.NOWPAYMENTS.database) return handleNowPaymentsEvent(row);
+  if (row.provider !== PaymentProvider.STRIPE.database) {
     throw new Error(`No webhook handler is registered for provider ${row.provider}`);
   }
   const event = row.payload as unknown as Stripe.Event;

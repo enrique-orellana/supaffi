@@ -1,5 +1,6 @@
 // Destructive: clears Program / Merchant / Owner. Runs against the scratch
 // DATABASE_URL, never the dev one.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 
 import { db } from "@/lib/db";
@@ -22,7 +23,7 @@ async function seedMerchant(stripeConnected: boolean) {
         ? {
             paymentConnections: {
               create: {
-                provider: "STRIPE",
+                provider: PaymentProvider.STRIPE.database,
                 apiKeyEnc: "enc",
                 webhookSecretEnc: "enc",
                 status: "CONNECTED",

@@ -16,6 +16,7 @@ import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
+import { PaymentProvider } from "@/lib/payments/types";
 
 /**
  * Everything the settings page can change: the product's own details, the
@@ -40,7 +41,7 @@ async function owner(): Promise<string> {
 }
 
 /** The settings URL, optionally asking for one section of checks to be re-run. */
-const settings = (slug: string, fresh?: "dns" | "stripe") =>
+const settings = (slug: string, fresh?: "dns" | typeof PaymentProvider.STRIPE.id) =>
   `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
 type ProductFormState = { error: string; values?: { name: string; domain: string; websiteUrl: string } };
@@ -86,7 +87,7 @@ export async function replaceStripeKeyAction(
   // the upgrade runs again now rather than leaving the light red until the
   // next start. It never throws.
   await upgradeMerchantWebhookEvents(product.id);
-  redirect(settings(product.slug, "stripe"));
+  redirect(settings(product.slug, PaymentProvider.STRIPE.id));
 }
 
 export async function replaceWebhookSecretAction(
@@ -100,7 +101,7 @@ export async function replaceWebhookSecretAction(
   await connectStripe(ownerId, product.id, { webhookSecret: secret });
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
   await upgradeMerchantWebhookEvents(product.id);
-  redirect(settings(product.slug, "stripe"));
+  redirect(settings(product.slug, PaymentProvider.STRIPE.id));
 }
 
 export async function saveNowPaymentsConnectionAction(

@@ -1,4 +1,7 @@
+import { PaymentProvider } from "@/lib/payments/types";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 /**
  * Deletes processed webhook events older than 90 days, so the table stops
@@ -30,33 +33,33 @@ export async function cleanupProcessedEvents(
   const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60_000);
   let total = 0;
   for (let batch = 0; batch < MAX_BATCHES; batch++) {
-    const deleted = await db.$executeRaw`
+    const deleted = await db.$executeRaw(Prisma.sql`
       WITH doomed AS (
-        SELECT w.id
-        FROM "WebhookEvent" w
-        WHERE w.status = 'PROCESSED'
-          AND w."createdAt" < ${cutoff}
+        SELECT w.${SqlSchema.tables.WebhookEvent.id}
+        FROM ${SqlSchema.tables.WebhookEvent.name} w
+        WHERE w.${SqlSchema.tables.WebhookEvent.status} = 'PROCESSED'
+          AND w.${SqlSchema.tables.WebhookEvent.createdAt} < ${cutoff}
           AND EXISTS (
-            SELECT 1 FROM "WebhookEvent" newer
-            WHERE newer."merchantId" = w."merchantId"
-              AND newer."createdAt" > w."createdAt"
+            SELECT 1 FROM ${SqlSchema.tables.WebhookEvent.name} newer
+            WHERE newer.${SqlSchema.tables.WebhookEvent.merchantId} = w.${SqlSchema.tables.WebhookEvent.merchantId}
+              AND newer.${SqlSchema.tables.WebhookEvent.createdAt} > w.${SqlSchema.tables.WebhookEvent.createdAt}
           )
           AND NOT (
-            w."provider" = 'NOWPAYMENTS'::"PaymentProvider"
+            w.${SqlSchema.tables.WebhookEvent.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
             AND EXISTS (
-              SELECT 1 FROM "CommerceCheckout" checkout
-              WHERE checkout."merchantId" = w."merchantId"
-                AND checkout."provider" = w."provider"
-                AND checkout."sourceOrderId" = w."payload"->'rawPayload'->>'order_id'
-                AND checkout."status" = 'UNCERTAIN'
+              SELECT 1 FROM ${SqlSchema.tables.CommerceCheckout.name} checkout
+              WHERE checkout.${SqlSchema.tables.CommerceCheckout.merchantId} = w.${SqlSchema.tables.WebhookEvent.merchantId}
+                AND checkout.${SqlSchema.tables.CommerceCheckout.provider} = w.${SqlSchema.tables.WebhookEvent.provider}
+                AND checkout.${SqlSchema.tables.CommerceCheckout.sourceOrderId} = w.${SqlSchema.tables.WebhookEvent.payload}->'rawPayload'->>'order_id'
+                AND checkout.${SqlSchema.tables.CommerceCheckout.status} = 'UNCERTAIN'
             )
           )
         LIMIT ${batchSize}
       )
-      DELETE FROM "WebhookEvent" w
+      DELETE FROM ${SqlSchema.tables.WebhookEvent.name} w
       USING doomed
-      WHERE w.id = doomed.id;
-    `;
+      WHERE w.${SqlSchema.tables.WebhookEvent.id} = doomed.${SqlSchema.tables.WebhookEvent.id};
+    `);
     total += deleted;
     if (deleted < batchSize) break;
   }

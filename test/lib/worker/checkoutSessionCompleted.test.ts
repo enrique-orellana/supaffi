@@ -1,6 +1,7 @@
 // Destructive: clears Commission / Click / AffiliateLink / Affiliate / Program /
 // Merchant / Owner. Runs against the scratch DATABASE_URL that test/setup.ts
 // enforces, never the dev one.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { inspect } from "node:util";
 import type { Merchant } from "@prisma/client";
@@ -267,7 +268,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     const program = await db.program.create({
@@ -375,7 +376,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other" }));
@@ -1326,7 +1327,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        paymentConnections: { create: { provider: "STRIPE", apiKeyEnc: "x" } },
+        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other", subscription: "sub_1" }));

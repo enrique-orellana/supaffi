@@ -1,3 +1,4 @@
+import { PaymentProvider } from "../types";
 import Stripe from "stripe";
 import { minorUnitsToMajor } from "@/lib/stripe";
 import type {
@@ -38,7 +39,7 @@ function eventKind(event: Stripe.Event, object: StripeObject): VerifiedProviderE
 }
 
 export const stripeAdapter: PaymentProviderAdapter = {
-  provider: "stripe",
+  provider: PaymentProvider.STRIPE.id,
   capabilities: {
     webhooks: true,
     hostedCheckout: false,
@@ -65,7 +66,7 @@ export const stripeAdapter: PaymentProviderAdapter = {
     else if (event.type === "charge.refunded") amount = object.amount;
 
     return {
-      provider: "stripe",
+      provider: PaymentProvider.STRIPE.id,
       eventId: event.id,
       kind: eventKind(event, object),
       paymentRef,

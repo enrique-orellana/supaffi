@@ -1,3 +1,4 @@
+import { PaymentProvider } from "@/lib/payments/types";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
@@ -19,7 +20,7 @@ const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 // stored), so reaching here without a key is a bug, not a user state.
 export async function stripeClientFor(merchant: { id: string }): Promise<Stripe> {
   const connection = await db.paymentConnection.findUnique({
-    where: { merchantId_provider: { merchantId: merchant.id, provider: "STRIPE" } },
+    where: { merchantId_provider: { merchantId: merchant.id, provider: PaymentProvider.STRIPE.database } },
     select: { apiKeyEnc: true },
   });
   if (!connection?.apiKeyEnc) {

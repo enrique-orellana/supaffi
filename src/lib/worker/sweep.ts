@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { SqlSchema } from "@/lib/sqlSchema";
 
 // Runs on the same tick as the webhook drain, with no new infrastructure.
 // Deliberately WHERE status = 'PENDING' only: FLAGGED commissions are
@@ -10,12 +12,12 @@ import { db } from "@/lib/db";
 // takes. Closing it in the merchant's favour releases it (disputes.ts), and a
 // lost one voids it, so nothing here needs to wait for either.
 export async function sweepPayableCommissions(): Promise<number> {
-  return db.$executeRaw`
-    UPDATE "Commission"
-    SET status = 'PAYABLE'
-    WHERE status = 'PENDING'
-      AND "payableAt" <= now()
-      AND "disputeOpenedAt" IS NULL
-      AND "checkoutConflictHeldAt" IS NULL;
-  `;
+  return db.$executeRaw(Prisma.sql`
+    UPDATE ${SqlSchema.tables.Commission.name}
+    SET ${SqlSchema.tables.Commission.status} = 'PAYABLE'
+    WHERE ${SqlSchema.tables.Commission.status} = 'PENDING'
+      AND ${SqlSchema.tables.Commission.payableAt} <= now()
+      AND ${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
+      AND ${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NULL;
+  `);
 }

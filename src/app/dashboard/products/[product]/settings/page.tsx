@@ -19,6 +19,7 @@ import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
 import { PaymentConnectionCard } from "@/components/dashboard/PaymentConnectionCard";
 import { CommerceIntegrationCard } from "./CommerceIntegrationCard";
+import { PaymentProvider } from "@/lib/payments/types";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
@@ -40,7 +41,7 @@ import {
  * ended up.
  */
 
-const SECTIONS: CheckSection[] = ["dns", "stripe", "tracking"];
+const SECTIONS: CheckSection[] = ["dns", PaymentProvider.STRIPE.id, "tracking"];
 
 /** A section name in the URL, or nothing when it names none. */
 function freshSection(raw: string | undefined): CheckSection | null {

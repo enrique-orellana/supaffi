@@ -2,6 +2,7 @@
 // db.affiliate.deleteMany() / db.program.deleteMany() / db.merchant.deleteMany() /
 // db.owner.deleteMany() before every test. Point DATABASE_URL at a disposable
 // database, never a real deployment's data.
+import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
@@ -53,7 +54,7 @@ async function seedProduct(ownerEmail: string, domain: string, affiliateEmail: s
       websiteUrl: `https://${domain}`,
       paymentConnections: {
         create: {
-          provider: "STRIPE",
+          provider: PaymentProvider.STRIPE.database,
           apiKeyEnc: "x",
           webhookSecretEnc: "x",
           status: "CONNECTED",
