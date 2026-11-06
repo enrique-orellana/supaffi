@@ -17,6 +17,7 @@ model Owner {
   passwordChangedAt DateTime?
   createdAt         DateTime   @default(now())
   merchants         Merchant[]
+  affiliateImportBatches AffiliateImportBatch[]
   reconciledCommerceCheckouts CommerceCheckout[] @relation("CommerceCheckoutReconciler")
 }
 
@@ -56,9 +57,11 @@ model Merchant {
   affiliateImportBatches  AffiliateImportBatch[]
   importedCommissions     ImportedCommission[]
   importedPayouts         ImportedPayout[]
+  importRowResults        AffiliateImportRowResult[]
   createdAt               DateTime               @default(now())
 
   @@unique([ownerId, slug])
+  @@unique([id, ownerId])
 }
 
 enum CommissionDurationType {
@@ -87,9 +90,12 @@ model Program {
   signupOpen               Boolean                @default(true)
 
   affiliates Affiliate[]
+  importedCommissions ImportedCommission[]
+  importedPayouts ImportedPayout[]
   createdAt  DateTime    @default(now())
 
   @@unique([merchantId, slug])
+  @@unique([id, merchantId])
 }
 
 model Affiliate {
@@ -108,6 +114,7 @@ model Affiliate {
   // before it are refused, like the Owner's (see affiliateSessionIsCurrent).
   // Left null at signup: the session that signup starts is the one to keep.
   passwordChangedAt    DateTime?
+  importSourceIdentity String? @unique
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
@@ -141,6 +148,9 @@ model AffiliateLink {
   affiliate   Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
 
   code String // appears directly in a public ?via= URL, unique within its Merchant
+  legacyAliases String[] @default([])
+  legacyQueryParamAliases String[] @default([])
+  importSourceIdentity String? @unique
 
   commissionRateOverride Decimal?  @db.Decimal(5, 2)
   activeFrom              DateTime?
@@ -565,12 +575,15 @@ model CommerceEventDelivery {
 model AffiliateImportBatch {
   id                  String   @id @default(cuid())
   merchantId          String
-  merchant            Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant            Merchant @relation(fields: [merchantId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  ownerId             String
+  owner               Owner    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   sourceAdapter       String
   sourceFormatVersion Int
   normalizedDigest    String
   mappingChoices      Json?
   previewTotals       Json?
+  applyProgress       Json?
   status              String   @default("PREVIEW")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -578,37 +591,67 @@ model AffiliateImportBatch {
 
   commissions ImportedCommission[]
   payouts     ImportedPayout[]
-
-  // Composite keys let archive rows retain an optional mapping while ensuring
-  // any mapped Merchant matches the batch's intended Merchant.
-  mappedCommissions ImportedCommission[] @relation("ImportedCommissionBatchTenant")
-  mappedPayouts     ImportedPayout[]     @relation("ImportedPayoutBatchTenant")
+  rowResults  AffiliateImportRowResult[]
 
   @@unique([merchantId, sourceAdapter, normalizedDigest])
   @@unique([id, merchantId])
+  @@unique([id, ownerId])
   @@index([merchantId, createdAt])
+  @@index([ownerId, createdAt])
+}
+
+/// Row-level outcomes for a completed or resumable import report. Stores only
+/// stable source identifiers and non-personal status/amount metadata.
+model AffiliateImportRowResult {
+  id             String               @id @default(cuid())
+  batchId        String
+  ownerId        String
+  batch          AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  targetMerchantId String?
+  targetOwnerId   String?
+  targetMerchant   Merchant?            @relation(fields: [targetMerchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
+  sourceIdentity   String
+  sourceKind       String
+  sourceId         String
+  outcome          String
+  reason           String?
+  currency         String?
+  amountMinor      BigInt?
+  createdAt        DateTime             @default(now())
+
+  @@unique([batchId, sourceIdentity])
+  @@index([batchId, sourceKind, outcome])
+  @@index([ownerId, batchId, id])
 }
 
 /// Immutable imported history, kept outside the operational Commission ledger.
 model ImportedCommission {
   id                      String               @id @default(cuid())
   batchId                 String
-  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  batchTenant             AffiliateImportBatch? @relation("ImportedCommissionBatchTenant", fields: [batchId, merchantId], references: [id, merchantId], onDelete: Cascade)
+  ownerId                 String
+  batch                   AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
   merchantId              String?
-  merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  targetOwnerId           String?
+  merchant                Merchant?            @relation(fields: [merchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
+  targetProgramId         String?
   affiliateId             String?
-  // The migration-owned CHECK requires merchantId whenever affiliateId is set.
-  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: Cascade)
+  affiliate               Affiliate?            @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  targetProgram           Program?              @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceLinkIdentity      String?
+  sourceProductIdentity   String?
   sourceTransactionRef    String?
-  amount                  Decimal              @db.Decimal(18, 2)
-  refundedAmount          Decimal?             @db.Decimal(18, 2)
-  saleAmount              Decimal?             @db.Decimal(18, 2)
+  amount                  Decimal              @db.Decimal(24, 6)
+  amountMinor             BigInt?
+  refundedAmount          Decimal?             @db.Decimal(24, 6)
+  refundedMinor           BigInt?
+  refunds                 Json?
+  saleAmount              Decimal?             @db.Decimal(24, 6)
+  saleAmountMinor         BigInt?
   currency                String
   originalStatus          String
+  allocationStatus        String               @default("UNALLOCATED")
   periodStart             DateTime?
   periodEnd               DateTime?
   sourceCreatedAt         DateTime?
@@ -617,32 +660,43 @@ model ImportedCommission {
   @@index([batchId, importedAt])
   @@index([affiliateId, sourceCreatedAt])
   @@index([merchantId])
+  @@index([ownerId, allocationStatus])
 }
 
 /// Historical payout snapshots are aggregate records; no individual imported
 /// commission is marked paid by inference.
 model ImportedPayout {
-  id                      String               @id @default(cuid())
-  batchId                 String
-  batch                   AffiliateImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  batchTenant             AffiliateImportBatch? @relation("ImportedPayoutBatchTenant", fields: [batchId, merchantId], references: [id, merchantId], onDelete: Cascade)
-  merchantId              String?
-  merchant                Merchant?            @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  affiliateId             String?
-  // The migration-owned CHECK requires merchantId whenever affiliateId is set.
-  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: Cascade)
-  sourceIdentity          String               @unique
-  sourceAffiliateIdentity String?
-  sourceTransactionRef    String?
-  amount                  Decimal              @db.Decimal(18, 2)
-  currency                String
-  originalStatus          String
-  periodStart             DateTime?
-  periodEnd               DateTime?
-  paidAt                  DateTime?
-  importedAt              DateTime             @default(now())
+  id                       String               @id @default(cuid())
+  batchId                  String
+  ownerId                  String
+  batch                    AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  merchantId               String?
+  targetOwnerId            String?
+  merchant                 Merchant?            @relation(fields: [merchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
+  targetProgramId          String?
+  affiliateId              String?
+  affiliate                Affiliate?            @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  targetProgram            Program?              @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  sourceIdentity           String               @unique
+  sourceAffiliateIdentity  String?
+  sourceProductIdentity    String?
+  sourceCommissionIdentities String[]            @default([])
+  sourceTransactionRef     String?
+  amount                   Decimal              @db.Decimal(24, 6)
+  amountMinor              BigInt?
+  currency                 String
+  originalStatus           String
+  allocationStatus         String               @default("UNALLOCATED")
+  periodStart              DateTime?
+  periodEnd                DateTime?
+  paidAt                   DateTime?
+  importedAt               DateTime             @default(now())
 
   @@index([batchId, importedAt])
   @@index([affiliateId, paidAt])
   @@index([merchantId])
+  @@index([ownerId, allocationStatus])
 }
+
+
+

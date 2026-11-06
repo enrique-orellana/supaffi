@@ -38,7 +38,10 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // earn a commission on this Merchant's sale.
   const click = await db.click.findUnique({
     where: { referralToken, affiliate: { merchantId: merchant.id } },
-    include: { affiliate: { include: { program: true } } },
+    include: {
+      affiliate: { include: { program: true } },
+      link: { select: { commissionRateOverride: true } },
+    },
   });
   if (!click) return; // token doesn't match one of this Merchant's Clicks
 
@@ -211,7 +214,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // to spend it on a sale that cannot pay anything.
   const affiliate = click.affiliate;
   const program = affiliate.program;
-  const rate = commissionRateFor(affiliate, program);
+  const rate = commissionRateFor(affiliate, program, click.link);
   if (rate <= 0) return;
 
   // Earned on the sale before tax and shipping. A subscription's first payment

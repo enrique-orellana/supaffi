@@ -15,6 +15,7 @@ export type ImportedLinkForAliasResolution = {
   merchantId: string;
   code: string;
   legacyAliases?: readonly string[];
+  legacyQueryParamAliases?: readonly string[];
 };
 
 /**
@@ -29,8 +30,12 @@ export function resolveLegacyQueryAlias(input: {
   importedLinks: readonly ImportedLinkForAliasResolution[];
 }): string | null {
   if (!input.adapter.legacyQueryParamAliases?.includes(input.queryParameter)) return null;
+  const parameter = input.queryParameter.toLowerCase();
+  const value = input.queryValue.toLowerCase();
   const matches = input.importedLinks.filter((link) =>
-    link.merchantId === input.merchantId && link.legacyAliases?.includes(input.queryValue),
+    link.merchantId === input.merchantId &&
+    link.legacyQueryParamAliases?.includes(parameter) &&
+    link.legacyAliases?.some((alias) => alias.toLowerCase() === value),
   );
   return matches.length === 1 ? matches[0].code : null;
 }

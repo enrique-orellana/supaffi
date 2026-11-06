@@ -132,7 +132,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const baseMinor = earned.baseMinor;
 
   const affiliate = click.affiliate;
-  const rate = commissionRateFor(affiliate, program);
+  const rate = commissionRateFor(affiliate, program, click.link);
   const amount = computeCommissionAmount(baseMinor, invoice.currency, rate);
   // A renewal covered by credit balance or discounted to nothing used to
   // leave a 0.00 row in both ledgers.

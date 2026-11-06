@@ -25,7 +25,7 @@ const RELOAD_WINDOW_MS = 10 * 60 * 1000;
 export async function GET(req: NextRequest) {
   const host = req.headers.get("host");
   const referralCode = req.nextUrl.searchParams.get(REFERRAL_QUERY_PARAM);
-  if (!host || !referralCode) {
+  if (!host) {
     return new NextResponse(null, { status: 400 });
   }
 
@@ -43,19 +43,66 @@ export async function GET(req: NextRequest) {
   // Affiliate that old links stop earning, and quietly crediting them anyway
   // would contradict what they were told. Retiring it still keeps the code
   // from ever resolving for someone else.
-  const link = await db.affiliateLink.findUnique({
-    where: { merchantId_code: { merchantId: merchant.id, code: referralCode } },
-    select: {
-      id: true,
-      affiliate: {
-        select: {
-          id: true,
-          program: { select: { attributionWindowDays: true } },
+  const legacyValues = [...req.nextUrl.searchParams.entries()]
+    .filter(([parameter]) => parameter.toLowerCase() !== REFERRAL_QUERY_PARAM.toLowerCase() && parameter.toLowerCase() !== "token")
+    .map(([parameter, value]) => ({ parameter: parameter.toLowerCase(), value: value.toLowerCase() }));
+  const [directCandidates, legacyCandidates] = await Promise.all([
+    referralCode ? db.affiliateLink.findMany({
+      where: { merchantId: merchant.id, OR: [{ code: referralCode }, { legacyAliases: { has: referralCode } }] },
+      select: {
+        id: true,
+        code: true,
+        legacyAliases: true,
+        legacyQueryParamAliases: true,
+        importSourceIdentity: true,
+        activeFrom: true,
+        activeUntil: true,
+        affiliate: {
+          select: {
+            id: true,
+            program: { select: { attributionWindowDays: true } },
+          },
         },
       },
-    },
-  });
-  if (!link) {
+    }) : Promise.resolve([]),
+    legacyValues.length ? db.affiliateLink.findMany({
+      where: {
+        merchantId: merchant.id,
+        importSourceIdentity: { not: null },
+        OR: legacyValues.map(({ parameter, value }) => ({ legacyQueryParamAliases: { has: parameter }, legacyAliases: { has: value } })),
+      },
+      select: {
+        id: true,
+        code: true,
+        legacyAliases: true,
+        legacyQueryParamAliases: true,
+        importSourceIdentity: true,
+        activeFrom: true,
+        activeUntil: true,
+        affiliate: {
+          select: {
+            id: true,
+            program: { select: { attributionWindowDays: true } },
+          },
+        },
+      },
+    }) : Promise.resolve([]),
+  ]);
+  const candidates = [...directCandidates, ...legacyCandidates];
+  const matchingById = new Map<string, (typeof candidates)[number]>();
+  for (const candidate of directCandidates) {
+    if (referralCode && (candidate.code === referralCode || (candidate.importSourceIdentity !== null && candidate.legacyAliases.includes(referralCode)))) {
+      matchingById.set(candidate.id, candidate);
+    }
+  }
+  for (const candidate of legacyCandidates) {
+    if (candidate.importSourceIdentity === null) continue;
+    const matches = legacyValues.some(({ parameter, value }) => candidate.legacyQueryParamAliases.includes(parameter) && candidate.legacyAliases.includes(value));
+    if (matches) matchingById.set(candidate.id, candidate);
+  }
+  const matching = [...matchingById.values()];
+  const link = matching.length === 1 ? matching[0] : null;
+  if (!link || (link.activeFrom && link.activeFrom > new Date()) || (link.activeUntil && link.activeUntil < new Date())) {
     return new NextResponse(null, { status: 404 });
   }
 

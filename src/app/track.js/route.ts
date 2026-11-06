@@ -21,18 +21,33 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findUnique({ where: { domain: host }, select: { domain: true } })
+    ? await db.merchant.findUnique({ where: { domain: host }, select: { id: true, domain: true } })
     : null;
   if (!merchant) {
     return new NextResponse(null, { status: 404 });
   }
 
-  const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?${REFERRAL_QUERY_PARAM}=`);
+  const importedLinks = await db.affiliateLink.findMany({
+    where: { merchantId: merchant.id, importSourceIdentity: { not: null } },
+    select: { legacyQueryParamAliases: true },
+  });
+  const legacyQueryParamAliases = [...new Set(importedLinks.flatMap((link) => link.legacyQueryParamAliases.map((name) => name.toLowerCase())))];
+  const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?`);
+  const legacyParams = JSON.stringify(legacyQueryParamAliases);
 
   const script = `
 (function () {
   var params = new URLSearchParams(window.location.search);
+  var attributionParams = new URLSearchParams();
   var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
+  if (code) attributionParams.set(${JSON.stringify(REFERRAL_QUERY_PARAM)}, code);
+  var legacyNames = new Set(${legacyParams});
+  params.forEach(function (value, parameter) {
+    var normalizedParameter = parameter.toLowerCase();
+    if (legacyNames.has(normalizedParameter) && value) {
+      attributionParams.append(normalizedParameter, value);
+    }
+  });
 
   // The token this browser already holds, read by exact cookie name. Sent
   // back to /api/track so a reload keeps its Click rather than starting a new
@@ -122,9 +137,9 @@ export async function GET(req: NextRequest) {
 
   // Without ?via= the held token is all there is. With it, the fresh token
   // replaces the held one, so links are tagged once it has arrived.
-  if (!code) return run(token);
+  if (!attributionParams.toString()) return run(token);
 
-  fetch(${trackUrl} + encodeURIComponent(code) + (token ? "&token=" + encodeURIComponent(token) : ""))
+  fetch(${trackUrl} + attributionParams.toString() + (token ? "&token=" + encodeURIComponent(token) : ""))
     .then(function (res) { return res.ok ? res.json() : null; })
     .catch(function () { return null; })
     .then(function (data) {
@@ -158,7 +173,7 @@ export async function GET(req: NextRequest) {
       // served within the hour. Vary on Host because one instance answers
       // for every Merchant, and a shared cache must not hand one Merchant's
       // script to another's site.
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=300",
       Vary: "Host",
     },
   });

@@ -247,10 +247,18 @@ function validateReferralRow(value: unknown, index: number, issues: ImportValida
     issues.push({ path, message: "Expected an object." });
     return null;
   }
-  checkKeys(value, ["sourceId", "affiliateSourceId", "code", "scope", "status", "createdAt", "activeFrom", "activeUntil", "legacyAliases"], path, issues);
+  checkKeys(value, ["sourceId", "affiliateSourceId", "code", "commissionRateOverrideBps", "scope", "status", "createdAt", "activeFrom", "activeUntil", "legacyAliases"], path, issues);
   const sourceId = requiredString(value, "sourceId", path, issues, 1, 160, SOURCE_ID_PATTERN);
   const affiliateSourceId = requiredString(value, "affiliateSourceId", path, issues, 1, 160, SOURCE_ID_PATTERN);
-  const code = requiredString(value, "code", path, issues, 1, 100, CODE_PATTERN);
+  const codeValue = requiredString(value, "code", path, issues, 1, 100, CODE_PATTERN);
+  const code = codeValue?.toLowerCase() ?? null;
+  let commissionRateOverrideBps: number | undefined;
+  if (value.commissionRateOverrideBps !== undefined) {
+    const rate = value.commissionRateOverrideBps;
+    if (!Number.isInteger(rate) || (rate as number) < 0 || (rate as number) > 10_000) {
+      issues.push({ path: path + ".commissionRateOverrideBps", message: "Rate must be an integer from 0 to 10000 basis points." });
+    } else commissionRateOverrideBps = rate as number;
+  }
   const status = value.status;
   if (status !== "active" && status !== "inactive") issues.push({ path: path + ".status", message: "Status must be active or inactive." });
   const createdAtRaw = requiredString(value, "createdAt", path, issues, 1, 40);
@@ -272,7 +280,7 @@ function validateReferralRow(value: unknown, index: number, issues: ImportValida
   let legacyAliases: string[] | undefined;
   if (value.legacyAliases !== undefined) {
     const aliases = stringArray(value, "legacyAliases", path, issues, CODE_PATTERN);
-    if (aliases) legacyAliases = aliases;
+    if (aliases) legacyAliases = aliases.map((alias) => alias.toLowerCase()).sort(compareStableStrings);
   }
   if (activeFrom && activeUntil && activeFrom > activeUntil) {
     issues.push({ path, message: "activeFrom must be earlier than or equal to activeUntil." });
@@ -282,6 +290,7 @@ function validateReferralRow(value: unknown, index: number, issues: ImportValida
     sourceId,
     affiliateSourceId,
     code,
+    ...(commissionRateOverrideBps !== undefined ? { commissionRateOverrideBps } : {}),
     scope,
     status,
     createdAt,
@@ -433,6 +442,12 @@ function validatePayload(input: unknown): AffiliateImportValidation {
     const key = row.code.toLowerCase();
     if (referralValues.has(key)) issues.push({ path: "$.referralCodes[" + index + "].code", message: "Duplicate referral code." });
     referralValues.add(key);
+    for (const [aliasIndex, alias] of (row.legacyAliases ?? []).entries()) {
+      if (referralValues.has(alias.toLowerCase())) {
+        issues.push({ path: "$.referralCodes[" + index + "].legacyAliases[" + aliasIndex + "]", message: "Referral codes and aliases must be unique within this bundle." });
+      }
+      referralValues.add(alias.toLowerCase());
+    }
   });
   commissions.forEach((row, index) => {
     if (!affiliateById.has(row.affiliateSourceId)) issues.push({ path: "$.commissions[" + index + "].affiliateSourceId", message: "Affiliate reference does not exist in this bundle." });
@@ -494,6 +509,7 @@ export function validateAffiliateImportBundle(input: unknown): AffiliateImportVa
   }
   return validatePayload(payload);
 }
+
 
 
 

@@ -1,10 +1,10 @@
 import { Prisma } from "@prisma/client";
-import type { Affiliate, Program } from "@prisma/client";
+import type { Affiliate, AffiliateLink, Program } from "@prisma/client";
 import type Stripe from "stripe";
 import { minorUnitsToMajor } from "@/lib/stripe";
 
-export function commissionRateFor(affiliate: Affiliate, program: Program): number {
-  return Number(affiliate.customCommissionRate ?? program.defaultCommissionRate);
+export function commissionRateFor(affiliate: Affiliate, program: Program, link?: Pick<AffiliateLink, "commissionRateOverride"> | null): number {
+  return Number(link?.commissionRateOverride ?? affiliate.customCommissionRate ?? program.defaultCommissionRate);
 }
 
 // Decimal rather than float arithmetic: an exact half cent is often held as

@@ -16,6 +16,7 @@ export type ImportedReferralCode = {
   sourceId: string;
   affiliateSourceId: string;
   code: string;
+  commissionRateOverrideBps?: number;
   scope: ReferralScope;
   status: "active" | "inactive";
   createdAt: string;
@@ -80,5 +81,6 @@ export function stableStringify(value: unknown): string {
   const keys = Object.keys(record).sort();
   return "{" + keys.map((key) => JSON.stringify(key) + ":" + stableStringify(record[key])).join(",") + "}";
 }
+
 
 

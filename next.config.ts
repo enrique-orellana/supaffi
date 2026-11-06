@@ -13,6 +13,7 @@ const pageSecurityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: { serverActions: { bodySizeLimit: "8mb" } },
   turbopack: {
     root: __dirname,
   },
