@@ -5,6 +5,7 @@ import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type ProductChecks } from "@/lib/checks/product";
 import { checkSectionFor, stepIds, type StepId } from "@/lib/onboarding";
+import { listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
 
 // Who and what, once per request. The layout, the page and every step share
 // this, so resolving the product and reading its setup happens once however
@@ -39,8 +40,14 @@ export const loadStepContext = cache(async (slug: string) => {
 export const loadChecks = cache(
   async (ownerId: string, merchantId: string, current: StepId): Promise<ProductChecks> => {
     const section = checkSectionFor(current);
+    const fresh =
+      current === "payments"
+        ? new Set(listPaymentProviderSetups().flatMap(({ checkSections }) => [...checkSections]))
+        : section
+          ? new Set([section])
+          : undefined;
     return runProductChecks(ownerId, merchantId, {
-      fresh: section ? new Set([section]) : undefined,
+      fresh,
       // The screen does not wait for any of it. Pressing Continue used to
       // hold the button down for two or three seconds while the step being
       // navigated to ran a DNS lookup, a TLS handshake and a fetch of the

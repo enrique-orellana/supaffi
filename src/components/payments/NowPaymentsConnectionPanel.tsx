@@ -5,25 +5,26 @@ import { CopyValue } from "@/components/CopyValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { ProductRef } from "@/lib/merchant";
+import type { PaymentProviderPanelProps } from "@/lib/payments/setupRegistry";
 import {
   disconnectNowPaymentsConnectionAction,
   saveNowPaymentsConnectionAction,
 } from "@/app/dashboard/products/[product]/settings/settingsActions";
+import {
+  disconnectNowPaymentsOnboardingAction,
+  saveNowPaymentsOnboardingAction,
+} from "@/app/onboarding/[product]/paymentActions";
 
-export function PaymentConnectionCard({
-  product,
-  connected,
-  hasCallbackId,
-  callbackUrl,
-}: {
-  product: ProductRef;
-  connected: boolean;
-  hasCallbackId: boolean;
-  callbackUrl: string | null;
-}) {
+export function NowPaymentsConnectionPanel({ label, product, status, surface }: PaymentProviderPanelProps) {
+  const callbackUrl = status.details && "callbackUrl" in status.details ? status.details.callbackUrl : null;
+  const saveAction =
+    surface === "onboarding" ? saveNowPaymentsOnboardingAction : saveNowPaymentsConnectionAction;
+  const disconnectAction =
+    surface === "onboarding"
+      ? disconnectNowPaymentsOnboardingAction
+      : disconnectNowPaymentsConnectionAction;
   const [state, formAction, pending] = useActionState(
-    saveNowPaymentsConnectionAction.bind(null, product),
+    saveAction.bind(null, product),
     { error: "" }
   );
 
@@ -31,13 +32,13 @@ export function PaymentConnectionCard({
     <div className="grid gap-4 rounded-(--radius) border border-neutral-200 bg-neutral-50 px-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm">NOWPayments</span>
+          <span className="text-sm">{label}</span>
           <span className="text-xs text-muted-foreground">
-            {connected ? "Connected" : "Not connected"}
+            {status.connected ? "Connected" : "Not connected"}
           </span>
         </div>
-        {connected && (
-          <form action={disconnectNowPaymentsConnectionAction.bind(null, product)}>
+        {status.connected && (
+          <form action={disconnectAction.bind(null, product)}>
             <Button type="submit" variant="secondary" size="sm" className="cursor-pointer">
               Disconnect
             </Button>
@@ -53,7 +54,7 @@ export function PaymentConnectionCard({
             name="apiKey"
             type="password"
             autoComplete="new-password"
-            placeholder={connected ? "Enter a replacement key" : "Paste API key"}
+            placeholder={status.connected ? "Enter a replacement key" : "Paste API key"}
             required
           />
         </div>
@@ -64,14 +65,14 @@ export function PaymentConnectionCard({
             name="ipnSecret"
             type="password"
             autoComplete="new-password"
-            placeholder={connected ? "Enter a replacement secret" : "Paste IPN secret"}
+            placeholder={status.connected ? "Enter a replacement secret" : "Paste IPN secret"}
             required
           />
         </div>
         <div className="flex flex-col gap-2 sm:col-span-2">
           {state.error && <p role="alert" className="text-sm text-status-danger">{state.error}</p>}
           <Button type="submit" size="sm" className="w-fit cursor-pointer" disabled={pending}>
-            {pending ? "Saving" : connected ? "Rotate credentials" : "Save credentials"}
+            {pending ? "Saving" : status.connected ? "Rotate credentials" : "Save credentials"}
           </Button>
         </div>
       </form>
@@ -80,13 +81,9 @@ export function PaymentConnectionCard({
         <span className="text-xs text-muted-foreground">Callback URL</span>
         {callbackUrl ? (
           <CopyValue value={callbackUrl} className="font-mono text-xs" />
-        ) : hasCallbackId ? (
-          <p className="text-xs text-muted-foreground">
-            Set the instance’s public domain to generate this URL.
-          </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Save credentials to generate this URL.
+            A saved connection and a public instance domain are required to generate this URL.
           </p>
         )}
       </div>

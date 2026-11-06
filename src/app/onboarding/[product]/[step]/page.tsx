@@ -1,13 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { backToDashboardHref, isStepId, stepPath, stepStates, type StepId } from "@/lib/onboarding";
+import { backToDashboardHref, isStepId, normalizeStepId, stepPath, stepStates, type StepId } from "@/lib/onboarding";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { Rail } from "../../Rail";
 import { loadChecks, loadStepContext, type Ctx } from "../checks";
 import { Product } from "../steps/Product";
 import { Subdomain } from "../steps/Subdomain";
-import { StripeKey } from "../steps/StripeKey";
+import { Payments } from "../steps/Payments";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
 
@@ -15,12 +15,16 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   const { product, step } = await params;
   // The email step is gone. A bookmark to it lands on the step that followed.
   if (step === "email") redirect(stepPath(product, "terms"));
-  if (!isStepId(step)) notFound();
+  const normalizedStep = normalizeStepId(step);
+  // Keep old Stripe-only links working, but always show the generic Payments route.
+  if (normalizedStep !== step) redirect(stepPath(product, "payments"));
+  if (!isStepId(normalizedStep)) notFound();
+  const currentStep: StepId = normalizedStep;
   const context = await loadStepContext(product);
 
   // Only this step's own section is re-run; the rest of the rail is whatever
   // the last run found, which is what makes a 15 second poll cheap.
-  const checks = await loadChecks(context.ownerId, context.merchant.id, step);
+  const checks = await loadChecks(context.ownerId, context.merchant.id, currentStep);
   const ctx: Ctx = { ...context, checks };
 
   // The rail is rendered here, not by the layout above. A layout is not
@@ -31,7 +35,7 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
     setup: ctx.setup,
     checks,
     onboardingCompletedAt: ctx.onboardingCompletedAt,
-    current: step,
+    current: currentStep,
     // Same test the subdomain screen itself makes: where the record can
     // never resolve, the rail does not hold the step open for it.
     dnsUnavailable: isDevInstance() || isLocalDomain(ctx.merchant.domain),
@@ -41,7 +45,7 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   return (
     <>
       <Rail steps={steps} productSlug={ctx.merchant.slug} backHref={backToDashboardHref(others)} />
-      {stepBody(step, ctx)}
+      {stepBody(currentStep, ctx)}
     </>
   );
 }
@@ -52,8 +56,8 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <Product ctx={ctx} />;
     case "subdomain":
       return <Subdomain ctx={ctx} />;
-    case "stripe-key":
-      return <StripeKey ctx={ctx} />;
+    case "payments":
+      return <Payments ctx={ctx} />;
     case "terms":
       return <Terms ctx={ctx} />;
     case "tracking":

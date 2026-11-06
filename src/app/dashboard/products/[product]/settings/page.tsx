@@ -1,14 +1,10 @@
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
-import { getNowPaymentsConnectionStatus } from "@/lib/paymentConnections";
 import { getCommerceIntegrationStatus } from "@/lib/commerceIntegrationAuth";
 import { getUncertainCommerceCheckouts } from "@/lib/commerceCheckouts";
-import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
-import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CheckList } from "@/components/onboarding/CheckList";
 import { dnsCheckRows, type CheckRow } from "@/components/onboarding/checkRows";
@@ -17,9 +13,9 @@ import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
-import { PaymentConnectionCard } from "@/components/dashboard/PaymentConnectionCard";
 import { CommerceIntegrationCard } from "./CommerceIntegrationCard";
 import { PaymentProvider } from "@/lib/payments/types";
+import { listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
@@ -54,11 +50,6 @@ function checkoutPageNumber(raw: string | undefined): number {
   return Number.isSafeInteger(parsed) ? parsed : 0;
 }
 
-const KEY_LABEL = {
-  restricted: "Restricted key",
-  secret: "Full account key",
-} as const;
-
 export default async function SettingsPage({
   params,
   searchParams,
@@ -76,11 +67,14 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup, nowPayments, commerceIntegration, uncertainCheckoutPage] = await Promise.all([
+  const providerSetups = listPaymentProviderSetups();
+  const [checks, keyKind, paymentStatuses, commerceIntegration, uncertainCheckoutPage] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
-    getProductSetup(ownerId, merchant.id),
-    getNowPaymentsConnectionStatus(ownerId, merchant.id),
+    Promise.all(providerSetups.map(async (setup) => ({
+      setup,
+      status: await setup.readStatus(ownerId, merchant.id),
+    }))),
     getCommerceIntegrationStatus(ownerId, merchant.id),
     getUncertainCommerceCheckouts(ownerId, merchant.id, checkoutPageNumber(query.checkoutPage)),
   ]);
@@ -96,33 +90,6 @@ export default async function SettingsPage({
     return `${settingsHref}?${params.toString()}`;
   };
 
-  const replaceLink = (which: string) => (
-    <Button variant="secondary" size="sm" render={<Link href={`${settingsHref}?replace=${which}`} />}>
-      Replace
-    </Button>
-  );
-
-  // Every row says what is true right now, in that order: connected, still
-  // being checked, or wrong. "Key works" sitting next to an amber ring was
-  // the label of a check, not a statement about the key, and read as either.
-  const stripeRows: CheckRow[] = [
-    {
-      id: "stripe-key",
-      state: !setup.stripeKeyStored ? "pending" : checks.stripe.key.ok ? "ok" : "failed",
-      pending: "No Stripe key yet",
-      passed: "Connected to Stripe",
-      failed: "Stripe rejected the key",
-      hint: "Replace it with a new one.",
-      action: replaceLink("stripe-key"),
-    },
-    {
-      id: "stripe-webhook",
-      state: !setup.stripeWebhookStored ? "pending" : checks.stripe.webhook.ok ? "ok" : "pending",
-      pending: setup.stripeWebhookStored ? "Waiting for the first event from Stripe" : "No webhook yet",
-      passed: "Receiving events from Stripe",
-      action: replaceLink("stripe-webhook"),
-    },
-  ];
   const dnsRows: CheckRow[] = local ? [] : dnsCheckRows(checks.dns);
 
   const sheets = {
@@ -169,31 +136,23 @@ export default async function SettingsPage({
 
       <Section title="Connections" flush>
         <div className="divide-y divide-neutral-200">
-          <div className="grid grid-cols-[7rem_1fr] gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 pt-3">
-              <span className="text-sm">Stripe</span>
-              <span className="text-xs text-muted-foreground">{keyKind ? KEY_LABEL[keyKind] : "Not connected"}</span>
-            </div>
-            <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50">
-              <CheckList rows={stripeRows} />
-            </div>
-          </div>
-          {keyKind === "secret" && (
-            <p className="px-5 py-3 text-xs text-muted-foreground">
-              This is a full account key. A restricted key is safer.{" "}
-              <a className="cursor-pointer underline" href={restrictedKeyUrl(merchant.name)} target="_blank" rel="noreferrer">
-                Create one in Stripe
-              </a>
-            </p>
-          )}
-        </div>
-        <div className="px-5 py-4">
-          <PaymentConnectionCard
-            product={productRef}
-            connected={nowPayments.connected}
-            hasCallbackId={nowPayments.hasCallbackId}
-            callbackUrl={nowPayments.callbackUrl}
-          />
+          {paymentStatuses.map(({ setup, status }) => {
+            const Panel = setup.panel;
+            return (
+              <div key={setup.provider} className="px-5 py-4">
+                <Panel
+                  provider={setup.provider}
+                  label={setup.label}
+                  product={merchant}
+                  status={status}
+                  surface="settings"
+                  local={local}
+                  checks={checks}
+                  stripeKeyKind={keyKind}
+                />
+              </div>
+            );
+          })}
         </div>
         <div className="px-5 py-4">
           <CommerceIntegrationCard

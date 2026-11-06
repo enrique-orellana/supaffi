@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getIntegrationStatus } from "@/lib/merchant";
+import { listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
+import { PaymentProvider, type PaymentProviderId } from "@/lib/payments/types";
 import { getTrackingStatus, type TrackingStatus } from "@/lib/tracking";
 
 /**
@@ -27,8 +28,10 @@ export type ProductSetup = {
   stripeKeyStored: boolean;
   /** The Stripe webhook signing secret is on file, whether or not the key is. */
   stripeWebhookStored: boolean;
-  /** Everything the instance needs connected, which is Stripe. */
+  /** At least one registered payment provider is connected. */
   integrationsConnected: boolean;
+  /** Connected payment providers in registry order. */
+  connectedPaymentProviders: PaymentProviderId[];
   firstProgramSlug: string | null;
   trackingStatus: TrackingStatus;
   /** Not a setup step. Cards read it; `doneCount` does not. */
@@ -46,8 +49,14 @@ export async function getProductSetup(
   ownerId: string,
   merchantId: string
 ): Promise<ProductSetup> {
-  const [integrations, programs, trackingStatus, affiliateCount] = await Promise.all([
-    getIntegrationStatus(ownerId, merchantId),
+  const paymentProviderSetups = listPaymentProviderSetups();
+  const [providerStatuses, programs, trackingStatus, affiliateCount] = await Promise.all([
+    Promise.all(
+      paymentProviderSetups.map(async ({ provider, readStatus }) => ({
+        provider,
+        ...await readStatus(ownerId, merchantId),
+      }))
+    ),
     db.program.findMany({
       where: { merchantId },
       orderBy: { createdAt: "asc" },
@@ -57,7 +66,17 @@ export async function getProductSetup(
     db.affiliate.count({ where: { merchantId } }),
   ]);
 
-  const integrationsConnected = integrations.stripe;
+  const connectedPaymentProviders = providerStatuses
+    .filter(({ connected }) => connected)
+    .map(({ provider }) => provider);
+  const integrationsConnected = connectedPaymentProviders.length > 0;
+  const stripeStatus = providerStatuses.find(({ provider }) => provider === PaymentProvider.STRIPE.id);
+  const stripeConnected = stripeStatus?.connected ?? false;
+  const stripeDetails = stripeStatus?.details;
+  const stripeKeyStored =
+    stripeDetails && "keyStored" in stripeDetails ? stripeDetails.keyStored : false;
+  const stripeWebhookStored =
+    stripeDetails && "webhookStored" in stripeDetails ? stripeDetails.webhookStored : false;
 
   // Tracking counts as done once anything has been recorded, not once a sale
   // has proven the checkout half. Waiting on a stranger to buy something is not
@@ -70,10 +89,11 @@ export async function getProductSetup(
   ].filter(Boolean).length;
 
   return {
-    stripeConnected: integrations.stripe,
-    stripeKeyStored: integrations.stripeKey,
-    stripeWebhookStored: integrations.stripeWebhook,
+    stripeConnected,
+    stripeKeyStored,
+    stripeWebhookStored,
     integrationsConnected,
+    connectedPaymentProviders,
     // The link handed out, so the first program anyone can still sign up to.
     firstProgramSlug: programs.find((p) => p.signupOpen)?.slug ?? null,
     trackingStatus,

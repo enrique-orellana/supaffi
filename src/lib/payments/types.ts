@@ -1,11 +1,32 @@
+import type { ProductChecks } from "@/lib/checks/product";
+
 export const PaymentProvider = {
-  STRIPE: { id: "stripe", database: "STRIPE" },
-  NOWPAYMENTS: { id: "nowpayments", database: "NOWPAYMENTS" },
+  STRIPE: {
+    id: "stripe",
+    database: "STRIPE",
+    label: "Stripe",
+    isReady: (connected: boolean, checks: ProductChecks) => connected && checks.stripe.key.ok,
+  },
+  NOWPAYMENTS: {
+    id: "nowpayments",
+    database: "NOWPAYMENTS",
+    label: "NOWPayments",
+    isReady: (connected: boolean, _checks: ProductChecks) => connected,
+  },
 } as const;
 
 export type PaymentProviderId = (typeof PaymentProvider)[keyof typeof PaymentProvider]["id"];
 export type PaymentProviderDatabaseValue =
   (typeof PaymentProvider)[keyof typeof PaymentProvider]["database"];
+
+export function isPaymentProviderReady(
+  providerId: PaymentProviderId,
+  connected: boolean,
+  checks: ProductChecks
+): boolean {
+  const provider = Object.values(PaymentProvider).find(({ id }) => id === providerId);
+  return provider?.isReady(connected, checks) ?? false;
+}
 
 export type PaymentProviderCapabilities = {
   webhooks: boolean;

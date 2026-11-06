@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PaymentProvider } from "@/lib/payments/types";
-import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName, dnsZone } from "@/lib/onboarding";
+import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName, dnsZone, normalizeStepId, isStepId, stepLabel } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -12,6 +12,7 @@ const setup = (over: Partial<ProductSetup> = {}): ProductSetup => ({
   stripeKeyStored: false,
   stripeWebhookStored: false,
   integrationsConnected: false,
+  connectedPaymentProviders: [],
   firstProgramSlug: null,
   trackingStatus: "not-started",
   affiliateCount: 0,
@@ -30,7 +31,7 @@ const checks = (over: Partial<ProductChecks> = {}): ProductChecks => ({
 
 describe("stepIds", () => {
   it("has five steps, the finished screen not being one", () => {
-    expect(stepIds()).toEqual(["product", "subdomain", "stripe-key", "terms", "tracking"]);
+    expect(stepIds()).toEqual(["product", "subdomain", "payments", "terms", "tracking"]);
     expect(stepIds()).not.toContain("link");
   });
   it("has no webhook step: the key's own save creates the endpoint", () => {
@@ -48,12 +49,70 @@ describe("stepStates", () => {
 
   it("shows a stored step as done once it is behind the user", () => {
     const states = stepStates({
-      setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
+      setup: setup({
+        stripeConnected: true,
+        stripeKeyStored: true,
+        stripeWebhookStored: true,
+        integrationsConnected: true,
+        connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      }),
       checks: checks({ stripe: { key: ok, webhook: no } }),
       onboardingCompletedAt: null,
       current: "terms",
     });
-    expect(states.find((s) => s.id === "stripe-key")?.state).toBe("done");
+    expect(states.find((s) => s.id === "payments")?.state).toBe("done");
+  });
+
+  it("keeps Payments waiting when the stored Stripe key fails its check", () => {
+    const states = stepStates({
+      setup: setup({
+        stripeConnected: true,
+        stripeKeyStored: true,
+        stripeWebhookStored: true,
+        integrationsConnected: true,
+        connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      }),
+      checks: checks({ stripe: { key: no, webhook: ok } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+
+    expect(states.find((s) => s.id === "payments")?.state).toBe("waiting");
+  });
+
+  it.each([
+    { description: "no providers", connectedPaymentProviders: [], stripeKeyOk: false, expected: "waiting" },
+    {
+      description: "NOWPayments alone",
+      connectedPaymentProviders: [PaymentProvider.NOWPAYMENTS.id],
+      stripeKeyOk: false,
+      expected: "done",
+    },
+    {
+      description: "Stripe alone after its key passes",
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      stripeKeyOk: true,
+      expected: "done",
+    },
+    {
+      description: "both providers",
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id, PaymentProvider.NOWPAYMENTS.id],
+      stripeKeyOk: true,
+      expected: "done",
+    },
+  ] satisfies {
+    description: string;
+    connectedPaymentProviders: ProductSetup["connectedPaymentProviders"];
+    stripeKeyOk: boolean;
+    expected: "waiting" | "done";
+  }[])("marks Payments correctly for $description", ({ connectedPaymentProviders, stripeKeyOk, expected }) => {
+    const states = stepStates({
+      setup: setup({ connectedPaymentProviders }),
+      checks: checks({ stripe: { key: stripeKeyOk ? ok : no, webhook: no } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(states.find((s) => s.id === "payments")?.state).toBe(expected);
   });
 
   it("a step the user walked past is waiting while its check says no", () => {
@@ -77,14 +136,19 @@ describe("stepStates", () => {
     expect(full.find((s) => s.id === "subdomain")?.state).toBe("done");
   });
 
-  it("stays current even once its own check has passed", () => {
+  it("stays current while a provider is connected", () => {
     const states = stepStates({
-      setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
+      setup: setup({
+        stripeConnected: true,
+        stripeKeyStored: true,
+        stripeWebhookStored: true,
+        connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      }),
       checks: checks({ stripe: { key: ok, webhook: no } }),
       onboardingCompletedAt: null,
-      current: "stripe-key",
+      current: "payments",
     });
-    expect(states.find((s) => s.id === "stripe-key")?.state).toBe("current");
+    expect(states.find((s) => s.id === "payments")?.state).toBe("current");
   });
 
   it("keeps finished steps finished when the user navigates back to an earlier one", () => {
@@ -95,6 +159,7 @@ describe("stepStates", () => {
         stripeConnected: true,
         stripeKeyStored: true,
         stripeWebhookStored: true,
+        connectedPaymentProviders: [PaymentProvider.STRIPE.id],
         firstProgramSlug: "standard",
         trackingStatus: "verified",
       }),
@@ -105,14 +170,14 @@ describe("stepStates", () => {
       onboardingCompletedAt: null,
       current: "subdomain",
     });
-    for (const id of ["stripe-key", "terms", "tracking"]) {
+    for (const id of ["payments", "terms", "tracking"]) {
       expect(states.find((s) => s.id === id)?.state, id).toBe("done");
     }
   });
 
   it("a step nobody has reached is still upcoming", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "subdomain" });
-    expect(states.find((s) => s.id === "stripe-key")?.state).toBe("upcoming");
+    expect(states.find((s) => s.id === "payments")?.state).toBe("upcoming");
     expect(states.find((s) => s.id === "tracking")?.state).toBe("upcoming");
   });
 
@@ -136,6 +201,7 @@ describe("stepStates", () => {
 describe("displayStep", () => {
   it("counts the steps there are, with nothing added for work already done", () => {
     expect(displayStep("product")).toEqual({ index: 1, total: 5 });
+    expect(displayStep("payments")).toEqual({ index: 3, total: 5 });
     expect(displayStep("terms")).toEqual({ index: 4, total: 5 });
   });
 });
@@ -143,21 +209,28 @@ describe("displayStep", () => {
 describe("stepIndex", () => {
   it("counts from one", () => {
     expect(stepIndex("product")).toBe(1);
-    expect(stepIndex("stripe-key")).toBe(3);
+    expect(stepIndex("payments")).toBe(3);
     expect(stepIndex("terms")).toBe(4);
   });
 });
 
 describe("navigation", () => {
   it("walks forward and back", () => {
-    expect(nextStep("stripe-key")).toBe("terms");
-    expect(previousStep("terms")).toBe("stripe-key");
+    expect(nextStep("payments")).toBe("terms");
+    expect(previousStep("terms")).toBe("payments");
     expect(nextStep("tracking")).toBeNull();
     expect(previousStep("product")).toBeNull();
   });
 
   it("builds the path", () => {
-    expect(stepPath("instantgradient", "stripe-key")).toBe("/onboarding/instantgradient/stripe-key");
+    expect(stepPath("instantgradient", "payments")).toBe("/onboarding/instantgradient/payments");
+  });
+
+  it("normalizes the legacy Stripe step and rejects unknown step ids", () => {
+    expect(normalizeStepId("stripe-key")).toBe("payments");
+    expect(isStepId(normalizeStepId("stripe-key"))).toBe(true);
+    expect(isStepId(normalizeStepId("not-a-step"))).toBe(false);
+    expect(stepLabel("payments")).toBe("Payments");
   });
 });
 
@@ -165,16 +238,45 @@ describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
     // Nothing stored anywhere means the Owner never got past the subdomain.
     expect(resumeStep(setup(), null)).toBe("subdomain");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("terms");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
+    expect(resumeStep(setup({
+      stripeConnected: true,
+      stripeKeyStored: true,
+      stripeWebhookStored: true,
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+    }), null)).toBe("terms");
+    expect(resumeStep(setup({
+      stripeConnected: true,
+      stripeKeyStored: true,
+      stripeWebhookStored: true,
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      firstProgramSlug: "standard",
+    }), null)).toBe("tracking");
   });
-  it("moves past the key once it is stored, webhook or not", () => {
-    // The endpoint is made in the same save as the key, so a stored key with
-    // no webhook is a local instance, and nothing further to ask for.
-    expect(resumeStep(setup({ stripeKeyStored: true, stripeWebhookStored: false }), null)).toBe("terms");
+  it("moves past Payments once a provider is connected", () => {
+    expect(resumeStep(setup({
+      stripeKeyStored: true,
+      stripeWebhookStored: false,
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+    }), null)).toBe("terms");
   });
-  it("lands on the link when everything is stored but the owner never saw it", () => {
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
+
+  it("resumes at Payments until any provider is connected", () => {
+    expect(resumeStep(setup({ firstProgramSlug: "standard", trackingStatus: "verified" }), null)).toBe("payments");
+    expect(resumeStep(setup({
+      connectedPaymentProviders: [PaymentProvider.NOWPAYMENTS.id],
+      firstProgramSlug: "standard",
+      trackingStatus: "verified",
+    }), null)).toBeNull();
+  });
+  it("returns no resume step when every setup step is complete", () => {
+    expect(resumeStep(setup({
+      stripeConnected: true,
+      stripeKeyStored: true,
+      stripeWebhookStored: true,
+      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+      firstProgramSlug: "standard",
+      trackingStatus: "awaiting-sale",
+    }), null)).toBeNull();
   });
 });
 
@@ -199,7 +301,7 @@ describe("backToDashboardHref", () => {
 describe("checkSectionFor", () => {
   it("names the one group of checks the step's screen shows", () => {
     expect(checkSectionFor("subdomain")).toBe("dns");
-    expect(checkSectionFor("stripe-key")).toBe(PaymentProvider.STRIPE.id);
+    expect(checkSectionFor("payments")).toBeNull();
     expect(checkSectionFor("tracking")).toBe("tracking");
     expect(checkSectionFor("product")).toBeNull();
     expect(checkSectionFor("terms")).toBeNull();

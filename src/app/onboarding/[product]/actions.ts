@@ -5,23 +5,19 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
   getMerchantForOwner,
-  getStripeWebhookEndpointId,
   updateMerchant,
-  connectStripe,
   markOnboardingComplete,
 } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { stepPath, nextStep, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
+import { stepPath, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
 import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
 import { validateProgramInput } from "@/lib/programValidation";
-import { stripeKeyWorks } from "@/lib/checks/stripe";
-import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
-import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
-import { isLocalDomain } from "@/lib/url";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
+import { getProductSetup } from "@/lib/productSetup";
+import { listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
 
 async function owner(): Promise<string> {
   const session = await auth();
@@ -124,75 +120,6 @@ export async function updateProductWebsiteAction(
   return { error: "", savedAt: Date.now() };
 }
 
-export async function saveStripeKeyAction(
-  product: { id: string; slug: string },
-  _prev: { error: string },
-  formData: FormData
-): Promise<{ error: string }> {
-  const ownerId = await owner();
-  const key = String(formData.get("value") ?? "").trim();
-  // Checked before it is stored: a key that fails here fails on the screen
-  // that can fix it, not on the first sale weeks later.
-  const check = await stripeKeyWorks(key);
-  if (!check.ok) return { error: check.detail };
-
-  const merchant = await getMerchantForOwner(ownerId, product.id);
-  if (!merchant) redirect("/onboarding");
-
-  // Stripe cannot reach a machine on your desk, so a local instance stores
-  // the key alone and the step shows the CLI command that forwards events.
-  if (isLocalDomain(merchant.domain)) {
-    await connectStripe(ownerId, product.id, { secretKey: key });
-    revalidatePath(stepPath(product.slug, "stripe-key"));
-    return { error: "" };
-  }
-
-  // The endpoint is created before anything is stored, with the key the
-  // owner just pasted. A key that cannot create it is refused here, on the
-  // screen with the button that makes a right one, rather than stored and
-  // left for a webhook screen to explain. There is no webhook screen.
-  const existingEndpoint = await getStripeWebhookEndpointId(ownerId, product.id);
-  if (existingEndpoint) {
-    await connectStripe(ownerId, product.id, { secretKey: key });
-  } else {
-    const created = await createWebhookEndpoint({
-      secretKey: key,
-      url: webhookEndpointUrl(merchant.domain),
-      productName: merchant.name,
-    });
-    if (!created.ok) {
-      return {
-        error:
-          created.reason === "permission"
-            ? "That key cannot create webhooks. Create it from the button above, with every row ticked."
-            : created.detail,
-      };
-    }
-    await connectStripe(ownerId, product.id, {
-      secretKey: key,
-      webhookSecret: created.secret,
-      webhookEndpointId: created.id,
-    });
-  }
-  redirect(stepPath(product.slug, nextStep("stripe-key")!));
-}
-
-export async function saveWebhookSecretAction(
-  product: { id: string; slug: string },
-  _prev: { error: string },
-  formData: FormData
-): Promise<{ error: string }> {
-  const ownerId = await owner();
-  const secret = String(formData.get("value") ?? "").trim();
-  if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
-  // A hand-pasted secret belongs to an endpoint Supaffi did not create, so
-  // the stored endpoint id is cleared: it must never later delete something
-  // the owner made themselves.
-  await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
-  revalidatePath(stepPath(product.slug, "stripe-key"));
-  return { error: "" };
-}
-
 export async function saveTermsAction(
   product: { id: string; slug: string },
   _prev: { error: string },
@@ -239,12 +166,26 @@ export async function recheckAction(product: { id: string; slug: string }, step:
   // asked to be kept waiting, and the button spins while it happens, so
   // coming back with last minute's answer would be a lie.
   const section = checkSectionFor(step);
-  if (section) await runProductChecks(ownerId, product.id, { fresh: new Set([section]) });
+  const sections =
+    step === "payments"
+      ? new Set(listPaymentProviderSetups().flatMap(({ checkSections }) => [...checkSections]))
+      : section
+        ? new Set([section])
+        : undefined;
+  if (sections?.size) await runProductChecks(ownerId, product.id, { fresh: sections });
   revalidatePath(stepPath(product.slug, step));
 }
 
 export async function finishOnboardingAction(product: { id: string; slug: string }): Promise<void> {
   const ownerId = await owner();
+  const merchant = await getMerchantForOwner(ownerId, product.id);
+  if (!merchant) redirect("/onboarding");
+
+  const setup = await getProductSetup(ownerId, product.id);
+  if (setup.connectedPaymentProviders.length === 0) {
+    redirect(stepPath(product.slug, "payments"));
+  }
+
   await markOnboardingComplete(ownerId, product.id);
   revalidatePath("/dashboard", "layout");
   // Back to the step they were already on, which now renders the finished

@@ -1,12 +1,12 @@
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 import { registrableCandidates } from "@/lib/checks/dns";
-import { PaymentProvider } from "@/lib/payments/types";
+import { isPaymentProviderReady } from "@/lib/payments/types";
 
 export type StepId =
   | "product"
   | "subdomain"
-  | "stripe-key"
+  | "payments"
   | "terms"
   | "tracking";
 
@@ -26,10 +26,7 @@ export type Step = {
 const ALL: StepId[] = [
   "product",
   "subdomain",
-  // No webhook step. The key is made from a link that ticks write access on
-  // webhook endpoints, and saving it creates the endpoint in the same
-  // action, so there was nothing left for a screen to ask.
-  "stripe-key",
+  "payments",
   "terms",
   "tracking",
 ];
@@ -37,7 +34,7 @@ const ALL: StepId[] = [
 const LABELS: Record<StepId, string> = {
   product: "Product",
   subdomain: "Subdomain",
-  "stripe-key": "Stripe key",
+  payments: "Payments",
   terms: "Commission",
   tracking: "Tracking",
 };
@@ -76,11 +73,10 @@ export function checkSectionFor(id: StepId): keyof ProductChecks | null {
   switch (id) {
     case "subdomain":
       return "dns";
-    case "stripe-key":
-      return PaymentProvider.STRIPE.id;
     case "tracking":
       return "tracking";
     case "product":
+    case "payments":
     case "terms":
       return null;
   }
@@ -94,11 +90,16 @@ export function isStepId(value: string): value is StepId {
   return (ALL as string[]).includes(value);
 }
 
+/** Keep old onboarding links working while the Stripe-only step becomes Payments. */
+export function normalizeStepId(value: string): string {
+  return value === "stripe-key" ? "payments" : value;
+}
+
 /**
  * Whether the step's stored data exists. This is what lets the user move on;
  * it says nothing about whether the outside world has caught up.
  */
-function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | null): boolean {
+function stored(id: StepId, setup: ProductSetup, _onboardingCompletedAt: Date | null): boolean {
   switch (id) {
     case "product":
       return true;
@@ -109,13 +110,14 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
       // stored at all means they never reached it, which is where a resume
       // should put them back.
       return (
+        setup.connectedPaymentProviders.length > 0 ||
         setup.stripeKeyStored ||
         setup.stripeWebhookStored ||
         setup.firstProgramSlug !== null ||
         setup.trackingStatus !== "not-started"
       );
-    case "stripe-key":
-      return setup.stripeKeyStored;
+    case "payments":
+      return setup.connectedPaymentProviders.length > 0;
     case "terms":
       return setup.firstProgramSlug !== null;
     case "tracking":
@@ -128,8 +130,10 @@ function verified(id: StepId, checks: ProductChecks, setup: ProductSetup, onboar
   switch (id) {
     case "subdomain":
       return checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
-    case "stripe-key":
-      return checks.stripe.key.ok;
+    case "payments":
+      return setup.connectedPaymentProviders.some((provider) =>
+        isPaymentProviderReady(provider, true, checks)
+      );
     case "tracking":
       return checks.tracking.script.ok || setup.trackingStatus !== "not-started";
     default:
