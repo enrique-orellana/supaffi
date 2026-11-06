@@ -6,7 +6,7 @@ Describes what Supaffi does today. This is the source for the docs site and the 
 
 A SaaS founder or small team that:
 
-- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app, or through **Stripe Payment Links**, buy buttons and pricing tables embedded on it;
+- sells subscriptions through **Stripe Checkout** or **Stripe Payment Links**, buy buttons and pricing tables, and may also sell one-time purchases through those Stripe paths or a signed **NOWPayments** hosted checkout;
 - wants to reward affiliates with a **percentage of what customers actually pay**;
 - pays affiliates **themselves**, by bank transfer, PayPal or similar, and records it in Supaffi;
 - is comfortable running a server, or following a one-command install.
@@ -15,8 +15,9 @@ A SaaS founder or small team that:
 
 ### Setup
 
-- One install runs several products, each with its own affiliate domain, Stripe account connection, program and affiliates.
+- One install runs several products, each with its own affiliate domain, payment connections, program and affiliates.
 - Stripe is connected with a restricted key, or a full secret key if you prefer. Supaffi creates the Stripe webhook itself and subscribes to exactly the events it needs.
+- NOWPayments can be connected for one-time hosted invoices created through the signed commerce integration. See [Payment providers](payment-providers.md) for setup and limits.
 - Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site and neither site links to the other's Payment Links, buy buttons or pricing tables.
 
 ### Tracking a referral
@@ -30,6 +31,7 @@ A SaaS founder or small team that:
 
 - A one-time purchase through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
+- A NOWPayments one-time hosted invoice created through the signed commerce checkout, when its verified `finished` callback matches the stored order and referred checkout.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
 - The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
@@ -39,23 +41,23 @@ A SaaS founder or small team that:
 
 - A percentage set per program, with an optional custom rate per affiliate.
 - Paid once, for a set number of months from the first payment, or for as long as the subscription pays.
-- On the price after discounts, before tax and shipping.
-- Only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing.
-- Only on the subscription the affiliate referred. One-off charges added to its invoices, manual invoices, and a switch to another Stripe product earn nothing.
-- Only on money collected through Stripe. An invoice you mark as paid outside Stripe earns nothing for the part paid outside Stripe.
+- For Stripe, on the price after discounts, before tax and shipping. For NOWPayments, on the signed checkout's sale amount and currency.
+- For Stripe, only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing. NOWPayments uses the sale amount reported for the matched hosted invoice.
+- For Stripe subscriptions, only on the subscription the affiliate referred. One-off charges added to its invoices, manual invoices, and a switch to another Stripe product earn nothing.
+- A Stripe invoice marked as paid outside Stripe earns nothing for the part paid outside Stripe. A NOWPayments payment must arrive through the signed checkout and its verified callback.
 - In the currency of the sale. Amounts in different currencies are never converted or added together. Very large amounts, like the Vietnamese dong, are supported.
-- A payment can be excluded from commissions by setting `supaffi` to `false`, in lowercase, in the metadata of the invoice, subscription or customer. Set it before the customer pays, for example in `subscription_data.metadata` when you create the Checkout Session. A flag added after payment excludes later renewals only. A one-time purchase can only be excluded through its customer or its post-purchase invoice.
+- A Stripe payment can be excluded from commissions by setting `supaffi` to `false`, in lowercase, in the metadata of the invoice, subscription or customer. Set it before the customer pays, for example in `subscription_data.metadata` when you create the Checkout Session. A flag added after payment excludes later renewals only. A one-time purchase can only be excluded through its customer or its post-purchase invoice.
 
 ### Protecting your money
 
 - **Holding period.** A commission becomes payable only after the number of days you set, so most refunds land before you pay.
-- **Refunds.** A full refund cancels the commission. A partial refund lowers it in proportion. On an invoice with charges besides the referred subscription, the refund counts against the referred part first, since Stripe does not say which part was refunded. A refund that reaches Supaffi before its sale still applies.
+- **Stripe refunds.** A full refund cancels the commission. A partial refund lowers it in proportion. On an invoice with charges besides the referred subscription, the refund counts against the referred part first, since Stripe does not say which part was refunded. A refund that reaches Supaffi before its sale still applies. A NOWPayments `refunded` callback voids an unpaid commission for the matched checkout.
 - **Refunds after you paid.** A paid commission is final. A refund or chargeback that arrives after you paid is your loss, and Supaffi never takes money back from the affiliate. The holding period is what protects you.
-- **Disputes.** While a chargeback is open, its commission cannot be paid. If it is lost before you paid, the commission is cancelled. A won one releases the commission.
-- **Self-referrals.** A sale is flagged when the buyer's email matches the affiliate's, or, when Stripe can show it, the card used matches a card on the affiliate's own Stripe customer. A flagged commission is never payable until you decide. Once you confirm a flag, or mark a referral as a self-referral yourself, everything unpaid from that referral is cancelled and it never earns again.
-- **Cancellations.** Once a subscription ends, it earns nothing more. Commissions already earned stay.
+- **Stripe disputes.** While a Stripe chargeback is open, its commission cannot be paid. If it is lost before you paid, the commission is cancelled. A won one releases the commission. NOWPayments disputes are not supported.
+- **Stripe self-referrals.** A Stripe sale is flagged when the buyer's email matches the affiliate's, or, when Stripe can show it, the card used matches a card on the affiliate's own Stripe customer. A flagged commission is never payable until you decide. Once you confirm a flag, or mark a referral as a self-referral yourself, everything unpaid from that referral is cancelled and it never earns again. NOWPayments does not provide this email/card self-referral check.
+- **Stripe cancellations.** Once a subscription ends, it earns nothing more. Commissions already earned stay.
 - **Marking a payout paid.** You pay one affiliate in one currency at a time. Supaffi records exactly the commissions and amounts you saw, even if one was refunded after you opened the page, since you already sent that money. A page over an hour old has to be reloaded first. If some of those commissions were already marked paid, Supaffi tells you. Sales that arrive meanwhile stay unpaid.
-- **Stripe delivery problems.** Duplicate, late or out-of-order Stripe events never create a second commission. Failed processing is retried for about two days.
+- **Payment event delivery problems.** Duplicate webhooks and callbacks never create a second commission, and provider statuses are applied idempotently. Failed event processing is retried for about two days.
 
 ### Affiliates
 
@@ -67,10 +69,10 @@ A SaaS founder or small team that:
 
 These are outside the product on purpose. They may come later if users need them.
 
-- **Payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
+- **Stripe payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
 - **Payment Links on your own custom checkout domain.** The script only tags links that point to Stripe's own address.
 - **Payment Links, buy buttons and pricing tables that already carry a client reference of your own.** The script leaves a filled-in one alone, so sales through them are not tracked. An empty one is tagged.
-- **Other payment providers:** Paddle, Lemon Squeezy, PayPal, app stores.
+- **Other payment providers and NOWPayments features:** NOWPayments subscriptions and recurring commissions, crypto payouts, Paddle, Lemon Squeezy, PayPal and app stores.
 - **Stripe Connect** platforms and marketplaces.
 - **Sending money.** Supaffi records payouts. It never pays affiliates itself.
 - **Tax forms and withholding** for affiliates, such as 1099 or W-8.

@@ -1,6 +1,6 @@
 # Affiliate import bundle format
 
-This document defines the versioned, provider-neutral JSON format used to preview affiliate program history imports. A bundle describes affiliate identities, referral codes and scopes, commission rows, and payout snapshots. Preview is a dry run; it does not write affiliate, referral, commission, or payout records.
+This document defines the versioned, provider-neutral JSON format used to preview affiliate program history imports. A bundle describes affiliate identities, referral codes and scopes, commission rows, and payout snapshots. Preview is a dry run; it does not write affiliate, referral, commission, or payout records. In this release, the only compiled importer is `canonical-json` version 1. Source-platform exports are not accepted unless a matching adapter has been compiled into the server.
 
 ## Limits and privacy
 
@@ -88,9 +88,20 @@ All four row collections and the manifest are required. Collections may be empty
 
 ## Adapter boundary and legacy query aliases
 
-An adapter is compiled into the server-side registry, converts a source payload to this canonical version in memory, and declares the format versions it supports. Unknown adapter IDs and unsupported versions are rejected; uploaded bundles cannot supply executable adapter code. The built-in `canonical-json` adapter accepts this canonical JSON format directly. Source-specific credentials and export files are not part of the canonical bundle. Import confirmation requires the same file and digest to be uploaded again; confirmed data is applied in resumable chunks.
+An adapter is compiled into the server-side registry, converts a source payload to this canonical version in memory, and declares the canonical versions it supports. The adapter contract is:
 
-An adapter may declare legacy query parameter names it recognizes. A referral row may provide historical code values in `legacyAliases`. The Merchant-scoped tracking script forwards only configured alias parameters; the server resolves each parameter/value pair only against imported links in the Merchant identified by the request host. Resolution succeeds only when all matching input values identify one distinct imported referral link. Missing, ambiguous, or cross-Merchant matches fail closed; aliases never create or resolve a link across Merchant boundaries.
+```ts
+type AffiliateImportAdapter = {
+  id: string;
+  supportedVersions: readonly number[];
+  legacyQueryParamAliases?: readonly string[];
+  toCanonicalBundle(input: unknown): unknown | Promise<unknown>;
+};
+```
+
+For example, the compiled `canonical-json` adapter declares `supportedVersions: [1]` and returns its input unchanged for validation. The adapter name in the manifest must match a registered adapter and its supported version. This release does not compile source-platform adapters; the example manifest above uses only the built-in canonical JSON adapter. Unknown adapter IDs and unsupported versions are rejected. Uploaded bundles can never provide or execute adapter code. Source-specific credentials and export files are not part of the canonical bundle. Import confirmation requires the same file and digest to be uploaded again; confirmed data is applied in resumable chunks.
+
+An adapter may declare legacy query parameter names it recognizes. A referral row may provide historical code values in `legacyAliases`. The Merchant-scoped tracking script forwards only query parameters declared by the imported links' adapter. `canonical-json` currently declares no legacy query parameter aliases. When an adapter does declare them, the server resolves a parameter/value pair only against imported links in the Merchant identified by the request host. Missing, ambiguous, or cross-Merchant matches fail closed; aliases never create or resolve a link across Merchant boundaries.
 
 ## Preview behavior
 
@@ -104,6 +115,8 @@ The dry-run preview validates the entire bundle and reports:
 A preview creates a new `AffiliateImportBatch` or updates an existing `PREVIEW` batch keyed by source Merchant, adapter, and normalized digest. A completed batch remains read-only; batches in any other non-preview state are also left unchanged and return a blocking message. Normalization sorts rows and unordered nested ID lists, validates calendar timestamps, normalizes timestamps and currency codes, and hashes the stable JSON encoding with SHA-256. Before application, the owner maps each source product to a target Merchant+Program pair owned by that same account. Affiliate identity mapping is explicit per target Merchant; an exact email match is shown as a conflict and is never merged automatically. Confirmation locks the batch and requires the submitted choices to match the choices saved by the latest preview. No source payload or row-level affiliate data is saved.
 
 Applied commission and payout rows remain immutable owner-scoped history. They are not operational commissions, payout totals, or payment instructions. A payout snapshot is allocated only when all referenced commission rows resolve to one target Merchant+Program pair; ambiguous snapshots remain a single unallocated archive row.
+
+Imported rows are history only; they do not become payment-provider events or activate commission processing. Review the preview and completed history report before switching any live commission writer. Follow the generic cutover order in [Payment providers](payment-providers.md#moving-from-another-commission-writer).
 
 Application is owner-only and resumable. It creates live links only for tracking-verified target Merchants and removes batch-created affiliates that end with no live link. Affiliate email mappings require an explicit owner choice with the same normalized email in the selected target Merchant and Program. The owner can download a complete CSV containing outcome rows for all source affiliates, links, commissions, and payouts; it does not include affiliate emails or the uploaded bundle.
 

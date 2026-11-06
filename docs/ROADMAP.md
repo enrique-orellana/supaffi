@@ -11,6 +11,8 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 | Feature | What you get |
 | --- | --- |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
+| **NOWPayments hosted checkout** | Signed one-time checkouts, verified callbacks and commissions on matched successful payments. No subscriptions or crypto payouts. |
+| **Canonical affiliate history import** | Preview and reconcile affiliate, link, commission and payout history with the versioned JSON format. |
 
 ## Up next
 
@@ -22,8 +24,8 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
-| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
-| **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
+| **More payment providers** | Add provider adapters beyond Stripe and NOWPayments. |
+| **Additional affiliate import adapters** | Convert more source formats into the canonical import bundle. Only `canonical-json` version 1 is compiled in this release. |
 | **Affiliate notifications** | Affiliates hear when they earn and when they are paid, and reset their own password. Optional, with your own mail server. |
 | **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
 | **Applications** | Approve new affiliates before they go live. |
