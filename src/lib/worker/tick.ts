@@ -3,6 +3,7 @@ import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
 import { runDailyCleanup } from "./cleanup";
+import { processCommerceDeliveryBatch } from "@/lib/commerceOutbox";
 
 let ticking = false;
 
@@ -36,6 +37,12 @@ export async function runTick(): Promise<void> {
         }
         await markFailed(event.id, event.attempts, err);
       }
+    }
+    try {
+      await processCommerceDeliveryBatch();
+    } catch {
+      // A claim/database failure must not prevent commission housekeeping.
+      console.error("[worker] commerce delivery batch failed");
     }
     await sweepPayableCommissions();
   } finally {
