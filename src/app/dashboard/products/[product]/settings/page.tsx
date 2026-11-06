@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
 import { getNowPaymentsConnectionStatus } from "@/lib/paymentConnections";
+import { getCommerceIntegrationStatus } from "@/lib/commerceIntegrationAuth";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
@@ -16,6 +17,7 @@ import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
 import { PaymentConnectionCard } from "@/components/dashboard/PaymentConnectionCard";
+import { CommerceIntegrationCard } from "./CommerceIntegrationCard";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
@@ -66,11 +68,12 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup, nowPayments] = await Promise.all([
+  const [checks, keyKind, setup, nowPayments, commerceIntegration] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
     getNowPaymentsConnectionStatus(ownerId, merchant.id),
+    getCommerceIntegrationStatus(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
@@ -174,6 +177,14 @@ export default async function SettingsPage({
             connected={nowPayments.connected}
             hasCallbackId={nowPayments.hasCallbackId}
             callbackUrl={nowPayments.callbackUrl}
+          />
+        </div>
+        <div className="px-5 py-4">
+          <CommerceIntegrationCard
+            product={productRef}
+            integrationId={commerceIntegration.integrationId}
+            configured={commerceIntegration.configured}
+            eventDestination={commerceIntegration.eventDestination}
           />
         </div>
       </Section>

@@ -118,10 +118,11 @@ export async function getNowPaymentsConnectionStatus(
 /** Server-side checkout credential read. Do not call from a Server Component. */
 export async function getNowPaymentsCheckoutConnection(
   merchantId: string
-): Promise<(PaymentConnectionSecrets & { callbackUrl: string | null }) | null> {
+): Promise<(PaymentConnectionSecrets & { connectionId: string; callbackUrl: string | null }) | null> {
   const connection = await db.paymentConnection.findUnique({
     where: { merchantId_provider: { merchantId, provider: "NOWPAYMENTS" } },
     select: {
+      id: true,
       apiKeyEnc: true,
       webhookSecretEnc: true,
       status: true,
@@ -139,6 +140,7 @@ export async function getNowPaymentsCheckoutConnection(
     return null;
   }
   return {
+    connectionId: connection.id,
     apiKey: decrypt(connection.apiKeyEnc),
     webhookSecret: decrypt(connection.webhookSecretEnc),
     callbackUrl: nowPaymentsCallbackUrl(connection.webhookRouteId),
