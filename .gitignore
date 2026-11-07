@@ -21,6 +21,9 @@ docker-compose.override.yml
 # Prisma
 prisma/generated/
 
+# Graphify output is generated locally and can be rebuilt when needed.
+graphify-out/
+
 # TypeScript build info
 *.tsbuildinfo
 
