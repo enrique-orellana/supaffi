@@ -71,7 +71,7 @@ export function StripeConnectionPanel({
             </span>
           </div>
         </div>
-        <div className="rounded-(--radius) border border-neutral-200 bg-white">
+        <div className="rounded-(--radius) border border-neutral-200 bg-card">
           <CheckList rows={rows} />
         </div>
         {stripeKeyKind === "secret" && (

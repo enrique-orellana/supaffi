@@ -39,7 +39,7 @@ export function AccountMenu({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-(--radius) px-2 text-left transition-[background-color] duration-150 hover:bg-black/[0.04] data-popup-open:bg-black/[0.04]">
+        <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-(--radius) px-2 text-left transition-[background-color] duration-150 hover:bg-foreground/[0.04] data-popup-open:bg-foreground/[0.04]">
           <span className="relative shrink-0">
             <Avatar className="size-8">
               <AvatarFallback>{initial}</AvatarFallback>

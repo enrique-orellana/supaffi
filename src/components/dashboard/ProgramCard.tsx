@@ -34,7 +34,7 @@ export function ProgramCard({
   editHref: string;
 }) {
   return (
-    <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-300 bg-white">
+    <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-300 bg-card">
       <div className="flex items-stretch gap-6 p-5">
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-5">
           <p className="truncate text-[17px] font-medium tracking-tight">{name}</p>

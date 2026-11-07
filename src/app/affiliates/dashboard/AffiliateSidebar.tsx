@@ -7,6 +7,7 @@ import { Building2, LinkIcon, LogOut, Receipt, Wallet, type LucideIcon } from "l
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { initials } from "@/lib/format";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Sidebar,
   SidebarContent,
@@ -37,7 +38,7 @@ import {
 const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
 
 const NAV_ROW =
-  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
+  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-foreground/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
 const BASE = "/affiliates/dashboard";
 
@@ -125,7 +126,8 @@ export function AffiliateSidebar({
 
       {/* Who they are signed in as, and the way out. Not a menu: an
           affiliate session has no account screen to put beside it. */}
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="gap-2 p-3">
+        <ThemeToggle />
         <div className="flex items-center gap-2.5 px-2">
           <Avatar className="size-8 shrink-0">
             <AvatarFallback>{email.charAt(0).toUpperCase() || "?"}</AvatarFallback>

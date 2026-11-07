@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ProductSwitcher } from "./ProductSwitcher";
 import { AccountMenu } from "./AccountMenu";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { UpdateInfo } from "./VersionNotice";
 
 // The open section is a white row with a hairline; every other row is flat
@@ -37,7 +38,7 @@ import type { UpdateInfo } from "./VersionNotice";
 const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
 
 const NAV_ROW =
-  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
+  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-foreground/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
@@ -198,6 +199,7 @@ export function AppSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         )}
+        <ThemeToggle />
         <AccountMenu email={email} version={version} update={update} />
       </SidebarFooter>
     </Sidebar>

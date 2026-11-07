@@ -17,7 +17,7 @@ export function TaskCard({ className, children }: { className?: string; children
   return (
     <div
       className={cn(
-        "divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white",
+        "divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card",
         className
       )}
     >

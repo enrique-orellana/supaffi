@@ -12,7 +12,7 @@ const buttonVariants = cva(
         // shadow; hover changes one colour step, press scales down.
         default: "border-0 bg-primary text-primary-foreground hover:bg-primary-hover",
         outline:
-          "border-border bg-white text-foreground hover:border-neutral-300 hover:bg-neutral-50 aria-expanded:border-neutral-300 aria-expanded:bg-neutral-50",
+          "border-border bg-card text-foreground hover:border-neutral-300 hover:bg-neutral-50 aria-expanded:border-neutral-300 aria-expanded:bg-neutral-50",
         secondary:
           "border-border bg-neutral-100 text-foreground hover:border-neutral-300 hover:bg-neutral-200 aria-expanded:bg-neutral-200",
         ghost:

@@ -28,7 +28,7 @@ export function CodeBlock({
   const [copiedPrompt, copyPrompt] = useCopy();
 
   return (
-    <div className="overflow-hidden rounded-(--radius) border border-neutral-300 bg-white">
+    <div className="overflow-hidden rounded-(--radius) border border-neutral-300 bg-card">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-100 py-1.5 pr-2 pl-4">
         <span className="truncate text-[13px] font-medium text-neutral-700">{title}</span>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -59,7 +59,7 @@ export function CopyField({ value, mono = true, className }: { value: string; mo
   return (
     <div
       className={cn(
-        "flex h-12 items-center gap-2 rounded-(--radius) border border-neutral-300 bg-white pr-2 pl-4",
+        "flex h-12 items-center gap-2 rounded-(--radius) border border-neutral-300 bg-card pr-2 pl-4",
         className
       )}
     >

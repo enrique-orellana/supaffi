@@ -48,7 +48,7 @@ export function ProductSwitcher({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-3 rounded-(--radius) border border-border bg-white px-2.5 text-left transition-[background-color,border-color] hover:border-neutral-300 duration-150 hover:bg-neutral-50 data-popup-open:bg-neutral-50">
+      <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-3 rounded-(--radius) border border-border bg-card px-2.5 text-left transition-[background-color,border-color] hover:border-neutral-300 duration-150 hover:bg-neutral-50 data-popup-open:bg-neutral-50">
         {active ? (
           <>
             <Mark name={active.name} />

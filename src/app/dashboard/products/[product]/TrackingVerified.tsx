@@ -49,7 +49,7 @@ export function TrackingVerified({ merchantId }: { merchantId: string }) {
         type="button"
         aria-label="Dismiss"
         onClick={() => setDismissed(true)}
-        className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-[var(--ease-out)] hover:bg-black/5 hover:text-foreground"
+        className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors duration-150 ease-[var(--ease-out)] hover:bg-foreground/5 hover:text-foreground"
       >
         <X className="size-4" />
       </button>

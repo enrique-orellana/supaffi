@@ -61,7 +61,7 @@ export function EditableField({
 
   const row = cn(
     "flex h-14 items-center justify-between gap-3 pr-2.5 pl-4",
-    !bare && "rounded-(--radius) border border-neutral-300 bg-white"
+    !bare && "rounded-(--radius) border border-neutral-300 bg-card"
   );
   const text = cn("text-[15px]", mono && "font-mono");
 

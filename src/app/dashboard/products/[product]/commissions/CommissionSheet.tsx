@@ -178,7 +178,7 @@ export function CommissionSheet({
           inset, radius and border are what separate it from the page behind
           it, the same "floating panel" treatment the design system gives any
           surface that sits over the canvas rather than in it. */}
-      <SheetContent className="w-[420px] gap-0 overflow-y-auto bg-white p-0 shadow-(--shadow-float) data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-[calc(100%-1.5rem)] data-[side=right]:rounded-(--radius) data-[side=right]:border data-[side=right]:border-neutral-200 data-[side=right]:sm:max-w-[420px]">
+      <SheetContent className="w-[420px] gap-0 overflow-y-auto bg-card p-0 shadow-(--shadow-float) data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-[calc(100%-1.5rem)] data-[side=right]:rounded-(--radius) data-[side=right]:border data-[side=right]:border-neutral-200 data-[side=right]:sm:max-w-[420px]">
         <SheetHeader className="gap-1 border-b border-neutral-200 bg-neutral-50 px-5 py-4 pr-12">
           <SheetTitle className="text-xl font-medium tabular-nums text-neutral-900">
             {commission.amount}

@@ -19,10 +19,10 @@ import { CopyField } from "./CodeBlock";
 export function FinishedModal({ link, dashboardHref }: { link: string; dashboardHref: string }) {
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="finished-title" className="fixed inset-0 z-40">
-      <div className="supaffi-fade-in absolute inset-0 bg-white/70 backdrop-blur-md" />
+      <div className="supaffi-fade-in absolute inset-0 bg-white/70 backdrop-blur-md dark:bg-black/50" />
       <Confetti />
       <div className="absolute inset-0 flex items-center justify-center p-6">
-        <div className="supaffi-modal-in relative z-50 flex w-full max-w-[520px] flex-col items-center gap-6 rounded-(--radius) border border-neutral-300 bg-white p-8 text-center shadow-(--shadow-float)">
+        <div className="supaffi-modal-in relative z-50 flex w-full max-w-[520px] flex-col items-center gap-6 rounded-(--radius) border border-neutral-300 bg-card p-8 text-center shadow-(--shadow-float)">
           <span className="supaffi-pop flex size-12 items-center justify-center rounded-(--radius) bg-status-success">
             <Check className="size-6 text-white" strokeWidth={3} />
           </span>

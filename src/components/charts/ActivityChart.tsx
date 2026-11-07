@@ -433,7 +433,7 @@ export function ActivityChart({
         {active && (
           <div
             role="tooltip"
-            className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-border bg-white px-3 py-2.5 text-[12px] shadow-(--shadow-float)"
+            className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-border bg-popover px-3 py-2.5 text-[12px] shadow-(--shadow-float)"
             style={{ left: tooltipX }}
           >
             <p className="mb-1.5 font-medium text-neutral-900">{periodLabel(active, bucket)}</p>

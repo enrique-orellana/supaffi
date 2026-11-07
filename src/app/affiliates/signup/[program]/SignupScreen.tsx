@@ -86,7 +86,7 @@ export function SignupScreen({
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
           <Tile label="Earn on" value={duration.value} hint={duration.hint} />
         </div>

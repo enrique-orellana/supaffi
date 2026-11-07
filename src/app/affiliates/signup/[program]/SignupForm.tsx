@@ -82,7 +82,7 @@ export function SignupForm({ action, linkHost }: Props) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Your referral link</Label>
-            <div className="flex h-9 items-center gap-1 rounded-(--radius) border border-input bg-white px-3 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+            <div className="flex h-9 items-center gap-1 rounded-(--radius) border border-input bg-card px-3 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
               <span className="shrink-0 font-mono text-sm whitespace-nowrap text-muted-foreground">
                 {linkHost}/?via=
               </span>

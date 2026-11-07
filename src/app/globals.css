@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Accent, the one blue. 700 is the primary fill, 600 its hover. */
   --accent-50: #f2f4fe;
@@ -139,6 +141,92 @@
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
+.dark {
+  color-scheme: dark;
+
+  --accent-50: #0f1350;
+  --accent-100: #171c73;
+  --accent-200: #1b2296;
+  --accent-300: #232dbe;
+  --accent-400: #3d45cb;
+  --accent-500: #5e6ee0;
+  --accent-600: #8ca0f0;
+  --accent-700: #b7c9f8;
+  --accent-800: #cfd8fa;
+  --accent-900: #e6eafc;
+  --accent-950: #f2f4fe;
+
+  --neutral-50: #18181b;
+  --neutral-100: #27272a;
+  --neutral-200: #3f3f46;
+  --neutral-300: #52525b;
+  --neutral-400: #71717a;
+  --neutral-500: #a1a1aa;
+  --neutral-600: #d4d4d8;
+  --neutral-700: #e4e4e7;
+  --neutral-800: #f4f4f5;
+  --neutral-900: #fafafa;
+  --neutral-950: #ffffff;
+
+  --brand-pink-50: #451a25;
+  --brand-pink-600: #fda4af;
+
+  --status-success: #4ade80;
+  --status-success-bg: #052e16;
+  --status-warning: #fbbf24;
+  --status-warning-bg: #451a03;
+  --status-danger: #f87171;
+  --status-danger-bg: #450a0a;
+
+  --canvas: #09090b;
+  --background: var(--canvas);
+  --foreground: var(--neutral-900);
+  --card: #18181b;
+  --card-foreground: var(--neutral-900);
+  --elevated: #27272a;
+  --popover: #18181b;
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--accent-500);
+  --primary-hover: var(--accent-400);
+  --primary-foreground: #ffffff;
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
+  --destructive: var(--status-danger);
+  --destructive-foreground: #450a0a;
+  --border: var(--neutral-200);
+  --input: var(--neutral-300);
+  --ring: var(--accent-500);
+
+  --chart-line: var(--accent-600);
+  --chart-line-soft: var(--accent-500);
+  --chart-bar: var(--neutral-300);
+  --chart-bar-lit: var(--neutral-400);
+  --chart-split: var(--accent-100);
+  --chart-split-edge: var(--accent-300);
+  --chart-area: rgb(94 110 224 / 0.14);
+  --chart-1: var(--accent-600);
+  --chart-2: var(--accent-400);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--neutral-400);
+
+  --nav-active: #18181b;
+  --sidebar: var(--canvas);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--accent-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--accent-500);
+
+  --shadow-float: 0 4px 16px rgb(0 0 0 / 0.35);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -162,6 +250,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --color-neutral-50: var(--neutral-50);
+  --color-neutral-100: var(--neutral-100);
+  --color-neutral-200: var(--neutral-200);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-400: var(--neutral-400);
+  --color-neutral-500: var(--neutral-500);
+  --color-neutral-600: var(--neutral-600);
+  --color-neutral-700: var(--neutral-700);
+  --color-neutral-800: var(--neutral-800);
+  --color-neutral-900: var(--neutral-900);
+  --color-neutral-950: var(--neutral-950);
 
   --color-status-success: var(--status-success);
   --color-status-success-bg: var(--status-success-bg);

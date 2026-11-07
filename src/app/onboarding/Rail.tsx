@@ -11,7 +11,7 @@ function rowClass(state: Step["state"], clickable: boolean): string {
     "flex min-h-9 items-center gap-3 rounded-lg px-3 py-1.5 text-sm",
     state === "current" && "bg-accent-50 font-medium text-accent-700",
     state === "upcoming" && "text-muted-foreground/60",
-    clickable && "cursor-pointer transition-colors hover:bg-black/[0.04]"
+    clickable && "cursor-pointer transition-colors hover:bg-foreground/[0.04]"
   );
 }
 
