@@ -16,7 +16,6 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
@@ -32,11 +31,6 @@ import {
 // One raised tile for the open section; every other row is flat on the
 // canvas and only tints on hover. The tile's edge comes from its shadow, not
 // a border, so it reads as lifted rather than outlined.
-// The primitive centres its badge on a 32px row. Ours are 40px and padded
-// 12px, so the badge drops to the row's middle and lines up with the label's
-// right padding.
-const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
-
 const NAV_ROW =
   "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-foreground/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
@@ -108,14 +102,15 @@ export function AffiliateSidebar({
                     >
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
+                      {item.key === "payouts" && payoutDetailsMissing && (
+                        <div
+                          className="ml-auto shrink-0 rounded-full bg-status-warning-bg px-1.5 py-1 text-[10px] leading-none font-medium whitespace-nowrap text-status-warning"
+                          title="Add payout details so your merchant can pay you"
+                        >
+                          Add payout details
+                        </div>
+                      )}
                     </SidebarMenuButton>
-                    {/* The one thing the shell can say without words: money is
-                        waiting on something only they can fix. */}
-                    {item.key === "payouts" && payoutDetailsMissing && (
-                      <SidebarMenuBadge className={NAV_BADGE}>
-                        <span className="block size-2 rounded-[1px] border-2 border-status-warning" />
-                      </SidebarMenuBadge>
-                    )}
                   </SidebarMenuItem>
                 );
               })}
