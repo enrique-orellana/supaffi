@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Section } from "@/components/dashboard/Page";
 import {
   PAYOUT_METHODS,
+  composeCryptoPayoutDetails,
   composePayoutDetails,
+  parseCryptoPayoutDetails,
   parsePayoutDetails,
   type PayoutMethod,
 } from "@/lib/payoutMethod";
@@ -28,9 +30,9 @@ async function submit(_prevState: FormState, formData: FormData): Promise<FormSt
 }
 
 /**
- * Where the merchant sends the money: a method from a short list and the one
- * value it needs, stored as a single line the owner copies ("PayPal: a@b.com").
- * "Other" keeps the free text for anything the list does not name.
+ * Where the merchant sends the money: a method from a short list and the
+ * details it needs, stored as a single line the owner can copy. "Other" keeps
+ * the free text for anything the list does not name.
  *
  * The save action sits in the card's band, the way every task card in the
  * flow carries the one action it owns. The button reaches the form by
@@ -45,13 +47,38 @@ export function PayoutDetailsForm({
 }) {
   const [state, formAction, pending] = useActionState(submit, {});
   const formId = useId();
-  const [method, setMethod] = useState<PayoutMethod>(() => parsePayoutDetails(initial).method);
-  const [value, setValue] = useState(() => parsePayoutDetails(initial).value);
+  const parsedInitial = parsePayoutDetails(initial);
+  const initialCrypto = parsedInitial.method === "crypto"
+    ? parseCryptoPayoutDetails(parsedInitial.value)
+    : { coinAndNetwork: "", walletAddress: "" };
+  const [method, setMethod] = useState<PayoutMethod>(parsedInitial.method);
+  const [value, setValue] = useState(() =>
+    parsedInitial.method === "crypto" ? initialCrypto.walletAddress : parsedInitial.value
+  );
+  const [cryptoCoinAndNetwork, setCryptoCoinAndNetwork] = useState(initialCrypto.coinAndNetwork);
+  const [cryptoWalletAddress, setCryptoWalletAddress] = useState(initialCrypto.walletAddress);
 
   // From the prop alone: the action revalidates the layout, so `initial`
   // arrives filled in after a save and the notice goes with it. Saving an
   // empty field leaves it up next to "Saved", which is the truth.
   const missing = initial.trim() === "";
+  const methodSelect = (
+    <Select items={METHOD_LABELS} value={method} onValueChange={(next) => setMethod(next as PayoutMethod)}>
+      <SelectTrigger
+        className={method === "crypto" ? "h-9 w-full cursor-pointer" : "h-9 w-full shrink-0 cursor-pointer sm:w-40"}
+        aria-label="Payout method"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(METHOD_LABELS).map(([key, label]) => (
+          <SelectItem key={key} value={key} className="cursor-pointer">
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   return (
     <Section
@@ -80,28 +107,51 @@ export function PayoutDetailsForm({
             Until this is filled in, your merchant has nowhere to send your money.
           </p>
         )}
-        <input type="hidden" name="payoutDetails" value={composePayoutDetails(method, value)} />
-        <div className="flex gap-2">
-          <Select items={METHOD_LABELS} value={method} onValueChange={(next) => setMethod(next as PayoutMethod)}>
-            <SelectTrigger className="h-9 w-40 shrink-0 cursor-pointer" aria-label="Payout method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(METHOD_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key} className="cursor-pointer">
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            aria-label={METHOD_LABELS[method]}
-            placeholder={PAYOUT_METHODS[method].placeholder}
-            spellCheck={false}
-          />
-        </div>
+        <input
+          type="hidden"
+          name="payoutDetails"
+          value={method === "crypto"
+            ? composeCryptoPayoutDetails({ coinAndNetwork: cryptoCoinAndNetwork, walletAddress: cryptoWalletAddress })
+            : composePayoutDetails(method, value)}
+        />
+        {method === "crypto" ? (
+          <div className="grid items-end gap-x-3 gap-y-2 sm:grid-cols-2">
+            {methodSelect}
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+              Coin and network
+              <Input
+                value={cryptoCoinAndNetwork}
+                onChange={(e) => setCryptoCoinAndNetwork(e.target.value)}
+                aria-label="Crypto coin and network"
+                placeholder="e.g. USDC on Base"
+                className="h-9"
+                spellCheck={false}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
+              Wallet address
+              <Input
+                value={cryptoWalletAddress}
+                onChange={(e) => setCryptoWalletAddress(e.target.value)}
+                aria-label="Crypto wallet address"
+                className="h-9 font-mono"
+                spellCheck={false}
+              />
+            </label>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {methodSelect}
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              aria-label={METHOD_LABELS[method]}
+              placeholder={PAYOUT_METHODS[method].placeholder}
+              spellCheck={false}
+              className="h-9"
+            />
+          </div>
+        )}
         {state.error && (
           <p role="alert" className="shrink-0 text-[13px] text-status-danger">
             {state.error}
