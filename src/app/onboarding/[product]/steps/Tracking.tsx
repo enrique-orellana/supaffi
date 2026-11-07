@@ -4,12 +4,13 @@ import { checkState, trackingPending } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
-import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
-import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
+import { trackingScriptPrompt } from "@/lib/integrationPrompt";
 import { displayStep, siteHost } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { FinishedModal } from "@/components/onboarding/FinishedModal";
 import { listProgramsForMerchant } from "@/lib/program";
+import { listPaymentTrackingGuides } from "@/lib/payments/setupRegistry";
+import { ProviderTrackingInstructions } from "@/components/payments/ProviderTrackingInstructions";
 import { AutoRefresh } from "../../AutoRefresh";
 import { finishOnboardingAction, recheckAction } from "../actions";
 import type { Ctx } from "../checks";
@@ -17,18 +18,10 @@ import type { Ctx } from "../checks";
 export async function Tracking({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   const product = { id: merchant.id, slug: merchant.slug };
+  const trackingGuides = listPaymentTrackingGuides(ctx.setup.connectedPaymentProviders);
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
-  const checkoutSnippet = `const referralToken = cookies.get("${REFERRAL_COOKIE}");
-
-await stripe.checkout.sessions.create({
-  // ...your existing options
-  metadata: {
-    // ...your existing metadata
-    ...(referralToken && { ${REFERRAL_METADATA_KEY}: referralToken }),
-  },
-});`;
   const site = siteHost(merchant.websiteUrl);
   const found = checks.tracking.script.ok;
   // Finishing happens on this screen, so the reward does too. The step stays
@@ -74,9 +67,8 @@ await stripe.checkout.sessions.create({
         </TaskCardSection>
       </TaskCard>
 
-      <StepLabel>Then, wherever you create the Stripe checkout session.</StepLabel>
-      <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPrompt({ checkoutSnippet })} />
-      <StepLabel>Stripe Payment Links, buy buttons and pricing tables need nothing more.</StepLabel>
+      <StepLabel>Checkout setup for connected providers</StepLabel>
+      <ProviderTrackingInstructions guides={trackingGuides} />
       {program && (
         <FinishedModal
           link={`${originFor(merchant.domain)}/affiliates/signup/${program.slug}`}

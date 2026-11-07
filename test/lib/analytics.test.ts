@@ -109,8 +109,10 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   }
 
   async function makeClick(affiliateId: string, createdAt = new Date()) {
+    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
     return db.click.create({
       data: {
+        merchantId: affiliate.merchantId,
         affiliateId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 86400_000),

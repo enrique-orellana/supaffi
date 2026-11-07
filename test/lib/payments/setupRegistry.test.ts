@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getIntegrationStatus } from "@/lib/merchant";
 import { getNowPaymentsConnectionStatus } from "@/lib/paymentConnections";
-import { getPaymentProviderSetup, listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
+import {
+  getPaymentProviderSetup,
+  listPaymentProviderSetups,
+  listPaymentTrackingGuides,
+} from "@/lib/payments/setupRegistry";
 import { PaymentProvider } from "@/lib/payments/types";
 import type { PaymentProviderSetupStatus } from "@/lib/payments/setupRegistry";
 
@@ -54,6 +58,30 @@ describe("payment provider setup registry", () => {
       "StripeConnectionPanel",
       "NowPaymentsConnectionPanel",
     ]);
+  });
+
+  it("shows the supported automatic checkout-capture path for connected NOWPayments", () => {
+    const guides = listPaymentTrackingGuides([PaymentProvider.NOWPAYMENTS.id]);
+
+    expect(guides).toHaveLength(1);
+    expect(guides[0]).toMatchObject({
+      provider: PaymentProvider.NOWPAYMENTS.id,
+      label: PaymentProvider.NOWPAYMENTS.label,
+      title: "NOWPayments hosted invoices",
+    });
+    expect(guides[0].checkoutSnippet).toBeUndefined();
+    expect(guides[0].description).toContain("same-origin fetch POSTs");
+    expect(guides[0].description).toContain("cross-origin fetch POSTs");
+    expect(guides[0].description).toContain("CORS");
+    expect(guides[0].description).toContain("XHR");
+    expect(listPaymentTrackingGuides([])).toEqual([]);
+  });
+
+  it("keeps Stripe's server-side referral instructions in its provider module", () => {
+    const stripe = listPaymentTrackingGuides([PaymentProvider.STRIPE.id])[0];
+
+    expect(stripe.checkoutSnippet).toContain("supaffi_referral");
+    expect(stripe.checkoutPrompt).toContain("Stripe Checkout");
   });
 
   it("maps Stripe connection diagnostics to safe status metadata", async () => {

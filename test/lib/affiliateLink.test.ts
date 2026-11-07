@@ -201,8 +201,8 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
 
     expect(await updateLink(sarah.id, primary!.id, { code: "sarah", destinationPath: "" })).toEqual({ ok: true });
-    expect(await db.retiredLinkCode.findUnique({ where: { code: "sarah" } })).toBeNull();
-    expect((await db.retiredLinkCode.findUnique({ where: { code: "sarah-new" } }))?.affiliateId).toBe(sarah.id);
+    expect(await db.retiredLinkCode.findUnique({ where: { merchantId_code: { merchantId: merchant.id, code: "sarah" } } })).toBeNull();
+    expect((await db.retiredLinkCode.findUnique({ where: { merchantId_code: { merchantId: merchant.id, code: "sarah-new" } } }))?.affiliateId).toBe(sarah.id);
   });
 
   it("never hands a deleted code to another affiliate", async () => {
@@ -269,6 +269,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     // Two clicks on the primary, one of which converted. One click on the second.
     const converting = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -277,6 +278,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -285,6 +287,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: secondId,
         referralToken: crypto.randomUUID(),
@@ -293,6 +296,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: converting.id,
         amount: "12.00",
@@ -316,6 +320,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),

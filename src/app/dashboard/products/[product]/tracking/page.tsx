@@ -5,10 +5,10 @@ import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { clickedRecently, getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
-import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
+import { trackingScriptPrompt } from "@/lib/integrationPrompt";
 import { originFor } from "@/lib/url";
-import { CHECKOUT_SNIPPET } from "./TrackingSteps";
 import { TrackingStatus } from "./TrackingStatus";
+import { listPaymentProviderSetups, listPaymentTrackingGuides } from "@/lib/payments/setupRegistry";
 
 /**
  * Where tracking stands, and the two snippets that fix it when it does not.
@@ -43,8 +43,9 @@ export default async function TrackingPage({
   // A flag, not a value: anything but the one string it is set to reads as
   // off, so a URL somebody made up cannot ask for anything else.
   const forceFresh = query.fresh === "1";
+  const providerSetups = listPaymentProviderSetups();
 
-  const [checks, timestamps, metrics] = await Promise.all([
+  const [checks, timestamps, metrics, paymentStatuses] = await Promise.all([
     runProductChecks(
       ownerId,
       merchant.id,
@@ -52,7 +53,14 @@ export default async function TrackingPage({
     ),
     getTrackingTimestamps(merchant.id),
     getProductMetrics(ownerId, merchant.id),
+    Promise.all(providerSetups.map(async ({ provider, readStatus }) => ({
+      provider,
+      connected: (await readStatus(ownerId, merchant.id)).connected,
+    }))),
   ]);
+  const trackingGuides = listPaymentTrackingGuides(
+    paymentStatuses.filter(({ connected }) => connected).map(({ provider }) => provider)
+  );
 
   // Nothing to write: the check runs at render time, so asking again is asking
   // for this page to be rendered again, with the cached tracking result
@@ -76,9 +84,8 @@ export default async function TrackingPage({
       clickedRecently={clickedRecently(timestamps.lastClickAt)}
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
-      checkoutSnippet={CHECKOUT_SNIPPET}
+      trackingGuides={trackingGuides}
       scriptPrompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
-      checkoutPromptText={checkoutPrompt({ checkoutSnippet: CHECKOUT_SNIPPET })}
       checkAgain={checkAgain}
     />
   );

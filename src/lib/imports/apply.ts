@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { AffiliateProgramImportBundle, ImportedCommissionRow, ImportedPayoutSnapshot } from "@/lib/imports/canonical";
+import type { AffiliateProgramImportBundle, ImportedCommissionRow } from "@/lib/imports/canonical";
 import { validateAffiliateImportBundle, importUploadSizeIssue } from "@/lib/imports/validate";
 import { db } from "@/lib/db";
 import { stableStringify } from "@/lib/imports/canonical";
@@ -56,7 +56,7 @@ const CHUNK_SIZE = 75;
 const SAMPLE_LIMIT = 40;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 
-function asObject(value: Prisma.JsonValue | null): Record<string, unknown> {
+function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
@@ -215,7 +215,7 @@ async function validateChoices(ownerId: string, bundle: AffiliateProgramImportBu
 }
 
 function decimalFromMinor(amountMinor: string, currency: string): Prisma.Decimal {
-  const digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits;
+  const digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
   const amount = BigInt(amountMinor);
   if (digits === 0) return new Prisma.Decimal(amount.toString());
   const scale = 10n ** BigInt(digits);
@@ -291,7 +291,7 @@ async function lockCodes(tx: Prisma.TransactionClient, merchantId: string, codes
         SELECT code FROM unnest(ARRAY[${Prisma.join(chunk)}]::text[]) AS input_codes(code)
         ORDER BY lower(code)
       )
-      SELECT pg_advisory_xact_lock(hashtextextended('link-code:' || ${merchantId} || ':' || lower(ordered_codes.code), 0))
+      SELECT pg_advisory_xact_lock(hashtextextended('link-code:' || ${merchantId} || ':' || lower(ordered_codes.code), 0)) IS NULL AS locked
       FROM ordered_codes
       ORDER BY lower(ordered_codes.code)`;
   }

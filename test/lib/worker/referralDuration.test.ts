@@ -151,15 +151,12 @@ describe("readReferralHistory", () => {
     expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(true);
   });
 
-  it("ignores a commission on another merchant's affiliate even if it carried the same click id", async () => {
-    // A commission's affiliate always belongs to the click's own merchant by
-    // construction (recordCommission.ts locks the click and writes its own
-    // affiliateId), so this cannot happen through the app. The filter is kept
-    // as a defence anyway, matching the subscription branch above.
+  it("rejects a commission that combines a click and an affiliate from different Merchants", async () => {
     const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
     const other = await seedMerchant(merchant.ownerId);
     const { affiliate: otherAffiliate } = await seedReferral(other, { durationType: "ONE_TIME" });
-    await seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant");
+    await expect(seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant"))
+      .rejects.toMatchObject({ code: "P2003" });
 
     expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(false);
   });

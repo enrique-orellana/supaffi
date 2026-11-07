@@ -11,9 +11,9 @@ export const runtime = "nodejs";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-async function readBoundedBody(request: Request): Promise<string | null> {
+async function readBoundedBody(request: Request, maxBytes: number): Promise<Buffer | null> {
   const contentLength = request.headers.get("content-length");
-  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > MAX_BODY_BYTES) return null;
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) return null;
   if (!request.body) return null;
 
   const reader = request.body.getReader();
@@ -24,7 +24,7 @@ async function readBoundedBody(request: Request): Promise<string | null> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         await reader.cancel();
         return null;
       }
@@ -35,7 +35,9 @@ async function readBoundedBody(request: Request): Promise<string | null> {
   }
 
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    new TextDecoder("utf-8", { fatal: true }).decode(body);
+    return body;
   } catch {
     return null;
   }
@@ -61,6 +63,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ connectionId: string }> }
 ) {
+  const receivedAt = new Date();
   const contentType = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
   if (contentType !== "application/json") return new NextResponse(null, { status: 415 });
 
@@ -78,8 +81,15 @@ export async function POST(
   });
   if (!connection?.webhookSecretEnc) return new NextResponse(null, { status: 404 });
 
-  const rawBody = await readBoundedBody(request);
-  if (!rawBody) return new NextResponse(null, { status: 413 });
+  const rawBodyBytes = await readBoundedBody(request, MAX_BODY_BYTES);
+  if (!rawBodyBytes?.byteLength) return new NextResponse(null, { status: 413 });
+
+  let providerRawBody: string;
+  try {
+    providerRawBody = new TextDecoder("utf-8", { fatal: true }).decode(rawBodyBytes);
+  } catch {
+    return new NextResponse(null, { status: 413 });
+  }
 
   const adapter = getPaymentProviderAdapter(PaymentProvider.NOWPAYMENTS.id);
   if (!adapter) return new NextResponse(null, { status: 404 });
@@ -87,10 +97,9 @@ export async function POST(
   let event: VerifiedProviderEvent | null;
   try {
     event = adapter.verifyAndParseWebhook({
-      rawBody,
+      rawBody: providerRawBody,
       headers: request.headers,
       connection: {
-        apiKey: null,
         webhookSecret: decrypt(connection.webhookSecretEnc),
       },
     });
@@ -100,14 +109,6 @@ export async function POST(
   if (!event || event.provider !== PaymentProvider.NOWPAYMENTS.id || !event.paymentRef) {
     return new NextResponse(null, { status: 400 });
   }
-  const providerPayload = event.rawPayload as Record<string, unknown>;
-  if (
-    typeof providerPayload.order_id !== "string" ||
-    !providerPayload.order_id.trim() ||
-    providerPayload.order_id.length > 255 ||
-    /[\u0000-\u001f\u007f]/.test(providerPayload.order_id)
-  ) return new NextResponse(null, { status: 400 });
-
   try {
     await db.webhookEvent.create({
       data: {
@@ -115,6 +116,7 @@ export async function POST(
         provider: PaymentProvider.NOWPAYMENTS.database,
         providerEventId: event.eventId,
         payload: queuedPayload(event),
+        createdAt: receivedAt,
       },
     });
   } catch (error) {

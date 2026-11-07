@@ -46,18 +46,7 @@ export function NowPaymentsConnectionPanel({ label, product, status, surface }: 
         )}
       </div>
 
-      <form action={formAction} className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="nowpayments-api-key">API key</Label>
-          <Input
-            id="nowpayments-api-key"
-            name="apiKey"
-            type="password"
-            autoComplete="new-password"
-            placeholder={status.connected ? "Enter a replacement key" : "Paste API key"}
-            required
-          />
-        </div>
+      <form action={formAction} className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="nowpayments-ipn-secret">IPN secret</Label>
           <Input
@@ -69,16 +58,16 @@ export function NowPaymentsConnectionPanel({ label, product, status, surface }: 
             required
           />
         </div>
-        <div className="flex flex-col gap-2 sm:col-span-2">
+        <div className="flex flex-col gap-2">
           {state.error && <p role="alert" className="text-sm text-status-danger">{state.error}</p>}
           <Button type="submit" size="sm" className="w-fit cursor-pointer" disabled={pending}>
-            {pending ? "Saving" : status.connected ? "Rotate credentials" : "Save credentials"}
+            {pending ? "Saving" : status.connected ? "Rotate IPN secret" : "Save IPN secret"}
           </Button>
         </div>
       </form>
 
       <div className="grid gap-1.5 border-t border-neutral-200 pt-3">
-        <span className="text-xs text-muted-foreground">Callback URL</span>
+        <span className="text-xs text-muted-foreground">Supaffi receiver URL</span>
         {callbackUrl ? (
           <CopyValue value={callbackUrl} className="font-mono text-xs" />
         ) : (
@@ -86,6 +75,9 @@ export function NowPaymentsConnectionPanel({ label, product, status, surface }: 
             A saved connection and a public instance domain are required to generate this URL.
           </p>
         )}
+        <p className="text-xs text-muted-foreground">
+          Set <code>SUPAFFI_WEBHOOK_URL</code> in your merchant-owned relay and set <code>EXISTING_WEBHOOK_URL</code> to your current payment webhook. Point the NOWPayments callback at the relay. It forwards the original signed notification to both destinations; Supaffi never calls your app.
+        </p>
       </div>
     </div>
   );

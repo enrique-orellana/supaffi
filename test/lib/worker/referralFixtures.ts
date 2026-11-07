@@ -72,6 +72,7 @@ export async function seedReferral(
   const createdAt = opts.clickCreatedAt ?? new Date(Date.now() - DAY);
   const click = await db.click.create({
     data: {
+      merchantId: merchant.id,
       affiliateId: affiliate.id,
       referralToken: crypto.randomUUID(),
       createdAt,

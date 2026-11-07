@@ -31,7 +31,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/lib/affiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -233,28 +232,14 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     expect(isUniqueConstraintErrorOn(caught, "code")).toBe(false);
   });
 
-  it("isUniqueConstraintErrorOn identifies a code collision as a code violation, not an email one — even across different Merchants, since AffiliateLink.code is globally unique", async () => {
+  it("allows different Merchants to use the same referral code", async () => {
     await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+    const affiliate = await createAffiliate(otherMerchantId, otherProgramId, {
+      name: "Sarah",
+      email: "sarah-from-other-merchant@example.com",
+    });
 
-    let caught: unknown;
-    try {
-      // Different Merchant, different email — only the code collides.
-      await db.affiliate.create({
-        data: {
-          merchantId: otherMerchantId,
-          programId: otherProgramId,
-          email: "sarah-from-other-merchant@example.com",
-          name: "Sarah",
-          links: { create: { code: "sarah", isPrimary: true } },
-        },
-      });
-    } catch (err) {
-      caught = err;
-    }
-
-    expect(caught).toBeDefined();
-    expect(isUniqueConstraintErrorOn(caught, "code")).toBe(true);
-    expect(isUniqueConstraintErrorOn(caught, "email")).toBe(false);
+    expect(affiliate.referralCode).toBe("sarah");
   });
 
   describe("listAffiliateCommissions / updateAffiliatePayoutDetails", () => {
@@ -268,7 +253,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
       const click = await db.click.create({
-        data: { affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
+        data: { merchantId: affiliate.merchantId, affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
       });
       for (let i = 0; i < 3; i++) {
         await db.commission.create({
@@ -368,8 +353,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   }
 
   async function makeClick(affiliateId: string) {
+    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
     return db.click.create({
       data: {
+        merchantId: affiliate.merchantId,
         affiliateId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

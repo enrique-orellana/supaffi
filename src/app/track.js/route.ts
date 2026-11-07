@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { originFor } from "@/lib/url";
+import { listPaymentProviderAdapters } from "@/lib/payments/registry";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -32,7 +33,15 @@ export async function GET(req: NextRequest) {
     select: { legacyQueryParamAliases: true },
   });
   const legacyQueryParamAliases = [...new Set(importedLinks.flatMap((link) => link.legacyQueryParamAliases.map((name) => name.toLowerCase())))];
-  const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?`);
+  const trackingOrigin = originFor(merchant.domain);
+  const trackUrl = JSON.stringify(`${trackingOrigin}/api/track?`);
+  const checkoutAttributionUrl = JSON.stringify(`${trackingOrigin}/api/track/checkout-attribution`);
+  const checkoutTrackingAdapters = JSON.stringify(
+    listPaymentProviderAdapters()
+      .flatMap((adapter) =>
+        adapter.clientTracking ? [{ provider: adapter.provider, ...adapter.clientTracking }] : []
+      )
+  );
   const legacyParams = JSON.stringify(legacyQueryParamAliases);
 
   const script = `
@@ -64,6 +73,303 @@ export async function GET(req: NextRequest) {
   // write was blocked (or shadowed by a same-named cookie) is not undone by
   // reading back the older value.
   var seen = token;
+
+  // Hosted checkout attribution is registered before the merchant receives
+  // its checkout response and can navigate the buyer away. This only records
+  // which click opened an invoice; the signed provider IPN remains the sole
+  // source of payment status.
+  var checkoutAttributionUrl = ${checkoutAttributionUrl};
+  var checkoutTrackingAdapters = ${checkoutTrackingAdapters};
+  var checkoutAttributionTimeoutMs = 800;
+
+  function isSupaffiTrackingRequest(input) {
+    var href = typeof input === "string" ? input : input && input.url;
+    if (!href) return false;
+    try {
+      var requestUrl = new URL(href, window.location.origin);
+      var trackingUrl = new URL(checkoutAttributionUrl);
+      return requestUrl.origin === trackingUrl.origin && requestUrl.pathname.indexOf("/api/track") === 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isHttpRequest(input) {
+    var href = typeof input === "string" ? input : input && input.url;
+    if (!href) return false;
+    try {
+      var protocol = new URL(href, window.location.origin).protocol;
+      return protocol === "http:" || protocol === "https:";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function referenceInUrl(value, adapter) {
+    if (typeof value !== "string" || value.length > 2048) return null;
+    try {
+      var url = new URL(value, window.location.origin);
+      if (adapter.allowedHosts.indexOf(url.hostname.toLowerCase()) === -1 || url.pathname !== adapter.path) return null;
+      var reference = url.searchParams.get(adapter.referenceQueryParameter);
+      return reference && /^[a-z0-9_-]{1,128}$/i.test(reference) ? reference : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function findCheckoutReference(value, depth) {
+    if (!value || depth > 6) return null;
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) {
+        var inArray = findCheckoutReference(value[i], depth + 1);
+        if (inArray) return inArray;
+      }
+      return null;
+    }
+    if (typeof value !== "object") return null;
+    for (var a = 0; a < checkoutTrackingAdapters.length; a++) {
+      var adapter = checkoutTrackingAdapters[a];
+      for (var f = 0; f < adapter.responseUrlFields.length; f++) {
+        var reference = referenceInUrl(value[adapter.responseUrlFields[f]], adapter);
+        if (reference) return { provider: adapter.provider, checkoutReference: reference };
+      }
+    }
+    var keys = Object.keys(value);
+    for (var k = 0; k < keys.length; k++) {
+      var nested = findCheckoutReference(value[keys[k]], depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  var maxCheckoutResponseBytes = 64 * 1024;
+
+  function reportReaderCancellationError() {
+    if (typeof console !== "undefined" && typeof console.warn === "function") {
+      console.warn("Supaffi tracking could not cancel a cloned checkout response reader.");
+    }
+  }
+
+  function cancelCheckoutReader(reader) {
+    if (!reader) return;
+    try {
+      var cancellation = reader.cancel();
+      if (cancellation && typeof cancellation.catch === "function") cancellation.catch(reportReaderCancellationError);
+    } catch (e) {
+      reportReaderCancellationError();
+    }
+  }
+
+  function readCheckoutResponseJson(response, onReader, isFinished) {
+    var clone;
+    try {
+      clone = response.clone();
+      if (!clone.body || typeof clone.body.getReader !== "function") return Promise.resolve(null);
+    } catch (e) {
+      return Promise.resolve(null);
+    }
+
+    var reader;
+    try {
+      reader = clone.body.getReader();
+      onReader(reader);
+    } catch (e) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise(function (resolve) {
+      var settled = false;
+      var chunks = [];
+      var totalBytes = 0;
+
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        onReader(null);
+        resolve(value);
+      }
+
+      function readNext() {
+        if (settled) return;
+        if (isFinished()) {
+          cancelCheckoutReader(reader);
+          finish(null);
+          return;
+        }
+
+        var pendingRead;
+        try {
+          pendingRead = reader.read();
+        } catch (e) {
+          finish(null);
+          return;
+        }
+
+        Promise.resolve(pendingRead).then(function (result) {
+          if (settled) return;
+          if (isFinished()) {
+            cancelCheckoutReader(reader);
+            finish(null);
+            return;
+          }
+          if (result.done) {
+            try {
+              var bytes = new Uint8Array(totalBytes);
+              var offset = 0;
+              for (var i = 0; i < chunks.length; i++) {
+                bytes.set(chunks[i], offset);
+                offset += chunks[i].byteLength;
+              }
+              var payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+              finish(payload);
+            } catch (e) {
+              finish(null);
+            }
+            return;
+          }
+
+          var chunk = result.value;
+          if (!chunk || typeof chunk.byteLength !== "number") {
+            cancelCheckoutReader(reader);
+            finish(null);
+            return;
+          }
+          totalBytes += chunk.byteLength;
+          if (totalBytes > maxCheckoutResponseBytes) {
+            cancelCheckoutReader(reader);
+            finish(null);
+            return;
+          }
+          chunks.push(chunk);
+          readNext();
+        }, function () {
+          finish(null);
+        });
+      }
+
+      readNext();
+    });
+  }
+
+  function registerCheckoutAttribution(reference, referralToken, originalFetch, isFinished) {
+    var body;
+    try {
+      body = JSON.stringify({
+        provider: reference.provider,
+        checkoutReference: reference.checkoutReference,
+        referralToken: referralToken,
+      });
+    } catch (e) {
+      return Promise.resolve();
+    }
+
+    return new Promise(function (resolve) {
+      var attempts = 0;
+      function attempt() {
+        if (isFinished() || attempts >= 3) {
+          resolve();
+          return;
+        }
+        attempts++;
+        var registration;
+        try {
+          registration = originalFetch.call(window, checkoutAttributionUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            credentials: "omit",
+            keepalive: true,
+          });
+        } catch (e) {
+          resolve();
+          return;
+        }
+        Promise.resolve(registration).then(function (response) {
+          if (isFinished()) {
+            resolve();
+            return;
+          }
+          var status = response && response.status;
+          if ((status === 429 || (status >= 500 && status <= 599)) && attempts < 3) {
+            attempt();
+            return;
+          }
+          resolve();
+        }, resolve);
+      }
+      attempt();
+    });
+  }
+
+  function inspectAndRegisterCheckout(response, referralToken, originalFetch) {
+    return new Promise(function (resolve) {
+      var finished = false;
+      var reader = null;
+      var timeout = setTimeout(function () {
+        if (finished) return;
+        finished = true;
+        cancelCheckoutReader(reader);
+        resolve();
+      }, checkoutAttributionTimeoutMs);
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        resolve();
+      }
+
+      readCheckoutResponseJson(response, function (activeReader) {
+        reader = activeReader;
+        if (finished) cancelCheckoutReader(reader);
+      }, function () {
+        return finished;
+      }).then(function (payload) {
+        if (finished) return;
+        var reference = payload && findCheckoutReference(payload, 0);
+        if (!reference) {
+          finish();
+          return;
+        }
+        registerCheckoutAttribution(reference, referralToken, originalFetch, function () {
+          return finished;
+        }).then(finish, finish);
+      }, finish);
+    });
+  }
+
+  // Wrap the ordinary fetch path. Looking only at successful JSON responses
+  // and known provider URL formats keeps the script passive for other calls.
+  if (typeof window.fetch === "function") {
+    var originalFetch = window.fetch;
+    window.fetch = function () {
+      var args = arguments;
+      var input = args[0];
+      var init = args[1] || {};
+      var method = String(init.method || (input && input.method) || "GET").toUpperCase();
+      if (method !== "POST" || !isHttpRequest(input) || isSupaffiTrackingRequest(input)) {
+        return originalFetch.apply(this, args);
+      }
+      return originalFetch.apply(this, args).then(function (response) {
+        if (!response || !response.ok || typeof response.clone !== "function") return response;
+        var contentType = response.headers && response.headers.get("content-type");
+        var mediaType = typeof contentType === "string" ? contentType.split(";")[0].trim().toLowerCase() : "";
+        if (mediaType !== "application/json" && !/^application\\/[a-z0-9!#$&^_.+-]+\\+json$/.test(mediaType)) {
+          return response;
+        }
+        var contentLength = response.headers && response.headers.get("content-length");
+        var declaredLength = typeof contentLength === "string" ? contentLength.trim() : "";
+        if (/^\\d+$/.test(declaredLength) && Number(declaredLength) > 64 * 1024) return response;
+        var referralToken = readHeld() || token;
+        if (!referralToken) return response;
+        return inspectAndRegisterCheckout(response, referralToken, originalFetch).then(function () {
+          return response;
+        }, function () {
+          return response;
+        });
+      });
+    };
+  }
 
   // Checkouts Stripe builds without the Merchant's code (Payment Links, buy
   // buttons, pricing tables) have no place for metadata, so they carry the

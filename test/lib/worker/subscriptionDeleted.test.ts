@@ -97,6 +97,7 @@ describe("handleSubscriptionDeleted", () => {
     affiliateId = affiliate.id;
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
@@ -225,6 +226,7 @@ describe("handleSubscriptionDeleted", () => {
     it("counts a click with no commission in neither total nor active", async () => {
       await db.click.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           referralToken: crypto.randomUUID(),
           expiresAt: new Date(Date.now() + 60_000),

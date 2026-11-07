@@ -317,6 +317,9 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
     // Checkouts may point at clicks and provider connections; payment records
     // above may point at a checkout.
     await tx.commerceCheckout.deleteMany({ where: { merchantId } });
+    // The provider invoice mapping also points at Click, so remove it before
+    // the click rows and merchant are deleted.
+    await tx.checkoutAttribution.deleteMany({ where: { merchantId } });
     await tx.commerceEventDelivery.deleteMany({ where: { merchantId } });
     await tx.click.deleteMany({ where: affiliates });
     await tx.affiliateLink.deleteMany({ where: affiliates });

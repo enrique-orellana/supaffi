@@ -93,26 +93,26 @@ export async function readReferralHistory(
         AND ${SqlSchema.tables.ReferredSubscription.firstPaymentRef} IS NOT NULL
         AND ${SqlSchema.tables.ReferredSubscription.firstPaidAt} IS NOT NULL
       UNION ALL
-      SELECT ${SqlSchema.tables.Commission.stripePaymentRef} AS ref,
-        ${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
-      FROM ${SqlSchema.tables.Commission.name}
+      SELECT commission.${SqlSchema.tables.Commission.stripePaymentRef} AS ref,
+        commission.${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
+      FROM ${SqlSchema.tables.Commission.name} AS commission
       JOIN ${SqlSchema.tables.Affiliate.name} a
-        ON a.${SqlSchema.tables.Affiliate.id} = ${SqlSchema.tables.Commission.affiliateId}
+        ON a.${SqlSchema.tables.Affiliate.id} = commission.${SqlSchema.tables.Commission.affiliateId}
         AND a.${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
-      WHERE ${SqlSchema.tables.Commission.clickId} = ${clickId}
-        AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
-        AND ${SqlSchema.tables.Commission.stripePaymentRef} IS NOT NULL
+      WHERE commission.${SqlSchema.tables.Commission.clickId} = ${clickId}
+        AND commission.${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
+        AND commission.${SqlSchema.tables.Commission.stripePaymentRef} IS NOT NULL
       UNION ALL
       SELECT payment.${SqlSchema.tables.PaymentRecord.paymentRef} AS ref,
-        ${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
-      FROM ${SqlSchema.tables.Commission.name}
+        commission.${SqlSchema.tables.Commission.createdAt} AS at, 'commission' AS source
+      FROM ${SqlSchema.tables.Commission.name} AS commission
       JOIN ${SqlSchema.tables.PaymentRecord.name} payment
-        ON payment.${SqlSchema.tables.PaymentRecord.id} = ${SqlSchema.tables.Commission.paymentRecordId}
+        ON payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
       JOIN ${SqlSchema.tables.Affiliate.name} a
-        ON a.${SqlSchema.tables.Affiliate.id} = ${SqlSchema.tables.Commission.affiliateId}
+        ON a.${SqlSchema.tables.Affiliate.id} = commission.${SqlSchema.tables.Commission.affiliateId}
         AND a.${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
-      WHERE ${SqlSchema.tables.Commission.clickId} = ${clickId}
-        AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
+      WHERE commission.${SqlSchema.tables.Commission.clickId} = ${clickId}
+        AND commission.${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
         AND payment.${SqlSchema.tables.PaymentRecord.merchantId} = ${merchantId}
         AND payment.${SqlSchema.tables.PaymentRecord.provider} = ${PaymentProvider.NOWPAYMENTS.database}::${SqlSchema.types.PaymentProvider}
         AND payment.${SqlSchema.tables.PaymentRecord.paymentRef} IS NOT NULL

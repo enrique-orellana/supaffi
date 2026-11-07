@@ -44,7 +44,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
 
-Stripe supports one-time sales and subscriptions. NOWPayments supports one-time hosted checkouts through a signed server integration; it does not support subscription commissions or crypto payouts. See [payment provider setup](docs/payment-providers.md) and [what Supaffi does not handle](https://supaffi.com/docs/limits).
+Stripe supports one-time sales and subscriptions. For NOWPayments, keep your existing checkout, webhook, and fulfillment. The tracking script associates the hosted invoice with a referral before payment, and a relay in infrastructure you control copies the signed IPN to your existing webhook and Supaffi. No merchant backend code changes are required, and Supaffi never calls your app. NOWPayments subscription commissions and crypto payouts are not supported. See [payment provider setup](docs/payment-providers.md) and the [relay template](integrations/nowpayments-webhook-relay/README.md).
 
 Affiliate and referral history can be imported with Supaffi's versioned canonical JSON format. The only compiled importer in this release is `canonical-json`; see the [import format](docs/affiliate-import-format.md).
 
@@ -63,8 +63,8 @@ Full guide, with server requirements: [Install](https://supaffi.com/docs/self-ho
 ## Add a product
 
 1. Point an A record for `affiliates.yourproduct.com` at the server. On Cloudflare, proxy off (grey cloud). [Affiliate domain and DNS](https://supaffi.com/docs/domain)
-2. Add the product in the dashboard with that hostname and your site's address. Connect Stripe for Stripe checkouts and/or NOWPayments for signed one-time hosted checkouts. [Connect Stripe](https://supaffi.com/docs/stripe), [payment providers](docs/payment-providers.md)
-3. Paste the tracking snippet into your site. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Payment Links, buy buttons and pricing tables need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
+2. Add the product in the dashboard with that hostname and your site's address. Connect Stripe and/or NOWPayments in **Settings → Connections**. For NOWPayments, deploy the [merchant-owned relay](integrations/nowpayments-webhook-relay/README.md) so its signed IPN reaches both your existing webhook and Supaffi. [Connect Stripe](https://supaffi.com/docs/stripe), [payment providers](docs/payment-providers.md)
+3. Paste the tracking snippet into your site. Supported NOWPayments hosted invoices are associated with the current referral automatically. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Stripe Payment Links, buy buttons and pricing tables need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
 
 The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email. If an affiliate forgets their password, you copy them a password link from their panel.
 
@@ -147,7 +147,7 @@ gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.3.2 --repo ugolbck/supaffi
 The pre-update dump doesn't survive a dead disk. Keep, off the server:
 
 - the database, on a cron: `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`
-- `MASTER_ENCRYPTION_KEY` from `.env`, stored apart from the dump. It decrypts the saved payment-provider and commerce integration credentials, so one stolen backup holding both gives up everything.
+- `MASTER_ENCRYPTION_KEY` from `.env`, stored apart from the dump. It decrypts saved payment-provider credentials and retained historical integration secrets, so one stolen backup holding both gives up everything.
 
 How to restore is in [Backups](https://supaffi.com/docs/self-hosting/backups). If something goes wrong, check [Troubleshooting](https://supaffi.com/docs/self-hosting/troubleshooting).
 

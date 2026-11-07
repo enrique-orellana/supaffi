@@ -1,13 +1,11 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { decrypt, encrypt } from "@/lib/crypto";
+import { encrypt } from "@/lib/crypto";
 import { instanceDomain } from "@/lib/instance";
-import type { PaymentConnectionSecrets } from "@/lib/payments/types";
 import { SqlSchema } from "@/lib/sqlSchema";
 
 type NowPaymentsCredentials = {
-  apiKey: string;
   webhookSecret: string;
 };
 
@@ -25,7 +23,7 @@ export function nowPaymentsCallbackUrl(webhookRouteId: string): string | null {
 }
 
 /**
- * Save or rotate both NOWPayments credentials together. The lock and owner
+ * Save or rotate the NOWPayments IPN secret. The lock and owner
  * predicate mirror Stripe's connection path, so a forged product ID cannot
  * write another owner's credentials.
  */
@@ -34,7 +32,6 @@ export async function connectNowPayments(
   merchantId: string,
   input: NowPaymentsCredentials
 ): Promise<void> {
-  const apiKeyEnc = encrypt(requiredCredential(input.apiKey, "API key"));
   const webhookSecretEnc = encrypt(requiredCredential(input.webhookSecret, "IPN secret"));
 
   await db.$transaction(async (tx) => {
@@ -52,13 +49,13 @@ export async function connectNowPayments(
       create: {
         merchantId,
         provider: PaymentProvider.NOWPAYMENTS.database,
-        apiKeyEnc,
+        apiKeyEnc: null,
         webhookSecretEnc,
         status: "CONNECTED",
         enabled: true,
       },
       update: {
-        apiKeyEnc,
+        apiKeyEnc: null,
         webhookSecretEnc,
         status: "CONNECTED",
         enabled: true,
@@ -102,7 +99,6 @@ export async function getNowPaymentsConnectionStatus(
   const connection = await db.paymentConnection.findFirst({
     where: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database, merchant: { ownerId } },
     select: {
-      apiKeyEnc: true,
       webhookSecretEnc: true,
       status: true,
       enabled: true,
@@ -112,44 +108,11 @@ export async function getNowPaymentsConnectionStatus(
   const connected = Boolean(
     connection?.status === "CONNECTED" &&
       connection.enabled &&
-      connection.apiKeyEnc &&
       connection.webhookSecretEnc
   );
   return {
     connected,
     hasCallbackId: Boolean(connection?.webhookRouteId),
     callbackUrl: connection ? nowPaymentsCallbackUrl(connection.webhookRouteId) : null,
-  };
-}
-
-/** Server-side checkout credential read. Do not call from a Server Component. */
-export async function getNowPaymentsCheckoutConnection(
-  merchantId: string
-): Promise<(PaymentConnectionSecrets & { connectionId: string; callbackUrl: string | null }) | null> {
-  const connection = await db.paymentConnection.findUnique({
-    where: { merchantId_provider: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database } },
-    select: {
-      id: true,
-      apiKeyEnc: true,
-      webhookSecretEnc: true,
-      status: true,
-      enabled: true,
-      webhookRouteId: true,
-    },
-  });
-  if (
-    !connection ||
-    connection.status !== "CONNECTED" ||
-    !connection.enabled ||
-    !connection.apiKeyEnc ||
-    !connection.webhookSecretEnc
-  ) {
-    return null;
-  }
-  return {
-    connectionId: connection.id,
-    apiKey: decrypt(connection.apiKeyEnc),
-    webhookSecret: decrypt(connection.webhookSecretEnc),
-    callbackUrl: nowPaymentsCallbackUrl(connection.webhookRouteId),
   };
 }

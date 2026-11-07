@@ -11,7 +11,7 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 | Feature | What you get |
 | --- | --- |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
-| **NOWPayments hosted checkout** | Signed one-time checkouts, verified callbacks and commissions on matched successful payments. No subscriptions or crypto payouts. |
+| **NOWPayments payment relay** | Verify one-time payment notifications from the merchant's existing checkout and attribute them through a merchant-owned relay. No subscriptions or crypto payouts. |
 | **Canonical affiliate history import** | Preview and reconcile affiliate, link, commission and payout history with the versioned JSON format. |
 
 ## Up next

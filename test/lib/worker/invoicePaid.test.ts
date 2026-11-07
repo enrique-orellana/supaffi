@@ -238,6 +238,7 @@ describe("handleInvoicePaid", () => {
     });
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),

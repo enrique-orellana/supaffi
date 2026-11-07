@@ -93,11 +93,10 @@ export async function saveNowPaymentsOnboardingAction(
   formData: FormData
 ): Promise<ActionState> {
   const ownerId = await owner();
-  const apiKey = String(formData.get("apiKey") ?? "").trim();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
-  if (!apiKey || !ipnSecret) return { error: "Enter both credentials." };
+  if (!ipnSecret) return { error: "Enter the IPN secret." };
 
-  await connectNowPayments(ownerId, product.id, { apiKey, webhookSecret: ipnSecret });
+  await connectNowPayments(ownerId, product.id, { webhookSecret: ipnSecret });
   revalidatePath(stepPath(product.slug, "payments"));
   return { error: "" };
 }

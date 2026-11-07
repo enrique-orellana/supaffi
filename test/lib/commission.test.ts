@@ -38,7 +38,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/lib/commission.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -92,8 +91,10 @@ async function makeAffiliate(merchantId: string, programId: string, suffix: stri
 }
 
 async function makeClick(affiliateId: string) {
+  const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
   return db.click.create({
     data: {
+      merchantId: affiliate.merchantId,
       affiliateId,
       referralToken: `token-${Math.random().toString(36).slice(2)}`,
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

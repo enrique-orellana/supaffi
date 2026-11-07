@@ -52,7 +52,9 @@ model Merchant {
   paymentConnections      PaymentConnection[]
   paymentRecords          PaymentRecord[]
   commerceCheckouts       CommerceCheckout[]
+  checkoutAttributions    CheckoutAttribution[]
   commerceIntegration     CommerceIntegration?
+  /// Historical outbound delivery rows retained for referential integrity only.
   commerceEventDeliveries CommerceEventDelivery[]
   affiliateImportBatches  AffiliateImportBatch[]
   importedCommissions     ImportedCommission[]
@@ -236,6 +238,7 @@ model Click {
   referredSubscriptions ReferredSubscription[]
   commerceCheckouts     CommerceCheckout[]
   paymentRecords        PaymentRecord[]
+  checkoutAttributions  CheckoutAttribution[]
 
   @@index([stripeCustomerId])
   @@index([linkId])
@@ -499,6 +502,24 @@ model CommerceCheckout {
   @@index([merchantId, provider, status, updatedAt, id])
 }
 
+/// Provider checkout references captured by the merchant site's tracking
+/// script before redirecting the customer to the hosted checkout. This is
+/// attribution metadata only; signed provider webhooks remain the payment
+/// source of truth.
+model CheckoutAttribution {
+  id                  String         @id @default(cuid())
+  merchantId          String
+  merchant            Merchant       @relation(fields: [merchantId], references: [id])
+  provider            PaymentProvider
+  providerCheckoutRef String         @db.VarChar(255)
+  clickId             String
+  click               Click          @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
+  createdAt           DateTime       @default(now())
+
+  @@unique([merchantId, provider, providerCheckoutRef], map: "CheckoutAttribution_merchant_provider_ref_key")
+  @@index([clickId])
+}
+
 /// Provider-neutral facts about a payment, separate from the affiliate ledger.
 /// Provider references and source-order identities are merchant scoped; nullable
 /// values retain PostgreSQL's multiple-NULL behavior for unreconciled records.
@@ -535,24 +556,22 @@ model PaymentRecord {
   @@index([clickId])
 }
 
-/// Independently configured server-to-server HMAC integration for the
-/// Merchant's commerce backend.
+/// Historical integration metadata retained for existing event records.
 model CommerceIntegration {
   id               String   @id @default(cuid())
   merchantId       String   @unique
   merchant         Merchant @relation(fields: [merchantId], references: [id])
-  secretEnc        String
-  eventDestination String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  /// Historical rows retained for referential integrity; runtime delivery is disabled.
   deliveries CommerceEventDelivery[]
 
   @@unique([id, merchantId])
 }
 
-/// Durable, retryable delivery of a verified payment event to the commerce
-/// backend. Payload is the normalized event, never an uploaded source bundle.
+/// Historical outbound event records retained for referential integrity.
+/// New rows are not enqueued and these records are not delivered.
 model CommerceEventDelivery {
   id            String                       @id @default(cuid())
   merchantId    String

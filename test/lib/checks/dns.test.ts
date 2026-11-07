@@ -181,13 +181,15 @@ describe("resolvesTo", () => {
 
 describe("httpsReachable", () => {
   const resolves = async () => ["146.59.195.140"];
+  const noProxy = async () => ({ kind: "no-proxy" as const, reason: "No local proxy in this test" });
 
   it("passes both when the server answers", async () => {
     const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
     const result = await httpsReachable(
       "affiliates.instantgradient.com",
       fetchMock as unknown as typeof fetch,
-      resolves
+      resolves,
+      noProxy
     );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
@@ -199,7 +201,8 @@ describe("httpsReachable", () => {
     const result = await httpsReachable(
       "x.test",
       (async () => { throw certError; }) as unknown as typeof fetch,
-      resolves
+      resolves,
+      noProxy
     );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(false);
@@ -210,7 +213,8 @@ describe("httpsReachable", () => {
     const result = await httpsReachable(
       "x.test",
       (async () => { throw down; }) as unknown as typeof fetch,
-      resolves
+      resolves,
+      noProxy
     );
     expect(result.reachable.ok).toBe(false);
     expect(result.certificate.ok).toBe(false);

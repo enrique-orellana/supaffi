@@ -48,7 +48,6 @@ export async function POST(req: NextRequest) {
       rawBody,
       headers: req.headers,
       connection: {
-        apiKey: null,
         webhookSecret: decrypt(connection.webhookSecretEnc),
       },
     });

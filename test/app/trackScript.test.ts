@@ -1,6 +1,6 @@
 // Destructive: clears Merchant and Owner before every test. Point
 // DATABASE_URL at a disposable database, never a real deployment's data.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import vm from "node:vm";
 
@@ -121,7 +121,14 @@ function notify(node: FakeEl) {
 // before the script runs. Returns the body and a way to click an element.
 async function runOn(
   code: string,
-  opts: { search?: string; cookie?: string; blockCookieWrites?: boolean; build?: (body: FakeEl) => void } = {},
+  opts: {
+    search?: string;
+    cookie?: string;
+    blockCookieWrites?: boolean;
+    build?: (body: FakeEl) => void;
+    consoleImpl?: { warn: (...args: unknown[]) => void };
+    fetchImpl?: (input: string | URL, init?: RequestInit) => Promise<unknown>;
+  } = {},
 ) {
   observers = [];
   rootEl = new FakeEl("html");
@@ -151,9 +158,18 @@ async function runOn(
       }
       observe() {}
     },
-    fetch: async () => ({ ok: true, json: async () => ({ referralToken: "fresh_token" }) }),
+    fetch: opts.fetchImpl ?? (async () => jsonResponse({ referralToken: "fresh_token" })),
+    console: opts.consoleImpl ?? console,
+    setTimeout,
+    clearTimeout,
+    TextDecoder,
+    TextEncoder,
+    Uint8Array,
   };
-  sandbox.window = { ...sandbox, location: { search: opts.search ?? "", protocol: "https:" } };
+  sandbox.location = { search: opts.search ?? "", protocol: "https:", origin: "https://acme.test" };
+  // In a browser, window.fetch and the global fetch binding are the same
+  // function. Use one object in the VM so a wrapper behaves the same way.
+  sandbox.window = sandbox;
   vm.runInNewContext(code, sandbox);
   await new Promise((r) => setTimeout(r, 0));
   const fire = (type: string, target: FakeEl) =>
@@ -171,6 +187,59 @@ async function runOn(
     setCookie: (cookie: string) => {
       jar = cookie;
     },
+    fetch: sandbox.fetch as (input: string | URL, init?: RequestInit) => Promise<unknown>,
+  };
+}
+
+type FakeResponse = {
+  ok: boolean;
+  status: number;
+  headers: { get: (name: string) => string | null };
+  body: ReadableStream<Uint8Array> | null;
+  clone: () => FakeResponse;
+  json: () => Promise<unknown>;
+};
+
+function jsonResponse(
+  value: unknown,
+  sourceHeaders: Record<string, string> = { "content-type": "application/json" },
+  status = 200
+): FakeResponse {
+  const responseHeaders = Object.fromEntries(
+    Object.entries(sourceHeaders).map(([name, headerValue]) => [name.toLowerCase(), headerValue])
+  );
+  const bodyText = JSON.stringify(value);
+  const makeBody = () => new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(bodyText));
+      controller.close();
+    },
+  });
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name) => responseHeaders[name.toLowerCase()] ?? null },
+    body: makeBody(),
+    clone: () => jsonResponse(value, sourceHeaders, status),
+    json: async () => value,
+  };
+}
+
+function streamedResponse(
+  makeBody: () => ReadableStream<Uint8Array>,
+  sourceHeaders: Record<string, string> = { "content-type": "application/json" },
+  status = 200
+): FakeResponse {
+  const responseHeaders = Object.fromEntries(
+    Object.entries(sourceHeaders).map(([name, headerValue]) => [name.toLowerCase(), headerValue])
+  );
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name) => responseHeaders[name.toLowerCase()] ?? null },
+    body: makeBody(),
+    clone: () => streamedResponse(makeBody, sourceHeaders, status),
+    json: async () => { throw new Error("streamed fixture body should not be parsed via json()"); },
   };
 }
 
@@ -212,7 +281,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     // Baking that in points every Merchant's site at a hostname that only
     // resolves inside the Docker network, and nothing is ever tracked.
     const code = await script();
-    expect(code).toContain('"https://affiliates.acme.test/api/track?via="');
+    expect(code).toContain('"https://affiliates.acme.test/api/track?"');
     expect(code).not.toContain("c0ffee1234ab");
   });
 
@@ -220,13 +289,13 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     await seedMerchant();
     const code = await (await serve(DOMAIN, { "x-forwarded-proto": 'x";alert(1);//' })).text();
     expect(code).not.toContain("alert");
-    expect(code).toContain('"https://affiliates.acme.test/api/track?via="');
+    expect(code).toContain('"https://affiliates.acme.test/api/track?"');
   });
 
   it("uses http for a local development domain", async () => {
     await seedMerchant("localhost:3600");
     const code = await (await serve("localhost:3600")).text();
-    expect(code).toContain('"http://localhost:3600/api/track?via="');
+    expect(code).toContain('"http://localhost:3600/api/track?"');
   });
 
   it("serves nothing for a host that is not a Merchant", async () => {
@@ -438,6 +507,329 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     click(link);
     expect(link.getAttribute("href")).toBe(before);
     expect(writes).toBe(0);
+  });
+
+  it("registers the NOWPayments invoice before returning the checkout response", async () => {
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://sandbox.nowpayments.io/payment/?iid=4522625843",
+      checkout_id: "chk_1",
+      status: "pending",
+    });
+    let releaseRegistration!: (response: unknown) => void;
+    const registrationPending = new Promise<unknown>((resolve) => {
+      releaseRegistration = resolve;
+    });
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input, init) => {
+        const url = new URL(String(input), "https://acme.test");
+        calls.push({ url: url.href, init });
+        if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
+        if (url.pathname === "/api/track/checkout-attribution") return registrationPending;
+        throw new Error(`unexpected fetch ${url.href}`);
+      },
+    });
+
+    let checkoutResolved = false;
+    const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" }).then((response) => {
+      checkoutResolved = true;
+      return response;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(checkoutResolved).toBe(false);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe("https://affiliates.acme.test/api/track/checkout-attribution");
+    expect(calls[1].init).toMatchObject({ method: "POST", credentials: "omit", keepalive: true });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      provider: "nowpayments",
+      checkoutReference: "4522625843",
+      referralToken: "held_token",
+    });
+
+    releaseRegistration(jsonResponse({}));
+    const returned = await checkoutPromise as FakeResponse;
+    expect(returned).toBe(checkoutResponse);
+    expect(await returned.json()).toMatchObject({ checkout_id: "chk_1", status: "pending" });
+  });
+
+  it("fails open when checkout attribution registration fails", async () => {
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+      status: "pending",
+    });
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input) => {
+        const url = new URL(String(input), "https://acme.test");
+        if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
+        throw new Error("Supaffi is unavailable");
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+  });
+
+  it("does not inspect checkout responses without a referral cookie", async () => {
+    const checkoutResponse = jsonResponse({ checkout_url: "https://nowpayments.io/payment/?iid=4522625843" });
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      fetchImpl: async () => {
+        calls++;
+        return checkoutResponse;
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(calls).toBe(1);
+  });
+
+  it("does not register a URL that only resembles a NOWPayments invoice", async () => {
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://not-nowpayments.io/payment/?iid=4522625843",
+    });
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return checkoutResponse;
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(calls).toBe(1);
+  });
+
+  it("does not inspect Supaffi tracking endpoint responses", async () => {
+    const trackingResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+    });
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return trackingResponse;
+      },
+    });
+
+    expect(await pageFetch("https://affiliates.acme.test/api/track?via=sarah", { method: "POST" })).toBe(trackingResponse);
+    expect(calls).toBe(1);
+  });
+
+  it("registers a NOWPayments invoice from a CORS-readable cross-origin checkout response", async () => {
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+      checkout_id: "chk_1",
+      status: "pending",
+    });
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input, init) => {
+        const url = new URL(String(input), "https://acme.test");
+        calls.push({ url: url.href, init });
+        if (url.origin === "https://api.acme.test") return checkoutResponse;
+        if (url.pathname === "/api/track/checkout-attribution") return jsonResponse({});
+        throw new Error(`unexpected fetch ${url.href}`);
+      },
+    });
+
+    const returned = await pageFetch("https://api.acme.test/commerce/checkouts", { method: "POST" });
+
+    expect(returned).toBe(checkoutResponse);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe("https://affiliates.acme.test/api/track/checkout-attribution");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      provider: "nowpayments",
+      checkoutReference: "4522625843",
+      referralToken: "held_token",
+    });
+  });
+
+  it("does not register an unrelated third-party API response", async () => {
+    const checkoutResponse = jsonResponse({ result: "ok" });
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return checkoutResponse;
+      },
+    });
+
+    expect(await pageFetch("https://api.example.test/create", { method: "POST" })).toBe(checkoutResponse);
+    expect(calls).toBe(1);
+  });
+
+  it("passes non-JSON responses through without cloning them", async () => {
+    const response = jsonResponse(
+      { checkout_url: "https://nowpayments.io/payment/?iid=4522625843" },
+      { "content-type": "text/html; charset=utf-8" }
+    );
+    const clone = vi.spyOn(response, "clone");
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return response;
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(calls).toBe(1);
+    expect(clone).not.toHaveBeenCalled();
+  });
+
+  it("passes declared responses larger than 64 KiB through without cloning them", async () => {
+    const response = jsonResponse(
+      { checkout_url: "https://nowpayments.io/payment/?iid=4522625843" },
+      { "content-type": "application/json", "content-length": "65537" }
+    );
+    const clone = vi.spyOn(response, "clone");
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return response;
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(calls).toBe(1);
+    expect(clone).not.toHaveBeenCalled();
+  });
+
+  it("stops reading an oversized JSON body even when Content-Length is absent", async () => {
+    let cancelCalls = 0;
+    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024 + 1));
+      },
+      cancel() {
+        cancelCalls++;
+      },
+    }));
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input) => {
+        calls++;
+        return new URL(String(input), "https://acme.test").pathname === "/api/commerce/checkouts"
+          ? response
+          : jsonResponse({});
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(calls).toBe(1);
+    expect(cancelCalls).toBe(1);
+  });
+
+  it("reports response-reader cancellation errors and still passes checkout through", async () => {
+    const warn = vi.fn();
+    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024 + 1));
+      },
+      cancel() {
+        return Promise.reject(new Error("reader cancellation failed"));
+      },
+    }));
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      consoleImpl: { warn },
+      fetchImpl: async () => response,
+    });
+
+    await expect(pageFetch("/api/checkout", { method: "POST" })).resolves.toBe(response);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("could not cancel a cloned checkout response reader"));
+  });
+
+  it("returns the checkout response when response inspection stalls past the total deadline", async () => {
+    let cancelCalls = 0;
+    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        cancelCalls++;
+      },
+    }));
+    let calls = 0;
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input) => {
+        calls++;
+        return new URL(String(input), "https://acme.test").pathname === "/api/commerce/checkouts"
+          ? response
+          : jsonResponse({});
+      },
+    });
+
+    vi.useFakeTimers();
+    try {
+      const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await checkoutPromise).toBe(response);
+      expect(calls).toBe(1);
+      expect(cancelCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries 429 and 5xx attribution responses within the checkout deadline", async () => {
+    const checkoutResponse = jsonResponse({ checkout_url: "https://nowpayments.io/payment/?iid=4522625843" });
+    const calls: string[] = [];
+    const registrationStatuses = [429, 503, 200];
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input) => {
+        const url = new URL(String(input), "https://acme.test");
+        calls.push(url.pathname);
+        if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
+        const status = registrationStatuses.shift() ?? 200;
+        return jsonResponse({}, { "content-type": "application/json" }, status);
+      },
+    });
+
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(calls).toEqual([
+      "/api/commerce/checkouts",
+      "/api/track/checkout-attribution",
+      "/api/track/checkout-attribution",
+      "/api/track/checkout-attribution",
+    ]);
+  });
+
+  it("fails open after a bounded wait when attribution registration stalls", async () => {
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+    });
+    const { fetch: pageFetch } = await runOn(await script(), {
+      cookie: HELD,
+      fetchImpl: async (input) => {
+        const url = new URL(String(input), "https://acme.test");
+        if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
+        return new Promise(() => {});
+      },
+    });
+
+    vi.useFakeTimers();
+    try {
+      const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await checkoutPromise).toBe(checkoutResponse);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("treats an empty client_reference_id as absent and tags the link", async () => {

@@ -71,6 +71,7 @@ async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysA
   const primary = await getPrimaryLink(sarah.id);
   const click = await db.click.create({
     data: {
+      merchantId: merchant.id,
       affiliateId: sarah.id,
       linkId: primary!.id,
       referralToken: crypto.randomUUID(),
@@ -132,6 +133,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -198,6 +200,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -248,6 +251,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -281,6 +285,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -338,6 +343,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -372,8 +378,10 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
   async function seedClick(affiliateId: string) {
     const primary = await getPrimaryLink(affiliateId);
+    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
     return db.click.create({
       data: {
+        merchantId: affiliate.merchantId,
         affiliateId,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),

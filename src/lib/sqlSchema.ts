@@ -57,17 +57,6 @@ export const SqlSchema = {
       "attempts",
       "updatedAt",
     ]),
-    CommerceEventDelivery: defineTable("CommerceEventDelivery", [
-      "id",
-      "merchantId",
-      "payload",
-      "status",
-      "attempts",
-      "lastError",
-      "nextAttemptAt",
-      "checkoutConflictHeldAt",
-      "createdAt",
-    ]),
     AffiliateImportBatch: defineTable("AffiliateImportBatch", [
       "id",
       "status",
@@ -99,7 +88,6 @@ export const SqlSchema = {
   types: {
     PaymentProvider: Prisma.raw('"PaymentProvider"'),
     CommissionStatus: Prisma.raw('"CommissionStatus"'),
-    CommerceEventDeliveryStatus: Prisma.raw('"CommerceEventDeliveryStatus"'),
     WebhookEventStatus: Prisma.raw('"WebhookEventStatus"'),
   },
 } as const;

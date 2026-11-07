@@ -94,7 +94,7 @@ async function clearAll() {
 describe("handleCheckoutSessionCompleted", () => {
   let merchant: Merchant;
   let click: { id: string };
-  let clickInput: { affiliateId: string; referralToken: string; expiresAt: Date };
+  let clickInput: { merchantId: string; affiliateId: string; referralToken: string; expiresAt: Date };
   // What Stripe answers when the handler reads a Session's invoice back with
   // its subscription and customer expanded, registered by sessionFixture.
   const invoiceReadsById = new Map<string, Record<string, unknown>>();
@@ -292,6 +292,7 @@ describe("handleCheckoutSessionCompleted", () => {
     });
 
     clickInput = {
+      merchantId: merchant.id,
       affiliateId: affiliate.id,
       referralToken: "tok-1",
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

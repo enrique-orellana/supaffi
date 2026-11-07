@@ -4,8 +4,10 @@ import { StatTile } from "@/components/dashboard/StatTile";
 import type { CheckResult } from "@/lib/checks/dns";
 import { siteHost } from "@/lib/onboarding";
 import type { DayPoint } from "@/lib/analytics";
-import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { formatDate } from "@/lib/format";
+import { CodeBlock } from "@/components/onboarding/CodeBlock";
+import { ProviderTrackingInstructions } from "@/components/payments/ProviderTrackingInstructions";
+import type { PaymentProviderTrackingGuide } from "@/lib/payments/setupRegistry";
 
 /**
  * Tracking, as a status page: is the script on the site, is anything arriving,
@@ -26,9 +28,8 @@ export function TrackingStatus({
   clickedRecently,
   verifiedAt,
   scriptTag,
-  checkoutSnippet,
+  trackingGuides,
   scriptPrompt,
-  checkoutPromptText,
   checkAgain,
 }: {
   merchant: { domain: string; websiteUrl: string };
@@ -44,10 +45,9 @@ export function TrackingStatus({
   clickedRecently: boolean;
   verifiedAt: Date | null;
   scriptTag: string;
-  checkoutSnippet: string;
+  trackingGuides: readonly PaymentProviderTrackingGuide[];
   /** The plain text an owner forwards to whoever touches the code. */
   scriptPrompt: string;
-  checkoutPromptText: string;
   checkAgain: () => Promise<void>;
 }) {
   const live = script.ok || clickedRecently;
@@ -78,17 +78,11 @@ export function TrackingStatus({
         <CodeBlock title="Tracking script" code={scriptTag} prompt={scriptPrompt} />
       </Section>
 
-      {/* The longer of the two snippets, and the only thing on this page tall
-          enough to push the buttons under it off an 800px screen: it scrolls
-          inside its own card so the page never does. */}
       <Section title="Checkout" scroll>
         <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
-          Wherever you create the Stripe Checkout Session, server side.
+          Requirements for your connected payment providers.
         </p>
-        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
-          Stripe Payment Links, buy buttons and pricing tables need nothing more.
-        </p>
-        <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPromptText} />
+        <ProviderTrackingInstructions guides={trackingGuides} />
       </Section>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">

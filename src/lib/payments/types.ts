@@ -36,36 +36,17 @@ export type PaymentProviderCapabilities = {
   disputes: boolean;
 };
 
+/** Browser-safe checkout URL details used only to record referral attribution. */
+export type ClientCheckoutTrackingAdapter = {
+  responseUrlFields: readonly string[];
+  allowedHosts: readonly string[];
+  path: string;
+  referenceQueryParameter: string;
+};
+
 export type PaymentConnectionSecrets = {
-  apiKey: string | null;
   webhookSecret: string;
 };
-
-export type CheckoutRequest = {
-  amount: string;
-  currency: string;
-  sourceOrderId: string;
-  successUrl: string;
-  cancelUrl: string;
-  /** Provider callback destination, when the adapter requires one. */
-  callbackUrl?: string;
-};
-
-export type CheckoutResponse = {
-  checkoutRef: string;
-  checkoutUrl: string;
-};
-
-export class CheckoutProviderError extends Error {
-  constructor(
-    readonly outcome: "rejected" | "uncertain",
-    message = "Hosted checkout creation failed",
-    readonly providerRef?: string
-  ) {
-    super(message);
-    this.name = "CheckoutProviderError";
-  }
-}
 
 export type VerifiedProviderEvent = {
   provider: PaymentProviderId;
@@ -89,13 +70,10 @@ export type VerifiedProviderEvent = {
 export interface PaymentProviderAdapter {
   readonly provider: PaymentProviderId;
   readonly capabilities: Readonly<PaymentProviderCapabilities>;
+  readonly clientTracking?: Readonly<ClientCheckoutTrackingAdapter>;
   verifyAndParseWebhook(input: {
     rawBody: string;
     headers: Headers;
     connection: PaymentConnectionSecrets;
   }): VerifiedProviderEvent | null;
-  createCheckout?(
-    input: CheckoutRequest,
-    connection: PaymentConnectionSecrets
-  ): Promise<CheckoutResponse>;
 }

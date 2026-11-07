@@ -177,7 +177,7 @@ export async function lockLinkCodes(tx: Prisma.TransactionClient, merchantId: st
         SELECT code FROM unnest(ARRAY[${Prisma.join(chunk)}]::text[]) AS input_codes(code)
         ORDER BY lower(code)
       )
-      SELECT pg_advisory_xact_lock(hashtextextended('link-code:' || ${merchantId} || ':' || lower(ordered_codes.code), 0))
+      SELECT pg_advisory_xact_lock(hashtextextended('link-code:' || ${merchantId} || ':' || lower(ordered_codes.code), 0)) IS NULL AS locked
       FROM ordered_codes
       ORDER BY lower(ordered_codes.code)`;
   }

@@ -1,13 +1,7 @@
 import { PaymentProvider } from "../types";
 import { createHmac, timingSafeEqual } from "crypto";
-import type {
-  CheckoutRequest,
-  PaymentProviderAdapter,
-  VerifiedProviderEvent,
-} from "../types";
-import { CheckoutProviderError } from "../types";
+import type { PaymentProviderAdapter, VerifiedProviderEvent } from "../types";
 
-const INVOICE_API_URL = "https://api.nowpayments.io/v1/invoice";
 const STATUS_KIND: Readonly<Record<string, VerifiedProviderEvent["kind"]>> = {
   waiting: "payment_pending",
   confirming: "payment_pending",
@@ -267,123 +261,20 @@ function occurredAt(payload: JsonObject): Date {
   return new Date();
 }
 
-function validateCheckout(input: CheckoutRequest): {
-  amount: string;
-  currency: string;
-  callbackUrl: string;
-  successUrl: string;
-  cancelUrl: string;
-} {
-  const amount = input.amount;
-  if (!/^(?:0|[1-9]\d{0,15})\.\d{2}$/.test(amount)) {
-    throw new Error("A two-decimal amount is required");
-  }
-  const [whole, fraction] = amount.split(".");
-  if (/^0+$/.test(whole) && /^0+$/.test(fraction)) {
-    throw new Error("A positive amount is required");
-  }
-  if (!/^[a-z]{3}$/i.test(input.currency)) throw new Error("A currency code is required");
-  if (!input.sourceOrderId.trim() || input.sourceOrderId.length > 255) {
-    throw new Error("An order ID is required");
-  }
-  const callbackUrl = httpsUrl(input.callbackUrl, "A callback URL is required");
-  return {
-    amount,
-    currency: input.currency.toLowerCase(),
-    callbackUrl,
-    successUrl: httpsUrl(input.successUrl, "A return URL is required"),
-    cancelUrl: httpsUrl(input.cancelUrl, "A return URL is required"),
-  };
-}
-
-function httpsUrl(value: string | undefined, error: string): string {
-  if (!value) throw new Error(error);
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(error);
-  }
-  if (url.protocol !== "https:" || url.username || url.password) throw new Error(error);
-  return url.toString();
-}
-
-async function createInvoice(input: CheckoutRequest, apiKey: string | null): Promise<{
-  checkoutRef: string;
-  checkoutUrl: string;
-}> {
-  if (!apiKey?.trim()) throw new CheckoutProviderError("rejected", "Payment connection is unavailable");
-  let valid: ReturnType<typeof validateCheckout>;
-  try {
-    valid = validateCheckout(input);
-  } catch {
-    throw new CheckoutProviderError("rejected", "Checkout details are invalid");
-  }
-  // price_amount is a JSON number in the provider API. Insert the already
-  // validated two-decimal token directly so no JS Number can round it.
-  const body = `{"price_amount":${valid.amount},"price_currency":${JSON.stringify(valid.currency)},"order_id":${JSON.stringify(input.sourceOrderId)},"ipn_callback_url":${JSON.stringify(valid.callbackUrl)},"success_url":${JSON.stringify(valid.successUrl)},"cancel_url":${JSON.stringify(valid.cancelUrl)}}`;
-
-  let response: Response;
-  try {
-    response = await fetch(INVOICE_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-      },
-      body,
-      cache: "no-store",
-      redirect: "manual",
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch {
-    throw new CheckoutProviderError("uncertain");
-  }
-  if (!response.ok) {
-    const definitiveRejection =
-      response.status >= 400 &&
-      response.status < 500 &&
-      ![408, 409, 425, 429].includes(response.status);
-    throw new CheckoutProviderError(definitiveRejection ? "rejected" : "uncertain");
-  }
-
-  let result: unknown;
-  let resultRawValues: Map<string, string>;
-  try {
-    const responseBody = await response.text();
-    result = JSON.parse(responseBody) as unknown;
-    resultRawValues = topLevelRawValues(responseBody);
-  } catch {
-    throw new CheckoutProviderError("uncertain");
-  }
-  if (!isObject(result)) throw new CheckoutProviderError("uncertain");
-  const checkoutRef = stringId(result.id, resultRawValues, "id");
-  let checkoutUrl: string | null = null;
-  if (typeof result.invoice_url === "string") {
-    try {
-      const url = new URL(result.invoice_url);
-      if (url.protocol === "https:" && !url.username && !url.password) checkoutUrl = url.toString();
-    } catch {
-      // A malformed provider destination is treated as an unsuccessful call.
-    }
-  }
-  if (!checkoutRef || !checkoutUrl) {
-    throw new CheckoutProviderError("uncertain", "Hosted invoice response was incomplete", checkoutRef ?? undefined);
-  }
-  return { checkoutRef, checkoutUrl };
-}
-
 export const nowpaymentsAdapter: PaymentProviderAdapter = {
   provider: PaymentProvider.NOWPAYMENTS.id,
+  clientTracking: {
+    responseUrlFields: ["checkout_url", "invoice_url"],
+    allowedHosts: ["nowpayments.io", "sandbox.nowpayments.io"],
+    path: "/payment/",
+    referenceQueryParameter: "iid",
+  },
   capabilities: {
     webhooks: true,
-    hostedCheckout: true,
+    hostedCheckout: false,
     recurringBilling: false,
     refunds: false,
     disputes: false,
-  },
-  async createCheckout(input, connection) {
-    return createInvoice(input, connection.apiKey);
   },
   verifyAndParseWebhook({ rawBody, headers, connection }) {
     if (!connection.webhookSecret) return null;
@@ -418,7 +309,6 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
     const kind = STATUS_KIND[paymentStatus];
     const paymentId = stringId(payload.payment_id, rawValues, "payment_id");
     const invoiceId = stringId(payload.invoice_id, rawValues, "invoice_id");
-    const orderId = typeof payload.order_id === "string" ? payload.order_id : null;
     const priceAmount = exactDecimalField(rawValues, payload, "price_amount");
     const priceCurrency = currencyCode(payload.price_currency, /^[a-z]{3}$/i);
     const cryptoCurrency = currencyCode(payload.pay_currency, /^[a-z0-9_-]{2,20}$/i);
@@ -426,7 +316,6 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
 
     if (
       !paymentId ||
-      !orderId?.trim() ||
       !priceAmount ||
       !priceCurrency
     ) {
@@ -438,9 +327,10 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
       eventId: `${paymentId}:${paymentStatus}`,
       kind,
       paymentRef: paymentId,
-      // Some provider payment callbacks have a null invoice_id. Our invoice
-      // request always supplies order_id, so it remains a stable lookup key.
-      checkoutRef: invoiceId ?? orderId,
+      // Only the provider invoice ID identifies the hosted checkout captured
+      // by the browser tracker. order_id is merchant supplied and is not an
+      // attribution reference.
+      checkoutRef: invoiceId,
       saleAmount: priceAmount,
       saleCurrency: priceCurrency,
       cryptoAmount,

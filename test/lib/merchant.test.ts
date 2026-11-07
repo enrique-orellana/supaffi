@@ -38,7 +38,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/lib/merchant.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -316,10 +315,18 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       data: { merchantId: merchant.id, programId: program.id, email: "a@example.com" },
     });
     const link = await db.affiliateLink.create({
-      data: { affiliateId: affiliate.id, code: "gone1", isPrimary: true },
+      data: { merchantId: merchant.id, affiliateId: affiliate.id, code: "gone1", isPrimary: true },
     });
     const click = await db.click.create({
-      data: { affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
+      data: { merchantId: merchant.id, affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
+    });
+    await db.checkoutAttribution.create({
+      data: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+        providerCheckoutRef: "invoice-gone1",
+        clickId: click.id,
+      },
     });
     await db.commission.create({
       data: { affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
@@ -334,6 +341,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(await db.affiliate.count({ where: { merchantId: merchant.id } })).toBe(0);
     expect(await db.commission.count({ where: { affiliateId: affiliate.id } })).toBe(0);
     expect(await db.webhookEvent.count({ where: { merchantId: merchant.id } })).toBe(0);
+    expect(await db.checkoutAttribution.count({ where: { merchantId: merchant.id } })).toBe(0);
   });
 
   it("refuses to delete another owner's product", async () => {

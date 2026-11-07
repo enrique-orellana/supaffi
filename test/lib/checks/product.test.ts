@@ -21,7 +21,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/lib/checks/product.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -32,11 +31,20 @@ const no = { ok: false, detail: "no" };
 
 const ALL_SECTIONS = new Set(["dns", PaymentProvider.STRIPE.id, "tracking"] as const);
 
+async function clearTestMerchant() {
+  const merchant = await db.merchant.findUnique({
+    where: { domain: "affiliates.c.test" },
+    select: { id: true },
+  });
+  if (merchant) await db.paymentConnection.deleteMany({ where: { merchantId: merchant.id } });
+  await db.merchant.deleteMany({ where: { domain: "affiliates.c.test" } });
+}
+
 describe.skipIf(!hasDatabase)("runProductChecks", () => {
   let previousHostIp: string | undefined;
 
   beforeEach(async () => {
-    await db.merchant.deleteMany({ where: { domain: "affiliates.c.test" } });
+    await clearTestMerchant();
     await db.owner.deleteMany({ where: { email: "c@example.com" } });
     previousHostIp = process.env.SUPAFFI_HOST_IP;
   });
@@ -47,7 +55,7 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
   });
 
   afterAll(async () => {
-    await db.merchant.deleteMany({ where: { domain: "affiliates.c.test" } });
+    await clearTestMerchant();
     await db.owner.deleteMany({ where: { email: "c@example.com" } });
     await db.$disconnect();
   });

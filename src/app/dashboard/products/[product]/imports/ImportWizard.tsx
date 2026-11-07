@@ -116,7 +116,7 @@ export function ImportWizard({
     data.set("adapterId", preview.adapterId);
     data.set("mappingChoices", JSON.stringify(choices));
     const result = await applyAffiliateImportAction(productSlug, data);
-    if ("error" in result) setError(result.error);
+    if ("error" in result) setError(result.error ?? "Import failed.");
     else setReport(result.report);
     setBusy(false);
   }

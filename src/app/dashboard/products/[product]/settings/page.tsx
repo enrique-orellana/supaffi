@@ -1,8 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
-import { getCommerceIntegrationStatus } from "@/lib/commerceIntegrationAuth";
-import { getUncertainCommerceCheckouts } from "@/lib/commerceCheckouts";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
@@ -13,7 +11,6 @@ import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
-import { CommerceIntegrationCard } from "./CommerceIntegrationCard";
 import { PaymentProvider } from "@/lib/payments/types";
 import { listPaymentProviderSetups } from "@/lib/payments/setupRegistry";
 import {
@@ -44,18 +41,12 @@ function freshSection(raw: string | undefined): CheckSection | null {
   return SECTIONS.find((section) => section === raw) ?? null;
 }
 
-function checkoutPageNumber(raw: string | undefined): number {
-  if (!raw || !/^\d{1,9}$/.test(raw)) return 0;
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) ? parsed : 0;
-}
-
 export default async function SettingsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ replace?: string; fresh?: string; checkoutPage?: string }>;
+  searchParams: Promise<{ replace?: string; fresh?: string }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -68,28 +59,18 @@ export default async function SettingsPage({
 
   const fresh = freshSection(query.fresh);
   const providerSetups = listPaymentProviderSetups();
-  const [checks, keyKind, paymentStatuses, commerceIntegration, uncertainCheckoutPage] = await Promise.all([
+  const [checks, keyKind, paymentStatuses] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     Promise.all(providerSetups.map(async (setup) => ({
       setup,
       status: await setup.readStatus(ownerId, merchant.id),
     }))),
-    getCommerceIntegrationStatus(ownerId, merchant.id),
-    getUncertainCommerceCheckouts(ownerId, merchant.id, checkoutPageNumber(query.checkoutPage)),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
   const productRef = { id: merchant.id, slug: merchant.slug };
   const settingsHref = `/dashboard/products/${merchant.slug}/settings`;
-  const checkoutPageHref = (page: number) => {
-    const params = new URLSearchParams();
-    if (query.replace) params.set("replace", query.replace);
-    if (query.fresh) params.set("fresh", query.fresh);
-    params.set("checkoutPage", String(page));
-    return `${settingsHref}?${params.toString()}`;
-  };
-
   const dnsRows: CheckRow[] = local ? [] : dnsCheckRows(checks.dns);
 
   const sheets = {
@@ -153,26 +134,6 @@ export default async function SettingsPage({
               </div>
             );
           })}
-        </div>
-        <div className="px-5 py-4">
-          <CommerceIntegrationCard
-            product={productRef}
-            integrationId={commerceIntegration.integrationId}
-            configured={commerceIntegration.configured}
-            eventDestination={commerceIntegration.eventDestination}
-            uncertainCheckouts={uncertainCheckoutPage.checkouts}
-            uncertainCheckoutPage={uncertainCheckoutPage.page}
-            uncertainCheckoutPageCount={uncertainCheckoutPage.pageCount}
-            uncertainCheckoutTotal={uncertainCheckoutPage.totalCount}
-            previousUncertainCheckoutHref={
-              uncertainCheckoutPage.page > 0 ? checkoutPageHref(uncertainCheckoutPage.page - 1) : null
-            }
-            nextUncertainCheckoutHref={
-              uncertainCheckoutPage.page + 1 < uncertainCheckoutPage.pageCount
-                ? checkoutPageHref(uncertainCheckoutPage.page + 1)
-                : null
-            }
-          />
         </div>
       </Section>
 

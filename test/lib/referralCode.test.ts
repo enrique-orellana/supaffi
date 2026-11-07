@@ -18,7 +18,6 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
     "Skipping test/lib/referralCode.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
@@ -87,25 +86,25 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
       data: { merchantId, programId, email },
     });
     await db.affiliateLink.create({
-      data: { affiliateId: affiliate.id, code, isPrimary: true },
+      data: { merchantId, affiliateId: affiliate.id, code, isPrimary: true },
     });
     return affiliate;
   }
 
   it("slugifies a name into a lowercase referral code", async () => {
-    const code = await generateLinkCode("Sarah Chen");
+    const code = await generateLinkCode("Sarah Chen", merchantId);
     expect(code).toBe("sarahchen");
   });
 
   it("keeps digits in the code as-is", async () => {
-    const code = await generateLinkCode("Agent47");
+    const code = await generateLinkCode("Agent47", merchantId);
     expect(code).toBe("agent47");
   });
 
   it("appends a numeric suffix on collision", async () => {
     await makeAffiliateWithCode("sarah1@example.com", "sarah");
 
-    const code = await generateLinkCode("Sarah");
+    const code = await generateLinkCode("Sarah", merchantId);
     expect(code).toBe("sarah2");
   });
 
@@ -113,12 +112,12 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
     await makeAffiliateWithCode("sarah1@example.com", "sarah");
     await makeAffiliateWithCode("sarah2@example.com", "sarah2");
 
-    const code = await generateLinkCode("Sarah");
+    const code = await generateLinkCode("Sarah", merchantId);
     expect(code).toBe("sarah3");
   });
 
   it("falls back to \"affiliate\" for a name with no letters or digits", async () => {
-    const code = await generateLinkCode("!!!");
+    const code = await generateLinkCode("!!!", merchantId);
     expect(code).toBe("affiliate");
   });
 });
