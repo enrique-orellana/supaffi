@@ -1,9 +1,12 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
-import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
-import { validateCode } from "@/lib/linkCode";
 import { SqlSchema } from "@/lib/sqlSchema";
+import { validateLinkInput as validateSharedLinkInput } from "@/lib/affiliateLinkShared";
+import type { LinkInput } from "@/lib/affiliateLinkShared";
+
+export { linkUrl, validateLinkInput } from "@/lib/affiliateLinkShared";
+export type { LinkInput, ValidatedLink } from "@/lib/affiliateLinkShared";
 
 export type AffiliateLinkRow = {
   id: string;
@@ -39,6 +42,8 @@ export async function listLinks(affiliateId: string): Promise<AffiliateLinkRow[]
 export type OwnerAffiliateLinkTerms = {
   id: string;
   commissionRateOverride: string | null;
+  commissionDurationTypeOverride: import("@prisma/client").CommissionDurationType | null;
+  commissionDurationMonthsOverride: number | null;
   attributionWindowDaysOverride: number | null;
   holdingPeriodDaysOverride: number | null;
 };
@@ -54,6 +59,8 @@ export async function listOwnerLinkTerms(
     select: {
       id: true,
       commissionRateOverride: true,
+      commissionDurationTypeOverride: true,
+      commissionDurationMonthsOverride: true,
       attributionWindowDaysOverride: true,
       holdingPeriodDaysOverride: true,
     },
@@ -70,60 +77,6 @@ export async function listOwnerLinkTerms(
  * space for everyone else on the instance.
  */
 export const MAX_LINKS_PER_AFFILIATE = 20;
-
-export type LinkInput = { code: string; destinationPath: string };
-
-// Shaped like validateSignupInput: both arms carry `error`, so a plain
-// `error !== null` check narrows the union without a cast.
-export type ValidatedLink = { code: string; destinationPath: string | null; error: null };
-
-/**
- * The code goes straight into a public URL and the destination is rendered as
- * one, so both are checked here rather than trusted from the form.
- */
-export function validateLinkInput(
-  input: LinkInput
-): ValidatedLink | { code?: undefined; destinationPath?: undefined; error: string } {
-  const validatedCode = validateCode(input.code);
-  if (validatedCode.error !== null) return { error: validatedCode.error };
-  const code = validatedCode.code;
-
-  const raw = input.destinationPath.trim();
-  if (raw === "") return { code, destinationPath: null, error: null };
-
-  // A destination is a path on the Merchant's own site. Anything that could
-  // read as an absolute or protocol-relative URL would send the Affiliate's
-  // traffic somewhere else entirely. A backslash is included because browsers
-  // normalize it to a slash, so "/\evil.com" resolves as "//evil.com" too.
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
-    return { error: "A destination starts with / and points at a page on the site." };
-  }
-  if (raw.includes("://") || /\s/.test(raw)) {
-    return { error: "A destination cannot contain spaces or a full web address." };
-  }
-  // The referral code is appended as its own query parameter. A query string
-  // here would double up into "?a=1?via=code", and a fragment would keep the
-  // browser from ever sending it to the server, so the link would silently
-  // stop earning.
-  if (raw.includes("?") || raw.includes("#")) {
-    return { error: "A destination cannot contain a question mark or a hash symbol." };
-  }
-  if (raw.length > 200) {
-    return { error: "That destination is too long." };
-  }
-
-  return { code, destinationPath: raw, error: null };
-}
-
-/** The URL an Affiliate actually shares. */
-export function linkUrl(
-  websiteUrl: string,
-  link: { code: string; destinationPath: string | null }
-): string {
-  const base = websiteUrl.replace(/\/+$/, "");
-  const path = link.destinationPath ?? "";
-  return `${base}${path}?${REFERRAL_QUERY_PARAM}=${link.code}`;
-}
 
 const CODE_TAKEN = "That code is already taken. Try another.";
 const LINK_GONE = "That link no longer exists.";
@@ -231,7 +184,7 @@ export async function createLink(
   affiliateId: string,
   input: LinkInput
 ): Promise<{ error: string } | { id: string }> {
-  const validated = validateLinkInput(input);
+  const validated = validateSharedLinkInput(input);
   if (validated.error !== null) return { error: validated.error };
   const { code, destinationPath } = validated;
 
@@ -280,7 +233,7 @@ export async function updateLink(
   linkId: string,
   input: LinkInput
 ): Promise<{ error: string } | { ok: true }> {
-  const validated = validateLinkInput(input);
+  const validated = validateSharedLinkInput(input);
   if (validated.error !== null) return { error: validated.error };
   const { code, destinationPath } = validated;
 

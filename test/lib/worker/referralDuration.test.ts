@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import type { Merchant, Prisma, Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
+  commissionDurationForClick,
   isWithinReferralDuration,
   readReferralHistory,
   referralStillEarns,
@@ -52,6 +53,36 @@ describe("isWithinReferralDuration", () => {
     const history = { start, earnedOnAnotherPayment: true };
     expect(isWithinReferralDuration(program, history, { ref: "in_second_sub", at: at("2026-04-15T00:00:00Z") })).toBe(true);
     expect(isWithinReferralDuration(program, history, { ref: "in_second_sub_2", at: at("2026-05-15T00:00:00Z") })).toBe(false);
+  });
+
+  it("uses the click's fixed-month duration even if the program defaults are forever", () => {
+    const history = { start, earnedOnAnotherPayment: true };
+    const clickDuration = { commissionDurationType: "FIXED_MONTHS" as const, commissionDurationMonths: 3 };
+
+    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_april", at: at("2026-04-15T00:00:00Z") }, clickDuration)).toBe(true);
+    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_may", at: at("2026-05-15T00:00:00Z") }, clickDuration)).toBe(false);
+  });
+
+  it("uses a click's one-time duration instead of the program's recurring default", () => {
+    const history = { start, earnedOnAnotherPayment: true };
+    const clickDuration = { commissionDurationType: "ONE_TIME" as const, commissionDurationMonths: null };
+
+    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_second_payment", at: at("2026-02-01T00:00:00Z") }, clickDuration)).toBe(false);
+  });
+});
+
+describe("commissionDurationForClick", () => {
+  it("prefers a captured code duration and falls back to current program terms for old clicks", () => {
+    const program = programOf("FOREVER");
+
+    expect(commissionDurationForClick(program, {
+      commissionDurationTypeSnapshot: "FIXED_MONTHS",
+      commissionDurationMonthsSnapshot: 6,
+    })).toEqual({ commissionDurationType: "FIXED_MONTHS", commissionDurationMonths: 6 });
+    expect(commissionDurationForClick(program, null)).toEqual({
+      commissionDurationType: "FOREVER",
+      commissionDurationMonths: null,
+    });
   });
 });
 

@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { linkUrl, validateLinkInput } from "@/lib/affiliateLink";
+import { linkUrl, validateLinkInput } from "@/lib/affiliateLinkShared";
 import { createLinkAction, updateLinkAction } from "./actions";
 
 /**

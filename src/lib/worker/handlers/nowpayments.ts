@@ -9,7 +9,7 @@ import {
   releaseCheckoutConflictHold,
 } from "@/lib/commerceCheckoutReferences";
 import { commissionRateFor, computePayableAt } from "../commission";
-import { referralStillEarns } from "../referralDuration";
+import { commissionDurationForClick, referralStillEarns } from "../referralDuration";
 
 type JsonObject = Record<string, unknown>;
 
@@ -323,7 +323,15 @@ async function createCommissionIfEligible(
   if (rate.lte(0)) return;
 
   const sale = { ref: event.paymentRef, at: event.occurredAt };
-  if (!(await referralStillEarns(input.merchantId, click.id, click.affiliate.program, sale, [], tx))) return;
+  if (!(await referralStillEarns(
+    input.merchantId,
+    click.id,
+    click.affiliate.program,
+    sale,
+    [],
+    tx,
+    commissionDurationForClick(click.affiliate.program, click)
+  ))) return;
 
   const saleAmount = input.paymentRecord.saleAmount;
   const amount = commissionAmount(saleAmount, rate);

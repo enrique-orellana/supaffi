@@ -12,6 +12,8 @@ export function commissionRateFor(
   return Number(click?.commissionRateSnapshot ?? link?.commissionRateOverride ?? affiliate.customCommissionRate ?? program.defaultCommissionRate);
 }
 
+export type CommissionDurationTerms = Pick<Program, "commissionDurationType" | "commissionDurationMonths">;
+
 // Decimal rather than float arithmetic: an exact half cent is often held as
 // a hair under it in binary floating point, so float rounding took it down
 // where the ledger should round it up.
@@ -81,16 +83,17 @@ const DURATION_BOUNDARY_GRACE_MS = 24 * 60 * 60 * 1000;
 export function isPaymentWithinCommissionDuration(
   program: Program,
   firstPayment: PaymentRef,
-  payment: PaymentRef
+  payment: PaymentRef,
+  duration: CommissionDurationTerms = program
 ): boolean {
   if (payment.ref === firstPayment.ref) return true;
-  switch (program.commissionDurationType) {
+  switch (duration.commissionDurationType) {
     case "FOREVER":
       return true;
     case "ONE_TIME":
       return false;
     case "FIXED_MONTHS": {
-      const end = addMonthsClamped(firstPayment.at, program.commissionDurationMonths ?? 0);
+      const end = addMonthsClamped(firstPayment.at, duration.commissionDurationMonths ?? 0);
       return payment.at.getTime() < end.getTime() - DURATION_BOUNDARY_GRACE_MS;
     }
   }

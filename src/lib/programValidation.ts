@@ -1,4 +1,5 @@
 import type { ProgramInput } from "@/lib/program";
+import { isCommissionDuration } from "@/lib/commissionDuration";
 
 export type ProgramFormValues = {
   name: string;
@@ -20,7 +21,7 @@ export function validateProgramInput(
   }
 
   const durationType = input.commissionDurationType;
-  if (durationType !== "ONE_TIME" && durationType !== "FIXED_MONTHS" && durationType !== "FOREVER") {
+  if (!isCommissionDuration(durationType)) {
     return { error: "Invalid commission duration type" };
   }
 

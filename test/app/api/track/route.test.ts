@@ -125,12 +125,14 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 
-  it("snapshots the code's commission, attribution window, and hold on each new click", async () => {
+  it("snapshots the code's commission terms on each new click", async () => {
     const a = await seedMerchantWithAffiliate("terms");
     await db.affiliateLink.update({
       where: { id: a.link.id },
       data: {
         commissionRateOverride: "12.50",
+        commissionDurationTypeOverride: "FIXED_MONTHS",
+        commissionDurationMonthsOverride: 8,
         attributionWindowDaysOverride: 14,
         holdingPeriodDaysOverride: 7,
       },
@@ -141,6 +143,8 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     const click = await db.click.findUniqueOrThrow({ where: { referralToken } });
 
     expect(click.commissionRateSnapshot?.toFixed(2)).toBe("12.50");
+    expect(click.commissionDurationTypeSnapshot).toBe("FIXED_MONTHS");
+    expect(click.commissionDurationMonthsSnapshot).toBe(8);
     expect(click.holdingPeriodDaysSnapshot).toBe(7);
     expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeGreaterThanOrEqual(14 * 24 * 60 * 60 * 1000);
     expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeLessThan(14 * 24 * 60 * 60 * 1000 + 1000);

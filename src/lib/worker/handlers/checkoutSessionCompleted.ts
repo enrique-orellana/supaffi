@@ -17,7 +17,7 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
-import { referralStillEarns } from "../referralDuration";
+import { commissionDurationForClick, referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
@@ -197,7 +197,9 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       click.id,
       click.affiliate.program,
       sale,
-      earlierPaymentRef ? [earlierPaymentRef] : []
+      earlierPaymentRef ? [earlierPaymentRef] : [],
+      db,
+      commissionDurationForClick(click.affiliate.program, click)
     ))
   )
     return;

@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CHART_RANGES, DEFAULT_RANGE, isChartRange, type ChartRange } from "@/lib/analytics";
+import { CHART_RANGES, DEFAULT_RANGE, isChartRange, type ChartRange } from "@/lib/analyticsShared";
 import { cn } from "@/lib/utils";
 
 /**

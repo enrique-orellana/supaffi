@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/table";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { money, moneyHint } from "@/lib/format";
-import { linkUrl, type AffiliateLinkStats } from "@/lib/affiliateLink";
+import type { AffiliateLinkStats } from "@/lib/affiliateLink";
+import { linkUrl } from "@/lib/affiliateLinkShared";
 import { LinkDialog } from "./LinkDialog";
 import { deleteLinkAction } from "./actions";
 

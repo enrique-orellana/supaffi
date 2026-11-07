@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
         activeFrom: true,
         activeUntil: true,
         commissionRateOverride: true,
+        commissionDurationTypeOverride: true,
+        commissionDurationMonthsOverride: true,
         attributionWindowDaysOverride: true,
         holdingPeriodDaysOverride: true,
         affiliate: {
@@ -67,6 +69,8 @@ export async function GET(req: NextRequest) {
             program: {
               select: {
                 defaultCommissionRate: true,
+                commissionDurationType: true,
+                commissionDurationMonths: true,
                 attributionWindowDays: true,
                 holdingPeriodDays: true,
               },
@@ -90,6 +94,8 @@ export async function GET(req: NextRequest) {
         activeFrom: true,
         activeUntil: true,
         commissionRateOverride: true,
+        commissionDurationTypeOverride: true,
+        commissionDurationMonthsOverride: true,
         attributionWindowDaysOverride: true,
         holdingPeriodDaysOverride: true,
         affiliate: {
@@ -99,6 +105,8 @@ export async function GET(req: NextRequest) {
             program: {
               select: {
                 defaultCommissionRate: true,
+                commissionDurationType: true,
+                commissionDurationMonths: true,
                 attributionWindowDays: true,
                 holdingPeriodDays: true,
               },
@@ -164,6 +172,13 @@ export async function GET(req: NextRequest) {
     link.commissionRateOverride ??
     link.affiliate.customCommissionRate ??
     link.affiliate.program.defaultCommissionRate;
+  const commissionDurationTypeSnapshot =
+    link.commissionDurationTypeOverride ?? link.affiliate.program.commissionDurationType;
+  const commissionDurationMonthsSnapshot = commissionDurationTypeSnapshot === "FIXED_MONTHS"
+    ? link.commissionDurationTypeOverride === "FIXED_MONTHS"
+      ? link.commissionDurationMonthsOverride
+      : link.affiliate.program.commissionDurationMonths
+    : null;
   const holdingPeriodDaysSnapshot =
     link.holdingPeriodDaysOverride ?? link.affiliate.program.holdingPeriodDays;
   const expiresAt = new Date(createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000);
@@ -177,6 +192,8 @@ export async function GET(req: NextRequest) {
       referralToken,
       expiresAt,
       commissionRateSnapshot,
+      commissionDurationTypeSnapshot,
+      commissionDurationMonthsSnapshot,
       holdingPeriodDaysSnapshot,
       createdAt,
     },

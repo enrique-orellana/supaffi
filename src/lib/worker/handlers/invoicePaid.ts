@@ -21,7 +21,7 @@ import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
-import { referralStillEarns } from "../referralDuration";
+import { commissionDurationForClick, referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 // A renewal or a plan change is revenue of the subscription the referral
@@ -79,7 +79,15 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // payment instead of starting the program over. Measured after the claim
   // above, so this subscription's own first payment is part of that history.
   const program = click.affiliate.program;
-  if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
+  if (!(await referralStillEarns(
+    merchant.id,
+    click.id,
+    program,
+    payment,
+    [],
+    db,
+    commissionDurationForClick(program, click)
+  ))) return;
 
   const stripe = await stripeClientFor(merchant);
 

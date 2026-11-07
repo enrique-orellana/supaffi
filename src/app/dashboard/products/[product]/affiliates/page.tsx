@@ -169,6 +169,8 @@ export default async function AffiliatesPage({
       programName: selected.programName,
       rate: selected.commissionRate,
       rateIsOverride: selected.rateIsOverride,
+      commissionDurationType: program?.commissionDurationType ?? "FOREVER",
+      commissionDurationMonths: program?.commissionDurationMonths ?? null,
       attributionWindowDays: program?.attributionWindowDays ?? 60,
       holdingPeriodDays: program?.holdingPeriodDays ?? 30,
       payoutDetails: detail?.payoutDetails ?? null,
@@ -180,6 +182,8 @@ export default async function AffiliatesPage({
           url: linkUrl(merchant.websiteUrl, l),
           clicks: l.clicks,
           commissionRateOverride: terms?.commissionRateOverride ?? null,
+          commissionDurationTypeOverride: terms?.commissionDurationTypeOverride ?? null,
+          commissionDurationMonthsOverride: terms?.commissionDurationMonthsOverride ?? null,
           attributionWindowDaysOverride: terms?.attributionWindowDaysOverride ?? null,
           holdingPeriodDaysOverride: terms?.holdingPeriodDaysOverride ?? null,
         };

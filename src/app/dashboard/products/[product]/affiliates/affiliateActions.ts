@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
+import { parseCommissionDurationOverride } from "@/lib/commissionDuration";
 
 /**
  * The two writes the affiliate sheet makes: which program someone is in, and
@@ -57,7 +58,7 @@ export async function setCustomRateAction(
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
 }
 
-type LinkTerm = "commission" | "timeToBuy" | "holdBeforePaying";
+type LinkTerm = "commission" | "commissionDuration" | "timeToBuy" | "holdBeforePaying";
 
 /** Owner-only per-code terms. An explicit inherit action clears that override. */
 export async function setLinkTermAction(
@@ -68,6 +69,34 @@ export async function setLinkTermAction(
   formData: FormData
 ): Promise<void> {
   const ownerId = await owner();
+  if (term === "commissionDuration") {
+    const inheritDuration = formData.get("intent") === "inherit";
+    const parsed = parseCommissionDurationOverride(
+      formData.get("durationType"),
+      formData.get("durationMonths")
+    );
+    if (!inheritDuration && parsed === null) return;
+
+    const updatedDuration = await db.affiliateLink.updateMany({
+      where: {
+        id: linkId,
+        affiliateId,
+        merchantId: product.id,
+        affiliate: { merchant: { ownerId } },
+      },
+      data: inheritDuration
+        ? { commissionDurationTypeOverride: null, commissionDurationMonthsOverride: null }
+        : {
+            commissionDurationTypeOverride: parsed!.type,
+            commissionDurationMonthsOverride: parsed!.months,
+          },
+    });
+    if (updatedDuration.count > 0) {
+      revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+    }
+    return;
+  }
+
   if (!(["commission", "timeToBuy", "holdBeforePaying"] as string[]).includes(term)) return;
 
   const inherit = formData.get("intent") === "inherit";

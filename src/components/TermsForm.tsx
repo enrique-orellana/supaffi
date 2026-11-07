@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Field, FormCard } from "@/components/Field";
 import { Term } from "@/components/Term";
 import type { ProgramFormValues } from "@/lib/programValidation";
+import { COMMISSION_DURATION_OPTIONS } from "@/lib/commissionDuration";
 
 type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
 
@@ -22,11 +23,9 @@ export const TERMS_DEFAULTS: ProgramFormValues = {
 
 // Passed to the Select as `items` so the trigger shows the sentence rather
 // than the raw enum name it submits.
-const DURATIONS: Record<string, string> = {
-  FOREVER: "of every payment, forever",
-  FIXED_MONTHS: "of every payment, for some months",
-  ONE_TIME: "of the first payment only",
-};
+const DURATIONS = Object.fromEntries(
+  COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [value, label])
+);
 
 const NUMBER = "w-20 tabular-nums";
 
@@ -90,7 +89,7 @@ export function TermsForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(DURATIONS).map(([value, label]) => (
+                {COMMISSION_DURATION_OPTIONS.map(({ value, label }) => (
                   <SelectItem key={value} value={value} className="cursor-pointer">
                     {label}
                   </SelectItem>

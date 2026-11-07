@@ -1,9 +1,28 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
-import type { Program } from "@prisma/client";
+import type { Click, Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import { SqlSchema } from "@/lib/sqlSchema";
-import { isPaymentWithinCommissionDuration, type PaymentRef } from "./commission";
+import { isPaymentWithinCommissionDuration, type CommissionDurationTerms, type PaymentRef } from "./commission";
+
+export function commissionDurationForClick(
+  program: Program,
+  click?: Pick<Click, "commissionDurationTypeSnapshot" | "commissionDurationMonthsSnapshot"> | null
+): CommissionDurationTerms {
+  if (!click?.commissionDurationTypeSnapshot) {
+    return {
+      commissionDurationType: program.commissionDurationType,
+      commissionDurationMonths: program.commissionDurationMonths,
+    };
+  }
+  return {
+    commissionDurationType: click.commissionDurationTypeSnapshot,
+    commissionDurationMonths:
+      click.commissionDurationTypeSnapshot === "FIXED_MONTHS"
+        ? click.commissionDurationMonthsSnapshot
+        : null,
+  };
+}
 
 type ReferralHistoryClient = Pick<typeof db, "$queryRaw">;
 
@@ -44,12 +63,17 @@ export type ReferralHistory = {
  * earlier once that commission was already written; this is accepted and
  * bounded to one commission.
  */
-export function isWithinReferralDuration(program: Program, history: ReferralHistory, payment: PaymentRef): boolean {
-  if (program.commissionDurationType === "FOREVER") return true;
-  if (program.commissionDurationType === "ONE_TIME" && history.earnedOnAnotherPayment) return false;
+export function isWithinReferralDuration(
+  program: Program,
+  history: ReferralHistory,
+  payment: PaymentRef,
+  duration: CommissionDurationTerms = program
+): boolean {
+  if (duration.commissionDurationType === "FOREVER") return true;
+  if (duration.commissionDurationType === "ONE_TIME" && history.earnedOnAnotherPayment) return false;
   // Nothing on the referral yet, so this payment is its first.
   if (!history.start) return true;
-  return isPaymentWithinCommissionDuration(program, history.start, payment);
+  return isPaymentWithinCommissionDuration(program, history.start, payment, duration);
 }
 
 type HistoryRow = { startRef: string | null; startAt: Date | null; earnedOnAnotherPayment: boolean };
@@ -148,9 +172,10 @@ export async function referralStillEarns(
   payment: PaymentRef,
   /** The sale's other reference, when it has one (see readReferralHistory). */
   ownOtherRefs: readonly string[] = [],
-  client: ReferralHistoryClient = db
+  client: ReferralHistoryClient = db,
+  duration: CommissionDurationTerms = program
 ): Promise<boolean> {
-  if (program.commissionDurationType === "FOREVER") return true;
+  if (duration.commissionDurationType === "FOREVER") return true;
   const history = await readReferralHistory(merchantId, clickId, payment.ref, ownOtherRefs, client);
-  return isWithinReferralDuration(program, history, payment);
+  return isWithinReferralDuration(program, history, payment, duration);
 }
