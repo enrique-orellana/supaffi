@@ -6,7 +6,6 @@ import { instanceDomain } from "@/lib/instance";
 import { SqlSchema } from "@/lib/sqlSchema";
 
 type NowPaymentsCredentials = {
-  apiKey?: string;
   webhookSecret?: string;
 };
 
@@ -41,13 +40,12 @@ export function nowPaymentsCallbackUrl(webhookRouteId: string): string | null {
   return `https://${domain}/api/webhooks/nowpayments/${encodeURIComponent(webhookRouteId)}`;
 }
 
-/** Save NOWPayments API and signed-notification credentials for an owner. */
+/** Save the NOWPayments signed-notification secret for an owner. */
 export async function connectNowPayments(
   ownerId: string,
   merchantId: string,
   input: NowPaymentsCredentials,
 ): Promise<void> {
-  const apiKey = input.apiKey?.trim();
   const webhookSecret = input.webhookSecret?.trim();
 
   await db.$transaction(async (tx) => {
@@ -68,17 +66,12 @@ export async function connectNowPayments(
         },
       },
       select: {
-        apiKeyEnc: true,
         webhookSecretEnc: true,
       },
     });
-    const apiKeyEnc = apiKey
-      ? encrypt(requiredCredential(apiKey, "API key"))
-      : existing?.apiKeyEnc;
     const webhookSecretEnc = webhookSecret
       ? encrypt(requiredCredential(webhookSecret, "IPN secret"))
       : (existing?.webhookSecretEnc ?? null);
-    if (!apiKeyEnc) throw new Error("NOWPayments API key is required");
     if (!webhookSecretEnc)
       throw new Error("NOWPayments IPN secret is required");
 
@@ -92,13 +85,13 @@ export async function connectNowPayments(
       create: {
         merchantId,
         provider: PaymentProvider.NOWPAYMENTS.database,
-        apiKeyEnc,
+        apiKeyEnc: null,
         webhookSecretEnc,
         status: "CONNECTED",
         enabled: true,
       },
       update: {
-        apiKeyEnc,
+        apiKeyEnc: null,
         webhookSecretEnc,
         status: "CONNECTED",
         enabled: true,
@@ -140,7 +133,6 @@ export async function getNowPaymentsConnectionStatus(
   merchantId: string,
 ): Promise<{
   connected: boolean;
-  hasApiKey: boolean;
   hasIpnSecret: boolean;
   hasCallbackId: boolean;
   callbackUrl: string | null;
@@ -152,7 +144,6 @@ export async function getNowPaymentsConnectionStatus(
       merchant: { ownerId },
     },
     select: {
-      apiKeyEnc: true,
       webhookSecretEnc: true,
       status: true,
       enabled: true,
@@ -162,12 +153,10 @@ export async function getNowPaymentsConnectionStatus(
   const connected = Boolean(
     connection?.status === "CONNECTED" &&
     connection.enabled &&
-    connection.apiKeyEnc &&
     connection.webhookSecretEnc,
   );
   return {
     connected,
-    hasApiKey: Boolean(connection?.apiKeyEnc),
     hasIpnSecret: Boolean(connection?.webhookSecretEnc),
     hasCallbackId: Boolean(connection?.webhookRouteId),
     callbackUrl: connection

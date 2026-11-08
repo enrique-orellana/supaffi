@@ -74,29 +74,27 @@ describe("NOWPayments connection credentials", () => {
     expect(nowPaymentsCallbackUrl("stable-route-id")).toBeNull();
   });
 
-  it("encrypts and saves only the API key and IPN secret", async () => {
+  it("encrypts and saves only the IPN secret", async () => {
     await connectNowPayments("owner-1", "merchant-1", {
-      apiKey: "merchant-api-key",
       webhookSecret: "merchant-ipn-secret",
     });
 
-    expect(encrypt).toHaveBeenNthCalledWith(1, "merchant-api-key");
-    expect(encrypt).toHaveBeenNthCalledWith(2, "merchant-ipn-secret");
+    expect(encrypt).toHaveBeenCalledExactlyOnceWith("merchant-ipn-secret");
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          apiKeyEnc: "encrypted:merchant-api-key",
+          apiKeyEnc: null,
           webhookSecretEnc: "encrypted:merchant-ipn-secret",
         }),
         update: expect.objectContaining({
-          apiKeyEnc: "encrypted:merchant-api-key",
+          apiKeyEnc: null,
           webhookSecretEnc: "encrypted:merchant-ipn-secret",
         }),
       }),
     );
   });
 
-  it("preserves the API key when rotating the IPN secret", async () => {
+  it("clears a stored API key when rotating the IPN secret", async () => {
     findExisting.mockResolvedValue({
       apiKeyEnc: "encrypted:existing-api-key",
       webhookSecretEnc: "encrypted:existing-ipn-secret",
@@ -110,16 +108,15 @@ describe("NOWPayments connection credentials", () => {
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
-          apiKeyEnc: "encrypted:existing-api-key",
+          apiKeyEnc: null,
           webhookSecretEnc: "encrypted:replacement-ipn-secret",
         }),
       }),
     );
   });
 
-  it("requires both credentials for a ready connection", async () => {
+  it("requires only the IPN secret for a ready connection", async () => {
     findFirst.mockResolvedValue({
-      apiKeyEnc: "encrypted:merchant-api-key",
       webhookSecretEnc: "encrypted:merchant-ipn-secret",
       status: "CONNECTED",
       enabled: true,
@@ -130,7 +127,6 @@ describe("NOWPayments connection credentials", () => {
       getNowPaymentsConnectionStatus("owner-1", "merchant-1"),
     ).resolves.toEqual({
       connected: true,
-      hasApiKey: true,
       hasIpnSecret: true,
       hasCallbackId: true,
       callbackUrl:
@@ -138,7 +134,6 @@ describe("NOWPayments connection credentials", () => {
     });
 
     findFirst.mockResolvedValue({
-      apiKeyEnc: "encrypted:merchant-api-key",
       webhookSecretEnc: null,
       status: "CONNECTED",
       enabled: true,
@@ -149,16 +144,13 @@ describe("NOWPayments connection credentials", () => {
       getNowPaymentsConnectionStatus("owner-1", "merchant-1"),
     ).resolves.toMatchObject({
       connected: false,
-      hasApiKey: true,
       hasIpnSecret: false,
     });
   });
 
-  it("requires an IPN secret before enabling the API connection", async () => {
+  it("requires an IPN secret before connecting", async () => {
     await expect(
-      connectNowPayments("owner-1", "merchant-1", {
-        apiKey: "merchant-api-key",
-      }),
+      connectNowPayments("owner-1", "merchant-1", {}),
     ).rejects.toThrow("NOWPayments IPN secret is required");
     expect(upsert).not.toHaveBeenCalled();
   });

@@ -1,14 +1,15 @@
 # How NOWPayments works with Supaffi
 
-Supaffi connects an affiliate referral to a NOWPayments invoice, then verifies
-the payment with NOWPayments before recording a commission. Your site keeps its
-checkout, payment handling, and fulfillment.
+Supaffi connects an affiliate referral to a NOWPayments invoice. When NOWPayments
+sends a signed payment notification, Supaffi verifies it with the IPN secret and
+records a commission only for a `finished` payment. Your site keeps its checkout,
+payment handling, and fulfillment.
 
 > **If your app relies on its current NOWPayments webhook to confirm orders or
-> fulfill them, keep that webhook connected.** Route the notification through
-> the relay so both your app and Supaffi receive it. Send callbacks only to
-> Supaffi when it is intentionally the sole receiver and no other system needs
-> that notification.
+> fulfill them, keep that webhook connected.** NOWPayments sends an IPN to one
+> callback destination. Add a custom relay that forwards the original request
+> body and `x-nowpayments-sig` header to Supaffi. Do not replace your existing
+> callback with Supaffi's URL unless Supaffi is the only receiver.
 
 ## The whole flow
 
@@ -20,22 +21,22 @@ flowchart TD
   D --> E[Supaffi stores invoice reference ↔ referral]
   E --> F[Customer pays on NOWPayments]
   F --> G[NOWPayments sends a signed payment notification]
-  G --> H{Who must receive the notification?}
-  H -->|Supaffi only; no other system needs the IPN| I[Supaffi webhook]
-  H -->|Both systems need the IPN| J[Relay you control]
-  J --> K[Your existing webhook verifies the notification and fulfills the order]
-  J --> I
-  I --> L[Supaffi verifies the signature]
-  L --> M[Supaffi checks the payment ID with the NOWPayments API]
-  M --> N{API confirms finished and invoice matches?}
-  N -->|Yes| O[Record the payment and at most one commission]
-  N -->|No| P[Keep pending, retry, or record without a commission]
+  G --> H{Does another system already use the callback?}
+  H -->|No| I[Supaffi webhook]
+  H -->|Yes| J[Existing webhook or custom relay]
+  J --> K[Your existing order and fulfillment flow]
+  J -->|Forward same body and signature| I
+  I --> L[Verify signature and deduplicate event]
+  L --> M{Signed status is finished and invoice matches?}
+  M -->|Yes| O[Record the payment and at most one commission]
+  M -->|No| P[Record status without a commission]
   B -. "Referral tracking only; never payment proof" .-> Q[The browser cannot confirm a sale]
 ```
 
 **The key distinction:** the browser identifies the referral associated with an
-invoice. The signed notification and a server-to-server NOWPayments API check
-prove the payment. Supaffi creates a commission only after both sides match.
+invoice. A signed NOWPayments IPN is the payment confirmation. Supaffi checks its
+signature, status, and invoice reference before creating a commission. The
+browser never reports payment success.
 
 ## 1. Before payment: link an invoice to a referral
 
@@ -77,12 +78,11 @@ formats are not captured automatically.
 
 ## 2. After payment: verify it before counting a sale
 
-NOWPayments sends a signed IPN (payment notification) to the callback URL set
-for the invoice or payment. Send it directly to Supaffi only when it is the sole
-receiver and no existing order or fulfillment flow depends on another webhook.
-If your existing webhook must also receive the IPN, route it through the relay
-you control. The relay forwards the original request body and signature to
-both; it does not decide whether a payment is valid.
+NOWPayments sends a signed IPN (payment notification) to one callback URL. If
+your app already uses that callback for orders or fulfillment, keep it and add a
+custom relay in the existing handler or in infrastructure you control. It must
+forward the original POST body and `x-nowpayments-sig` header to Supaffi. If no
+other system needs the notification, you can use the Supaffi URL directly.
 
 ```mermaid
 sequenceDiagram
@@ -92,7 +92,6 @@ sequenceDiagram
   participant App as Your existing webhook
   participant Hook as Supaffi webhook
   participant Queue as Supaffi queue
-  participant API as NOWPayments payment API
   participant DB as Supaffi database
 
   alt Supaffi is the only receiver
@@ -108,72 +107,64 @@ sequenceDiagram
   Hook->>Hook: Verify signature with the IPN secret
   Hook->>Queue: Store the verified event once
   Hook-->>NOW: Acknowledge after durable queueing
-  Queue->>API: Look up this payment ID using the API key
-  API-->>Queue: Current payment status and details
-  alt API has not caught up with the notification
-    Queue->>DB: Keep the event pending and retry
-  else API confirms a finished payment
+  alt Signed event says finished and invoice matches
     Queue->>DB: Match invoice to the stored referral
     Queue->>DB: Record payment and one eligible commission
-  else Not finished or no valid referral matches
+  else Other status or no valid referral matches
     Queue->>DB: Record payment without a commission
   end
 ```
 
-Supaffi checks the notification signature, then asks NOWPayments about the exact
-payment ID from that notification. The amount and currency must match the
-signed notification; invoice and order IDs are compared when both the
-notification and API provide comparable values. Supaffi then matches the
-verified invoice reference to the referral it stored before payment. The API
-status must not lag behind the notification, and it must confirm `finished`
-before Supaffi can create a commission. A stale API response is retried rather
-than treated as a completed payment. A customer returning to the site, a
-browser event, or an unverified notification cannot create a sale.
+Supaffi checks the HMAC-SHA-512 signature against the exact notification data
+using the saved IPN secret, then queues the event for processing. The signed
+payload contains the payment ID, status, invoice ID, amount, and currency. The
+queue matches the invoice ID to the referral recorded before checkout. A
+customer returning to the site, a browser event, or a notification with an
+invalid signature cannot create a sale.
 
 The invoice-to-referral association is unique and cannot be reassigned to a
 different affiliate. Provider events and payments are deduplicated, so retries
-cannot count the same payment twice. A commission requires an API-confirmed
-`finished` status and a valid referral for that invoice within the referral's
-attribution window. Other payment statuses can be stored without earning a
-commission.
+cannot count the same payment twice. A commission requires a signed `finished`
+status and a valid referral for that invoice within the referral's attribution
+window. Other payment statuses can be stored without earning a commission.
 
 ## What each part needs
 
 | Part | Responsibility | Credentials or access |
 | --- | --- | --- |
 | Tracking script | Connect the browser's referral to a fresh invoice reference | No merchant credentials |
-| Supaffi | Verify the notification, check payment facts, and calculate a commission | NOWPayments API key and IPN secret |
+| Supaffi | Verify the notification and calculate a commission | NOWPayments IPN secret only |
 | Relay, when your existing webhook also needs the IPN | Forward one signed notification to Supaffi and your existing webhook | The two receiver URLs; no NOWPayments credentials |
 | Your existing webhook | Continue your current order and fulfillment flow | Its existing configuration |
 
-Supaffi encrypts its API key and IPN secret at rest. It does not need your
-application credentials, database access, account password, or fulfillment
-code. Each webhook receiver verifies the original provider signature itself.
+Supaffi encrypts the IPN secret at rest. It does not need your NOWPayments API
+key, application credentials, database access, account password, or fulfillment
+code. Your app can keep its API key for invoice creation. Each webhook receiver
+verifies the original provider signature itself.
 
-Use the relay whenever your existing webhook must continue receiving the same
-notification as Supaffi. The [relay guide](../integrations/nowpayments-webhook-relay/README.md)
-shows how to deploy it in infrastructure you control. If either receiver is
+Use a custom relay whenever your existing webhook must continue receiving the
+same notification as Supaffi. The [relay guide](../integrations/nowpayments-webhook-relay/README.md)
+shows how to deploy one in infrastructure you control. If either receiver is
 unavailable, the relay returns a failure so NOWPayments can retry delivery.
 
 ## Setup at a glance
 
-1. In the product's **Settings → Connections**, save the NOWPayments API key and
-   IPN secret. Supaffi uses the API key to check a payment ID and the IPN secret
-   to verify signatures. Supaffi does not use payout endpoints.
+1. In the product's **Settings → Connections**, save the NOWPayments IPN secret.
+   Supaffi uses it to verify signatures and does not need the API key, account
+   password, or payout access.
 2. Add the Supaffi tracking script to pages where an affiliate link can land.
    Confirm that the checkout's fresh invoice response is readable to the
    browser and that the invoice gets registered.
-3. Use the HTTPS receiver URL shown in Supaffi only if no other system needs the
-   IPN. If your existing webhook handles orders or fulfillment, set the
-   callback to your relay and configure both receiver URLs. When checkout
-   supplies `ipn_callback_url` for each invoice, point that existing setting at
-   the relay; see the [relay guide](../integrations/nowpayments-webhook-relay/README.md).
+3. Copy the HTTPS receiver URL shown in Supaffi. If your app already uses the
+   callback, keep it and configure a custom relay to forward the unchanged body
+   and signature header to Supaffi. If the app has no existing callback, set the
+   Supaffi URL directly in NOWPayments. For a standalone relay, point NOWPayments
+   at the relay and configure both destinations; see the [relay guide](../integrations/nowpayments-webhook-relay/README.md).
 4. Complete a test payment and confirm that every intended receiver gets the
-   notification. Confirm that Supaffi verifies the payment before showing a
-   commission.
+   notification. Supaffi should show a commission only after a valid signed
+   `finished` event matches the saved invoice attribution.
 
 See [Payment providers](payment-providers.md) for supported statuses and
 integration limits.
 
-NOWPayments references: [IPN callbacks](https://nowpayments.io/help/what-is/what-is-ipn)
-and [Payments API](https://nowpayments.io/api).
+NOWPayments reference: [IPN callbacks](https://nowpayments.io/help/what-is/what-is-ipn).

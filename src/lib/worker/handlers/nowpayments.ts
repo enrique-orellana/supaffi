@@ -7,11 +7,7 @@ import type {
   WebhookEvent,
 } from "@prisma/client";
 import { db } from "@/lib/db";
-import { decrypt } from "@/lib/crypto";
-import {
-  getNowPaymentsPayment,
-  NOWPAYMENTS_PAYMENT_STATUS,
-} from "@/lib/payments/providers/nowpaymentsApi";
+import { NOWPAYMENTS_PAYMENT_STATUS } from "@/lib/payments/providers/nowpayments";
 import { SqlSchema } from "@/lib/sqlSchema";
 import {
   recordCommerceCheckoutReference,
@@ -57,20 +53,6 @@ const PAYMENT_STATUS_PRIORITY: Readonly<Record<string, number>> = {
   [NOWPAYMENTS_PAYMENT_STATUS.EXPIRED]: 5,
   [NOWPAYMENTS_PAYMENT_STATUS.FINISHED]: 6,
   [NOWPAYMENTS_PAYMENT_STATUS.REFUNDED]: 7,
-};
-
-const PAYMENT_STATUS_KIND: Readonly<
-  Record<string, QueuedNowPaymentsEvent["kind"]>
-> = {
-  [NOWPAYMENTS_PAYMENT_STATUS.WAITING]: "payment_pending",
-  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMING]: "payment_pending",
-  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMED]: "payment_pending",
-  [NOWPAYMENTS_PAYMENT_STATUS.SENDING]: "payment_pending",
-  [NOWPAYMENTS_PAYMENT_STATUS.PARTIALLY_PAID]: "payment_pending",
-  [NOWPAYMENTS_PAYMENT_STATUS.FINISHED]: "payment_succeeded",
-  [NOWPAYMENTS_PAYMENT_STATUS.FAILED]: "payment_failed",
-  [NOWPAYMENTS_PAYMENT_STATUS.EXPIRED]: "payment_failed",
-  [NOWPAYMENTS_PAYMENT_STATUS.REFUNDED]: "payment_refunded",
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -200,91 +182,6 @@ function providerUpdateTime(event: QueuedNowPaymentsEvent): Date | null {
   if (typeof value !== "string") return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-async function verifyEventWithNowPayments(
-  row: WebhookEvent,
-  event: QueuedNowPaymentsEvent,
-): Promise<QueuedNowPaymentsEvent> {
-  const connection = await db.paymentConnection.findUnique({
-    where: {
-      merchantId_provider: {
-        merchantId: row.merchantId,
-        provider: PaymentProvider.NOWPAYMENTS.database,
-      },
-    },
-    select: {
-      apiKeyEnc: true,
-      enabled: true,
-      status: true,
-    },
-  });
-  if (
-    !connection?.apiKeyEnc ||
-    !connection.enabled ||
-    connection.status !== "CONNECTED"
-  ) {
-    throw new Error("NOWPayments API credentials are missing or disconnected");
-  }
-
-  const verified = await getNowPaymentsPayment(
-    event.paymentRef,
-    decrypt(connection.apiKeyEnc),
-  );
-  if (
-    (verified.invoice_id &&
-      event.providerInvoiceRef &&
-      verified.invoice_id !== event.providerInvoiceRef) ||
-    (typeof event.rawPayload.order_id === "string" &&
-      verified.order_id &&
-      verified.order_id !== event.sourceOrderId) ||
-    !new Prisma.Decimal(verified.price_amount).eq(event.saleAmount) ||
-    verified.price_currency !== event.saleCurrency
-  ) {
-    throw new Error("NOWPayments API facts did not match the queued update");
-  }
-
-  const kind = PAYMENT_STATUS_KIND[verified.payment_status];
-  if (!kind) throw new Error("NOWPayments API returned an unsupported status");
-  if (
-    PAYMENT_STATUS_PRIORITY[verified.payment_status] <
-    PAYMENT_STATUS_PRIORITY[event.providerStatus]
-  ) {
-    // The signed IPN can arrive before the payment status endpoint catches up.
-    // Keep this unique event retryable instead of acknowledging a stale result.
-    throw new Error(
-      "NOWPayments API has not caught up with the signed payment notification",
-    );
-  }
-  const rawPayload: JsonObject = {
-    ...event.rawPayload,
-    payment_id: verified.payment_id,
-    payment_status: verified.payment_status,
-    invoice_id: verified.invoice_id ?? event.providerInvoiceRef,
-    order_id: verified.order_id ?? event.sourceOrderId,
-    price_amount: verified.price_amount,
-    price_currency: verified.price_currency.toUpperCase(),
-    actually_paid: verified.actually_paid ?? event.cryptoAmount,
-    pay_currency: verified.pay_currency ?? event.cryptoCurrency,
-    network: verified.network ?? event.cryptoNetwork,
-    updated_at: verified.updated_at ?? event.rawPayload.updated_at,
-  };
-  const refreshed = parseQueuedEvent({
-    provider: event.provider,
-    eventId: event.paymentRef + ":" + verified.payment_status,
-    kind,
-    paymentRef: event.paymentRef,
-    checkoutRef: verified.invoice_id ?? event.providerInvoiceRef,
-    saleAmount: verified.price_amount,
-    saleCurrency: verified.price_currency,
-    cryptoAmount: verified.actually_paid ?? event.cryptoAmount,
-    cryptoCurrency: verified.pay_currency ?? event.cryptoCurrency,
-    occurredAt: verified.updated_at ?? event.occurredAt.toISOString(),
-    rawPayload,
-  });
-  if (!refreshed)
-    throw new Error("NOWPayments API response could not be normalized");
-  return refreshed;
 }
 
 function statusAfter(current: string | null, incoming: string): string {
@@ -590,11 +487,10 @@ async function markCommissionRefunded(
   });
 }
 
-/** Process a NOWPayments update after verifying its facts against the API. */
+/** Process a NOWPayments update after the webhook route verifies its signature. */
 export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
-  const queued = parseQueuedEvent(row.payload);
-  if (!queued) throw new Error("Queued NOWPayments event is invalid");
-  const event = await verifyEventWithNowPayments(row, queued);
+  const event = parseQueuedEvent(row.payload);
+  if (!event) throw new Error("Queued NOWPayments event is invalid");
 
   const saleAmount = new Prisma.Decimal(event.saleAmount);
   const cryptoAmount = event.cryptoAmount

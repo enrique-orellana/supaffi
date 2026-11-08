@@ -1,17 +1,17 @@
 # Payment providers
 
-Supaffi supports Stripe and NOWPayments. Stripe setup and payment handling remain provider-specific. For NOWPayments, a merchant keeps its existing checkout, API key, webhook handler, and fulfillment. A small relay deployed in the merchant's own infrastructure copies each signed provider notification to the existing webhook and Supaffi.
+Supaffi supports Stripe and NOWPayments. Stripe setup and payment handling remain provider-specific. For NOWPayments, the merchant keeps its existing checkout, invoice creation, webhook handler, and fulfillment. Supaffi needs only the NOWPayments IPN secret. It verifies the signed notification and records a sale only when its status is `finished`.
 
 For the full sequence and a visual explanation of invoice attribution, IPN verification, and commission creation, see [the NOWPayments flow](nowpayments-flow.md).
 
 | Provider | Supported path | Recurring commissions | Refunds and disputes |
 | --- | --- | --- | --- |
 | Stripe | Stripe Checkout, Payment Links, buy buttons and pricing tables | Yes, for subscriptions created through those checkout paths | Stripe refunds and disputes are processed from signed events |
-| NOWPayments | One fresh hosted invoice per sale, paid once, with its signed IPN delivered through a merchant-owned relay and verified against the payment API | No | A `refunded` status confirmed by the API voids an unpaid commission; disputes are not supported |
+| NOWPayments | One fresh hosted invoice per sale, paid once, with a signed IPN verified by Supaffi | No | A signed `refunded` status voids an unpaid commission; disputes are not supported |
 
 Supaffi records affiliate payouts but does not send them. NOWPayments does not pay affiliates in cryptocurrency and does not support subscription commissions. Other payment providers and direct uploads of provider exports are not supported by this release.
 
-## NOWPayments without backend code changes
+## NOWPayments while keeping your existing callback
 
 ```mermaid
 flowchart LR
@@ -19,22 +19,19 @@ flowchart LR
   B -->|Before payment: invoice reference and referral| S[Supaffi stores attribution]
   B --> C[Existing checkout]
   C --> D[NOWPayments]
-  D -->|Signed IPN| R[Merchant-owned relay]
-  R -->|Same body and signature| E[Existing merchant webhook]
-  R -->|Same body and signature| S
-  E --> F[Existing order and fulfillment flow]
+  D -->|Signed IPN| E[Existing merchant webhook]
+  E -->|Existing order and fulfillment flow| F[Your app]
+  E -->|Custom relay forwards same body and signature| S[Supaffi webhook]
   S --> G[Verify IPN and match invoice to referral]
 ```
 
-The browser registers only which referral belongs to a newly created hosted invoice. It does not report payment success. The signed NOWPayments IPN supplies the payment ID; Supaffi verifies the signature, then asks NOWPayments' API for that exact payment's authoritative status and amount. A commission is created only when the API confirms `finished` and the payment's invoice matches the recorded referral. The existing merchant webhook still receives the same provider body and signature, so its payment and fulfillment logic remains in control. Supaffi never calls the merchant application.
+The browser registers only which referral belongs to a newly created hosted invoice. It does not report payment success. The signed NOWPayments IPN includes the payment and invoice references, amount, currency, and status. Supaffi verifies the HMAC signature using the saved IPN secret, then matches the invoice reference to the referral recorded before checkout. A commission is created only for a signed `finished` notification. Supaffi does not call NOWPayments' API or the merchant application.
 
-1. In the product's **Settings → Connections**, save the NOWPayments API key and IPN secret. Supaffi uses the API key only to look up a payment by the ID in a verified notification; it uses the IPN secret to verify the signature. Both are encrypted in the database with AES-256-GCM using the instance's `MASTER_ENCRYPTION_KEY` and are not shown again. Supaffi does not ask for the NOWPayments account email or password, and does not use payout endpoints.
+1. In the product's **Settings → Connections**, save the NOWPayments IPN secret. Supaffi encrypts it in the database with AES-256-GCM using the instance's `MASTER_ENCRYPTION_KEY` and does not show it again. Supaffi does not ask for the API key, account email, password, or payout access. Your app may keep using its own API key to create invoices.
 2. Add the Supaffi tracking script to the merchant site. Each sale must use a fresh NOWPayments hosted invoice and one payment ID. Automatic capture supports successful `fetch` POST requests that return the standard invoice URL in JSON. This includes same-origin requests and cross-origin requests whose response the browser allows the merchant page to read through CORS. The script reads the existing referral cookie, extracts the invoice reference, and gives Supaffi up to 800 ms to register the association before returning the response to the merchant code. Reusable invoice links, split payments, XHR, unreadable cross-origin responses, and other response shapes are not supported. If the tracker cannot identify the reference or Supaffi does not respond in time, checkout continues; that order may not be attributed.
-3. Deploy the [merchant-owned webhook relay](../integrations/nowpayments-webhook-relay/README.md) in infrastructure controlled by the merchant. Configure `EXISTING_WEBHOOK_URL` with the current merchant webhook and `SUPAFFI_WEBHOOK_URL` with the receiver URL shown in Supaffi settings.
-4. Route NOWPayments IPNs through the relay. Change the existing callback destination setting to the relay URL, or place the relay in front of the existing callback address. This is callback routing configuration; it does not require a change to checkout or webhook code.
-5. The relay forwards the original request body and `x-nowpayments-sig` unchanged to both destinations. Supaffi verifies the provider's HMAC-SHA-512 with the saved IPN secret, then verifies payment status and sale facts through `GET /v1/payment/{payment_id}` using the API key. The merchant's existing webhook continues its own verification and order handling.
-
-NOWPayments' payment-list API can search by invoice ID, but it requires both an API key and an account JWT. Supaffi does not use that endpoint or collect account passwords: it gets the payment ID from the signed IPN and verifies the single payment with the API-key-only status endpoint.
+3. Copy the callback URL shown in Supaffi settings. NOWPayments allows one callback destination. If your app already receives its IPNs, do not replace that callback with Supaffi's URL. Add a custom relay in your existing webhook or deploy the [merchant-owned relay](../integrations/nowpayments-webhook-relay/README.md). The relay must forward the original POST body and `x-nowpayments-sig` header unchanged to both your existing webhook and Supaffi.
+4. If no existing system depends on the callback, set the Supaffi URL directly in NOWPayments. Otherwise, point NOWPayments at the relay, or keep the existing callback address and make that handler forward a copy to Supaffi. Your app keeps verifying its own callback and handling orders as before.
+5. Supaffi verifies HMAC-SHA-512, deduplicates provider event IDs, and matches the invoice reference to the stored referral. Only a signed `finished` event can create a sale and commission. Signed failed, expired, partially paid, and refunded updates are handled according to their status.
 
 The Supaffi receiver URL uses `SUPAFFI_WEBHOOK_BASE_URL` when configured, otherwise the public `SUPAFFI_DOMAIN`, and has this form:
 

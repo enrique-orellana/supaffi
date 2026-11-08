@@ -38,7 +38,6 @@ describe("payment provider setup registry", () => {
     });
     vi.mocked(getNowPaymentsConnectionStatus).mockResolvedValue({
       connected: true,
-      hasApiKey: true,
       hasIpnSecret: true,
       hasCallbackId: true,
       callbackUrl: "https://supaffi.example/api/webhooks/nowpayments/route-id",
@@ -106,7 +105,6 @@ describe("payment provider setup registry", () => {
       details: {
         callbackUrl:
           "https://supaffi.example/api/webhooks/nowpayments/route-id",
-        hasApiKey: true,
         hasIpnSecret: true,
       },
     });

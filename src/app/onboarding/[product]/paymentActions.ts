@@ -13,7 +13,6 @@ import {
   disconnectNowPayments,
   getNowPaymentsConnectionStatus,
 } from "@/lib/paymentConnections";
-import { testNowPaymentsApiKeyAccess } from "@/lib/payments/providers/nowpaymentsApi";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
@@ -105,32 +104,14 @@ export async function saveNowPaymentsOnboardingAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ownerId = await owner();
-  const apiKey = String(formData.get("apiKey") ?? "").trim();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
 
   const status = await getNowPaymentsConnectionStatus(ownerId, product.id);
-  if (!status.hasApiKey && !apiKey)
-    return { error: "Enter the NOWPayments API key." };
   if (!status.hasIpnSecret && !ipnSecret)
     return {
       error: "Enter the NOWPayments IPN secret to verify signed notifications.",
     };
-  if (status.connected && !apiKey && !ipnSecret)
-    return { error: "Enter at least one credential to update." };
-
-  if (apiKey) {
-    try {
-      await testNowPaymentsApiKeyAccess(apiKey);
-    } catch {
-      return {
-        error:
-          "Supaffi could not verify this NOWPayments API key. Check the key and API environment.",
-      };
-    }
-  }
-
   await connectNowPayments(ownerId, product.id, {
-    apiKey,
     webhookSecret: ipnSecret,
   });
   revalidatePath(stepPath(product.slug, "payments"));

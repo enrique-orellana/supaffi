@@ -2,16 +2,28 @@ import { PaymentProvider } from "../types";
 import { createHmac, timingSafeEqual } from "crypto";
 import type { PaymentProviderAdapter, VerifiedProviderEvent } from "../types";
 
+export const NOWPAYMENTS_PAYMENT_STATUS = {
+  WAITING: "waiting",
+  CONFIRMING: "confirming",
+  CONFIRMED: "confirmed",
+  SENDING: "sending",
+  PARTIALLY_PAID: "partially_paid",
+  FINISHED: "finished",
+  FAILED: "failed",
+  REFUNDED: "refunded",
+  EXPIRED: "expired",
+} as const;
+
 const STATUS_KIND: Readonly<Record<string, VerifiedProviderEvent["kind"]>> = {
-  waiting: "payment_pending",
-  confirming: "payment_pending",
-  confirmed: "payment_pending",
-  sending: "payment_pending",
-  partially_paid: "payment_pending",
-  finished: "payment_succeeded",
-  failed: "payment_failed",
-  expired: "payment_failed",
-  refunded: "payment_refunded",
+  [NOWPAYMENTS_PAYMENT_STATUS.WAITING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMED]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.SENDING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.PARTIALLY_PAID]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.FINISHED]: "payment_succeeded",
+  [NOWPAYMENTS_PAYMENT_STATUS.FAILED]: "payment_failed",
+  [NOWPAYMENTS_PAYMENT_STATUS.EXPIRED]: "payment_failed",
+  [NOWPAYMENTS_PAYMENT_STATUS.REFUNDED]: "payment_refunded",
 };
 
 type JsonObject = Record<string, unknown>;

@@ -25,18 +25,13 @@ export function NowPaymentsConnectionPanel({
     status.details && "callbackUrl" in status.details
       ? status.details.callbackUrl
       : null;
-  const apiKeyStored =
-    status.details && "hasApiKey" in status.details
-      ? status.details.hasApiKey
-      : false;
   const hasIpnSecret =
     status.details && "hasIpnSecret" in status.details
       ? status.details.hasIpnSecret
       : false;
-  const hasCredentials = apiKeyStored || hasIpnSecret;
   const connectionStatus = status.connected
     ? "Connected"
-    : hasCredentials
+    : hasIpnSecret
       ? "Setup incomplete"
       : "Not connected";
   const saveAction =
@@ -61,7 +56,7 @@ export function NowPaymentsConnectionPanel({
             {connectionStatus}
           </span>
         </div>
-        {(apiKeyStored || hasIpnSecret) && (
+        {hasIpnSecret && (
           <form action={disconnectAction.bind(null, product)}>
             <Button
               type="submit"
@@ -76,41 +71,23 @@ export function NowPaymentsConnectionPanel({
       </div>
 
       <form action={formAction} autoComplete="off" className="grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="nowpayments-api-key">API key</Label>
-            <Input
-              id="nowpayments-api-key"
-              name="apiKey"
-              type="text"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder={
-                apiKeyStored ? "Saved — blank keeps it" : "Paste API key"
-              }
-              required={!apiKeyStored}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="nowpayments-ipn-secret">IPN secret</Label>
-            <Input
-              id="nowpayments-ipn-secret"
-              name="ipnSecret"
-              type="text"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder={
-                hasIpnSecret ? "Saved — blank keeps it" : "Paste IPN secret"
-              }
-              required={!hasIpnSecret}
-            />
-          </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="nowpayments-ipn-secret">IPN secret</Label>
+          <Input
+            id="nowpayments-ipn-secret"
+            name="ipnSecret"
+            type="password"
+            autoComplete="new-password"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder={
+              hasIpnSecret ? "Saved — blank keeps it" : "Paste IPN secret"
+            }
+            required={!hasIpnSecret}
+          />
         </div>
         <p className="text-xs text-muted-foreground">
-          The API key checks payment status; the IPN secret verifies signed
-          callbacks.
+          Supaffi verifies each signed NOWPayments callback with this secret.
         </p>
         <div className="flex flex-col gap-2">
           {state.error && (
@@ -135,7 +112,7 @@ export function NowPaymentsConnectionPanel({
           <CopyValue value={callbackUrl} className="font-mono text-xs" />
         ) : callbackUrl ? (
           <p className="text-xs text-muted-foreground">
-            Save both credentials to enable signed payment verification.
+            Save the IPN secret to enable signed payment verification.
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -144,8 +121,10 @@ export function NowPaymentsConnectionPanel({
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Add this URL in NOWPayments. To keep another webhook, route
-          notifications through the relay.
+          NOWPayments sends callbacks to one URL. If your app already uses it,
+          keep that callback and add a relay that forwards the unchanged POST
+          body and <code className="mx-1">x-nowpayments-sig</code> header here.
+          Otherwise, use this URL directly in NOWPayments.
         </p>
       </div>
     </div>
