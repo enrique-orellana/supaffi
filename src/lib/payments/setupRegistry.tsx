@@ -32,7 +32,11 @@ export type PaymentProviderSetupStatus = {
   connected: boolean;
   details?: Readonly<
     | { keyStored: boolean; webhookStored: boolean }
-    | { callbackUrl: string | null }
+    | {
+        callbackUrl: string | null;
+        invoiceLookupReady: boolean;
+        hasIpnSecret: boolean;
+      }
   >;
 };
 
@@ -92,13 +96,17 @@ const paymentProviderSetups: readonly PaymentProviderSetup[] = [
     trackingGuide: {
       title: "NOWPayments hosted invoices",
       description:
-        "Automatic capture supports successful same-origin fetch POSTs and cross-origin fetch POSTs whose responses the browser can read through CORS, when they return a fresh NOWPayments hosted invoice URL in JSON. The tracking script registers that invoice before checkout opens; it does not report payment success. Only signed notifications with a matching invoice_id can earn a commission. Reusing an invoice or paying one order with multiple payment IDs is not supported. XHR and other response formats are not detected. Configure the merchant-owned IPN relay so your existing webhook and Supaffi both receive payment notifications.",
+        "Automatic capture supports successful same-origin fetch POSTs and cross-origin fetch POSTs whose responses the browser can read through CORS, when they return a fresh NOWPayments hosted invoice URL in JSON. The tracking script registers that invoice before checkout opens; it does not report payment success. Supaffi checks tracked invoice IDs through the NOWPayments API, then verifies each payment ID before recording it. Checks slow down over time and stop at the affiliate's buy-window deadline or when a payment reaches a final status. Reusing an invoice for another order is not supported. XHR and other response formats are not detected.",
     },
     async readStatus(ownerId, merchantId) {
       const status = await getNowPaymentsConnectionStatus(ownerId, merchantId);
       return {
         connected: status.connected,
-        details: { callbackUrl: status.callbackUrl },
+        details: {
+          callbackUrl: status.callbackUrl,
+          invoiceLookupReady: status.invoiceLookupReady,
+          hasIpnSecret: status.hasIpnSecret,
+        },
       };
     },
     checkSections: [],

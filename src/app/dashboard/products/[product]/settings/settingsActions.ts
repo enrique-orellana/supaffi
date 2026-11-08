@@ -13,6 +13,8 @@ import {
 import {
   connectNowPayments,
   disconnectNowPayments,
+  getNowPaymentsConnectionStatus,
+  testNowPaymentsLookupAccess,
 } from "@/lib/paymentConnections";
 import {
   validateProductInput,
@@ -127,9 +129,46 @@ export async function saveNowPaymentsConnectionAction(
   formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
+  const apiKey = String(formData.get("apiKey") ?? "").trim();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
-  if (!ipnSecret) return { error: "Enter the IPN secret." };
-  await connectNowPayments(ownerId, product.id, { webhookSecret: ipnSecret });
+  const apiAccountEmail = String(formData.get("apiAccountEmail") ?? "").trim();
+  const apiAccountPassword = String(formData.get("apiAccountPassword") ?? "");
+  const hasAccountEmail = Boolean(apiAccountEmail);
+  const hasAccountPassword = Boolean(apiAccountPassword.trim());
+  if (hasAccountEmail !== hasAccountPassword)
+    return { error: "Enter both the NOWPayments account email and password." };
+
+  const status = await getNowPaymentsConnectionStatus(ownerId, product.id);
+  if (!status.connected && !apiKey)
+    return { error: "Enter the NOWPayments API key." };
+  if (!status.invoiceLookupReady && !hasAccountEmail)
+    return {
+      error:
+        "Enter a NOWPayments account with payment viewing access to enable invoice checks.",
+    };
+  if (status.connected && !apiKey && !ipnSecret && !hasAccountEmail)
+    return { error: "Enter at least one credential to update." };
+
+  if (apiKey || hasAccountEmail) {
+    try {
+      await testNowPaymentsLookupAccess(ownerId, product.id, {
+        apiKey,
+        accountEmail: apiAccountEmail,
+        accountPassword: apiAccountPassword,
+      });
+    } catch {
+      return {
+        error:
+          "Supaffi could not verify payment-list access. Check the login and its NOWPayments viewing permissions.",
+      };
+    }
+  }
+  await connectNowPayments(ownerId, product.id, {
+    apiKey,
+    webhookSecret: ipnSecret,
+    apiAccountEmail,
+    apiAccountPassword,
+  });
   revalidatePath(settings(product.slug));
   redirect(settings(product.slug));
 }

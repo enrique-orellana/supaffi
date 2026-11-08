@@ -7,6 +7,11 @@ import type {
   WebhookEvent,
 } from "@prisma/client";
 import { db } from "@/lib/db";
+import { decrypt } from "@/lib/crypto";
+import {
+  getNowPaymentsPayment,
+  NOWPAYMENTS_PAYMENT_STATUS,
+} from "@/lib/payments/providers/nowpaymentsApi";
 import { SqlSchema } from "@/lib/sqlSchema";
 import {
   recordCommerceCheckoutReference,
@@ -43,15 +48,29 @@ type QueuedNowPaymentsEvent = {
 };
 
 const PAYMENT_STATUS_PRIORITY: Readonly<Record<string, number>> = {
-  waiting: 0,
-  confirming: 1,
-  confirmed: 2,
-  partially_paid: 3,
-  sending: 4,
-  failed: 5,
-  expired: 5,
-  finished: 6,
-  refunded: 7,
+  [NOWPAYMENTS_PAYMENT_STATUS.WAITING]: 0,
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMING]: 1,
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMED]: 2,
+  [NOWPAYMENTS_PAYMENT_STATUS.PARTIALLY_PAID]: 3,
+  [NOWPAYMENTS_PAYMENT_STATUS.SENDING]: 4,
+  [NOWPAYMENTS_PAYMENT_STATUS.FAILED]: 5,
+  [NOWPAYMENTS_PAYMENT_STATUS.EXPIRED]: 5,
+  [NOWPAYMENTS_PAYMENT_STATUS.FINISHED]: 6,
+  [NOWPAYMENTS_PAYMENT_STATUS.REFUNDED]: 7,
+};
+
+const PAYMENT_STATUS_KIND: Readonly<
+  Record<string, QueuedNowPaymentsEvent["kind"]>
+> = {
+  [NOWPAYMENTS_PAYMENT_STATUS.WAITING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.CONFIRMED]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.SENDING]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.PARTIALLY_PAID]: "payment_pending",
+  [NOWPAYMENTS_PAYMENT_STATUS.FINISHED]: "payment_succeeded",
+  [NOWPAYMENTS_PAYMENT_STATUS.FAILED]: "payment_failed",
+  [NOWPAYMENTS_PAYMENT_STATUS.EXPIRED]: "payment_failed",
+  [NOWPAYMENTS_PAYMENT_STATUS.REFUNDED]: "payment_refunded",
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -175,7 +194,7 @@ function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
   };
 }
 
-/** Use signed provider update time when available, otherwise IPN receive time. */
+/** Use provider update time when available, otherwise queue receive time. */
 function providerUpdateTime(event: QueuedNowPaymentsEvent): Date | null {
   const value = event.rawPayload.updated_at;
   if (typeof value !== "string") return null;
@@ -183,16 +202,107 @@ function providerUpdateTime(event: QueuedNowPaymentsEvent): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+async function verifyEventWithNowPayments(
+  row: WebhookEvent,
+  event: QueuedNowPaymentsEvent,
+): Promise<QueuedNowPaymentsEvent> {
+  const connection = await db.paymentConnection.findUnique({
+    where: {
+      merchantId_provider: {
+        merchantId: row.merchantId,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+      },
+    },
+    select: {
+      apiKeyEnc: true,
+      enabled: true,
+      status: true,
+    },
+  });
+  if (
+    !connection?.apiKeyEnc ||
+    !connection.enabled ||
+    connection.status !== "CONNECTED"
+  ) {
+    throw new Error("NOWPayments API credentials are missing or disconnected");
+  }
+
+  const verified = await getNowPaymentsPayment(
+    event.paymentRef,
+    decrypt(connection.apiKeyEnc),
+  );
+  if (
+    (verified.invoice_id &&
+      event.providerInvoiceRef &&
+      verified.invoice_id !== event.providerInvoiceRef) ||
+    (typeof event.rawPayload.order_id === "string" &&
+      verified.order_id &&
+      verified.order_id !== event.sourceOrderId) ||
+    !new Prisma.Decimal(verified.price_amount).eq(event.saleAmount) ||
+    verified.price_currency !== event.saleCurrency
+  ) {
+    throw new Error("NOWPayments API facts did not match the queued update");
+  }
+
+  const kind = PAYMENT_STATUS_KIND[verified.payment_status];
+  if (!kind) throw new Error("NOWPayments API returned an unsupported status");
+  const rawPayload: JsonObject = {
+    ...event.rawPayload,
+    payment_id: verified.payment_id,
+    payment_status: verified.payment_status,
+    invoice_id: verified.invoice_id ?? event.providerInvoiceRef,
+    order_id: verified.order_id ?? event.sourceOrderId,
+    price_amount: verified.price_amount,
+    price_currency: verified.price_currency.toUpperCase(),
+    actually_paid: verified.actually_paid ?? event.cryptoAmount,
+    pay_currency: verified.pay_currency ?? event.cryptoCurrency,
+    network: verified.network ?? event.cryptoNetwork,
+    updated_at: verified.updated_at ?? event.rawPayload.updated_at,
+  };
+  const refreshed = parseQueuedEvent({
+    provider: event.provider,
+    eventId: event.paymentRef + ":" + verified.payment_status,
+    kind,
+    paymentRef: event.paymentRef,
+    checkoutRef: verified.invoice_id ?? event.providerInvoiceRef,
+    saleAmount: verified.price_amount,
+    saleCurrency: verified.price_currency,
+    cryptoAmount: verified.actually_paid ?? event.cryptoAmount,
+    cryptoCurrency: verified.pay_currency ?? event.cryptoCurrency,
+    occurredAt: verified.updated_at ?? event.occurredAt.toISOString(),
+    rawPayload,
+  });
+  if (!refreshed)
+    throw new Error("NOWPayments API response could not be normalized");
+  return refreshed;
+}
+
 function statusAfter(current: string | null, incoming: string): string {
   if (!current) return incoming;
   const prior = current.toLowerCase();
   const priorPriority = PAYMENT_STATUS_PRIORITY[prior] ?? -1;
   const incomingPriority = PAYMENT_STATUS_PRIORITY[incoming] ?? -1;
-  if (prior === "refunded" || incoming === "refunded") return "refunded";
-  if (prior === "finished" || incoming === "finished") return "finished";
-  if ((prior === "failed" || prior === "expired") && incomingPriority < 5)
+  if (
+    prior === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED ||
+    incoming === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED
+  )
+    return NOWPAYMENTS_PAYMENT_STATUS.REFUNDED;
+  if (
+    prior === NOWPAYMENTS_PAYMENT_STATUS.FINISHED ||
+    incoming === NOWPAYMENTS_PAYMENT_STATUS.FINISHED
+  )
+    return NOWPAYMENTS_PAYMENT_STATUS.FINISHED;
+  if (
+    (prior === NOWPAYMENTS_PAYMENT_STATUS.FAILED ||
+      prior === NOWPAYMENTS_PAYMENT_STATUS.EXPIRED) &&
+    incomingPriority < 5
+  )
     return prior;
-  if ((incoming === "failed" || incoming === "expired") && priorPriority < 5)
+  if (
+    (incoming === NOWPAYMENTS_PAYMENT_STATUS.FAILED ||
+      incoming === NOWPAYMENTS_PAYMENT_STATUS.EXPIRED) &&
+    priorPriority < 5
+  )
     return incoming;
   return incomingPriority >= priorPriority ? incoming : prior;
 }
@@ -249,7 +359,7 @@ async function upsertPaymentRecord(
     cryptoNetwork: string | null;
     status: string;
   },
-): Promise<{ record: PaymentRecord; previousStatus: string | null }> {
+): Promise<PaymentRecord> {
   const existing = await tx.paymentRecord.findUnique({
     where: {
       merchantId_provider_sourceOrderId: {
@@ -315,10 +425,7 @@ async function upsertPaymentRecord(
         },
       });
 
-  return {
-    record,
-    previousStatus: samePayment ? (existing?.status ?? null) : null,
-  };
+  return record;
 }
 
 async function createCommissionIfEligible(
@@ -473,10 +580,11 @@ async function markCommissionRefunded(
   });
 }
 
-/** Process one signature-verified NOWPayments event from the durable webhook queue. */
+/** Process a NOWPayments update after verifying its facts against the API. */
 export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
-  const event = parseQueuedEvent(row.payload);
-  if (!event) throw new Error("Queued NOWPayments event is invalid");
+  const queued = parseQueuedEvent(row.payload);
+  if (!queued) throw new Error("Queued NOWPayments event is invalid");
+  const event = await verifyEventWithNowPayments(row, queued);
 
   const saleAmount = new Prisma.Decimal(event.saleAmount);
   const cryptoAmount = event.cryptoAmount
@@ -499,9 +607,9 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           provider: PaymentProvider.NOWPAYMENTS.database,
         },
       },
-      select: { id: true },
+      select: { id: true, enabled: true, status: true },
     });
-    if (!connection)
+    if (!connection || !connection.enabled || connection.status !== "CONNECTED")
       throw new Error(
         "NOWPayments connection is missing for the queued payment event",
       );
@@ -529,8 +637,8 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         })
       : null;
     // A public browser registration may only match a provider event if it
-    // reached Supaffi before the signed payment update. Prefer NOWPayments'
-    // signed update timestamp, falling back to when Supaffi received the IPN.
+    // reached Supaffi before the payment update. Prefer NOWPayments' provider
+    // timestamp, falling back to when Supaffi received the queued update.
     const attributionCutoff = providerUpdateTime(event) ?? row.createdAt;
     const checkoutAttribution =
       storedCheckoutAttribution &&
@@ -544,7 +652,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
             provider: PaymentProvider.NOWPAYMENTS.database,
             checkoutRef: event.providerInvoiceRef,
             paymentRef: { not: event.paymentRef },
-            status: { in: ["finished", "refunded"] },
+            status: {
+              in: [
+                NOWPAYMENTS_PAYMENT_STATUS.FINISHED,
+                NOWPAYMENTS_PAYMENT_STATUS.REFUNDED,
+              ],
+            },
           },
           select: { id: true },
         })
@@ -677,13 +790,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       ? statusAfter(existing?.status ?? null, event.providerStatus)
       : event.providerStatus;
     let paymentRecord: PaymentRecord | null = null;
-    let previousStatus: string | null = null;
     const mayReplaceStoredPayment =
       (!existing && !unmatchedInvoiceLessEventAfterFound) ||
       samePayment ||
       checkoutMatches;
     if (mayReplaceStoredPayment) {
-      const upserted = await upsertPaymentRecord(tx, {
+      paymentRecord = await upsertPaymentRecord(tx, {
         merchantId: row.merchantId,
         connectionId: connection.id,
         checkoutId: checkout?.id ?? null,
@@ -704,11 +816,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         cryptoNetwork: event.cryptoNetwork,
         status: event.providerStatus,
       });
-      paymentRecord = upserted.record;
-      previousStatus = upserted.previousStatus;
     }
 
-    if (nextStatus === "finished" && event.providerStatus === "finished") {
+    if (
+      nextStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED &&
+      event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED
+    ) {
       if (checkout && !checkoutMatches) {
         console.warn(
           `[worker] payment ${event.paymentRef} did not match its stored checkout`,
@@ -731,7 +844,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     }
 
     if (
-      nextStatus === "refunded" &&
+      nextStatus === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED &&
       paymentRecord &&
       (samePayment || checkoutMatches)
     ) {
@@ -742,8 +855,8 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       checkout &&
       paymentRecord &&
       checkoutMatches &&
-      event.providerStatus === "finished" &&
-      nextStatus === "finished" &&
+      event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED &&
+      nextStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED &&
       checkout.status === "READY" &&
       checkout.hostedCheckoutRef !== null &&
       (!event.providerInvoiceRef ||
@@ -756,7 +869,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         row.merchantId,
         event.sourceOrderId,
         checkout.hostedCheckoutRef,
-        "finished",
+        NOWPAYMENTS_PAYMENT_STATUS.FINISHED,
         paymentTerminalSnapshot(event, paymentRecord),
       );
     }
@@ -765,8 +878,8 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       checkout &&
       paymentRecord &&
       checkoutMatches &&
-      event.providerStatus === "refunded" &&
-      nextStatus === "refunded" &&
+      event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED &&
+      nextStatus === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED &&
       checkout.status === "READY" &&
       checkout.hostedCheckoutRef !== null &&
       checkout.hostedCheckoutRef === event.providerInvoiceRef
@@ -777,7 +890,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         row.merchantId,
         event.sourceOrderId,
         checkout.hostedCheckoutRef,
-        "refunded",
+        NOWPAYMENTS_PAYMENT_STATUS.REFUNDED,
         paymentTerminalSnapshot(event, paymentRecord),
       );
     }
@@ -812,7 +925,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
         merchantId: input.merchantId,
         provider: PaymentProvider.NOWPAYMENTS.database,
         checkoutRef: input.providerCheckoutRef,
-        status: "finished",
+        status: NOWPAYMENTS_PAYMENT_STATUS.FINISHED,
       },
       take: 2,
     });
@@ -831,7 +944,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
     });
     if (
       !payment ||
-      payment.status !== "finished" ||
+      payment.status !== NOWPAYMENTS_PAYMENT_STATUS.FINISHED ||
       payment.checkoutRef !== input.providerCheckoutRef ||
       (payment.clickId && payment.clickId !== input.clickId)
     )
@@ -851,7 +964,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
     const event = parseQueuedEvent(eventRecord.payload);
     if (
       !event ||
-      event.providerStatus !== "finished" ||
+      event.providerStatus !== NOWPAYMENTS_PAYMENT_STATUS.FINISHED ||
       event.paymentRef !== payment.paymentRef ||
       event.sourceOrderId !== payment.sourceOrderId ||
       event.providerInvoiceRef !== input.providerCheckoutRef

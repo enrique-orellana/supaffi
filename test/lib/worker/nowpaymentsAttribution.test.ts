@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { describe, expect, it, beforeEach, afterAll } from "vitest";
+import { describe, expect, it, beforeEach, afterAll, vi } from "vitest";
 import type { Merchant, WebhookEvent } from "@prisma/client";
 import {
   PaymentProvider,
@@ -18,11 +18,32 @@ import {
   reconcileNowPaymentsCheckoutAttribution,
 } from "@/lib/worker/handlers/nowpayments";
 
+const { getNowPaymentsPaymentMock, listNowPaymentsPaymentsByInvoiceMock } =
+  vi.hoisted(() => ({
+    getNowPaymentsPaymentMock: vi.fn(),
+    listNowPaymentsPaymentsByInvoiceMock: vi.fn(),
+  }));
+
+vi.mock("@/lib/payments/providers/nowpaymentsApi", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/lib/payments/providers/nowpaymentsApi")
+    >();
+  return {
+    ...actual,
+    getNowPaymentsPayment: getNowPaymentsPaymentMock,
+    listNowPaymentsPaymentsByInvoice: listNowPaymentsPaymentsByInvoiceMock,
+  };
+});
+
 const REFERRAL_TOKEN = "90c50a4d-2460-42c8-95cb-b2e3d9e9f2b5";
 const INVOICE_REFERENCE = "invoice-21";
 const MOCK_INVOICE_REFERENCE = "90020";
 const NOWPAYMENTS_SECRET = "local-mock-ipn-secret";
 const TEST_ENCRYPTION_KEY = "a".repeat(64);
+const ORIGINAL_MASTER_ENCRYPTION_KEY = process.env.MASTER_ENCRYPTION_KEY;
+let activeApiPayload: Record<string, unknown> | null = null;
+let firstAffiliateId: string;
 
 type TestQueuedEvent = VerifiedProviderEvent & {
   rawPayload: Record<string, unknown>;
@@ -101,6 +122,30 @@ describe("NOWPayments checkout attribution", () => {
   let clickId: string;
 
   beforeEach(async () => {
+    process.env.MASTER_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
+    activeApiPayload = null;
+    getNowPaymentsPaymentMock
+      .mockReset()
+      .mockImplementation(async (paymentRef: string) => {
+        const raw = activeApiPayload;
+        if (!raw) throw new Error("No mock NOWPayments payment is active");
+        return {
+          payment_id: paymentRef,
+          payment_status: raw.payment_status,
+          invoice_id:
+            typeof raw.invoice_id === "string" ? raw.invoice_id : null,
+          order_id: typeof raw.order_id === "string" ? raw.order_id : null,
+          price_amount: String(raw.price_amount),
+          price_currency: String(raw.price_currency).toLowerCase(),
+          pay_amount: String(raw.pay_amount ?? ""),
+          pay_currency: String(raw.pay_currency ?? "").toLowerCase() || null,
+          actually_paid:
+            typeof raw.actually_paid === "string" ? raw.actually_paid : null,
+          network: typeof raw.network === "string" ? raw.network : null,
+          updated_at:
+            typeof raw.updated_at === "string" ? raw.updated_at : null,
+        };
+      });
     await clearAll();
     const owner = await db.owner.create({
       data: {
@@ -118,7 +163,7 @@ describe("NOWPayments checkout attribution", () => {
         paymentConnections: {
           create: {
             provider: PaymentProvider.NOWPAYMENTS.database,
-            apiKeyEnc: null,
+            apiKeyEnc: encrypt("mock-api-key"),
             webhookSecretEnc: "encrypted-ipn-secret",
             status: "CONNECTED",
             enabled: true,
@@ -145,6 +190,7 @@ describe("NOWPayments checkout attribution", () => {
         links: { create: { code: crypto.randomUUID(), isPrimary: true } },
       },
     });
+    firstAffiliateId = affiliate.id;
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
@@ -159,6 +205,9 @@ describe("NOWPayments checkout attribution", () => {
   afterAll(async () => {
     await clearAll();
     await db.$disconnect();
+    if (ORIGINAL_MASTER_ENCRYPTION_KEY === undefined)
+      delete process.env.MASTER_ENCRYPTION_KEY;
+    else process.env.MASTER_ENCRYPTION_KEY = ORIGINAL_MASTER_ENCRYPTION_KEY;
   });
 
   async function registerCheckout(
@@ -181,6 +230,7 @@ describe("NOWPayments checkout attribution", () => {
     providerEventId = event.eventId,
     createdAt = new Date(),
   ) {
+    activeApiPayload = event.rawPayload;
     await handleNowPaymentsEvent({
       merchantId: merchant.id,
       providerEventId,
@@ -418,6 +468,7 @@ describe("NOWPayments checkout attribution", () => {
         updated_at: providerUpdatedAt,
         network: "btc",
       };
+      activeApiPayload = ipnPayload;
       const signature = createHmac("sha512", NOWPAYMENTS_SECRET)
         .update(JSON.stringify(sortForSignature(ipnPayload)), "utf8")
         .digest("hex");
@@ -491,6 +542,33 @@ describe("NOWPayments checkout attribution", () => {
     expect(await db.commission.count()).toBe(0);
   });
 
+  it("uses the live NOWPayments API status before creating a commission", async () => {
+    await registerCheckout();
+    const notification = queuedEvent("finished");
+    getNowPaymentsPaymentMock.mockResolvedValue({
+      payment_id: notification.paymentRef,
+      payment_status: "waiting",
+      invoice_id: INVOICE_REFERENCE,
+      order_id: "local-order-21",
+      price_amount: "31.25",
+      price_currency: "eur",
+      pay_amount: "0.00123456",
+      pay_currency: "btc",
+      actually_paid: "0.00123456",
+      network: "btc",
+      updated_at: notification.occurredAt.toISOString(),
+    });
+
+    await processEvent(notification);
+
+    expect(getNowPaymentsPaymentMock).toHaveBeenCalledWith(
+      "payment-21",
+      "mock-api-key",
+    );
+    expect((await getPayment()).status).toBe("waiting");
+    expect(await db.commission.count()).toBe(0);
+  });
+
   it("does not credit later payments made against a reused invoice", async () => {
     await registerCheckout();
     await processEvent();
@@ -515,6 +593,59 @@ describe("NOWPayments checkout attribution", () => {
     ).toBe(0);
   });
 
+  it("keeps one payment and one commission with the first affiliate when another claims the same invoice", async () => {
+    await registerCheckout();
+    const program = await db.program.findFirstOrThrow({
+      where: { merchantId: merchant.id },
+      select: { id: true },
+    });
+    const otherAffiliate = await db.affiliate.create({
+      data: {
+        merchantId: merchant.id,
+        programId: program.id,
+        email: "other-affiliate-" + crypto.randomUUID() + "@example.com",
+        links: { create: { code: crypto.randomUUID(), isPrimary: true } },
+      },
+    });
+    const otherClick = await db.click.create({
+      data: {
+        merchantId: merchant.id,
+        affiliateId: otherAffiliate.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+      },
+    });
+    const registrationResponse = await registerCheckoutRoute(
+      new Request(
+        "https://" + merchant.domain + "/api/track/checkout-attribution",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            host: merchant.domain,
+            origin: merchant.websiteUrl,
+          },
+          body: JSON.stringify({
+            provider: "nowpayments",
+            checkoutReference: INVOICE_REFERENCE,
+            referralToken: otherClick.referralToken,
+          }),
+        },
+      ),
+    );
+
+    expect(registrationResponse.status).toBe(409);
+    await processEvent();
+
+    const payment = await getPayment();
+    const commissions = await db.commission.findMany({
+      where: { paymentRecordId: payment.id },
+    });
+    expect(payment.clickId).toBe(clickId);
+    expect(commissions).toHaveLength(1);
+    expect(commissions[0].affiliateId).toBe(firstAffiliateId);
+  });
+
   it("accepts signed events without optional order and invoice references", async () => {
     const event = queuedEvent("finished");
     event.rawPayload.order_id = null;
@@ -528,6 +659,30 @@ describe("NOWPayments checkout attribution", () => {
     expect(payment.checkoutRef).toBeNull();
     expect(payment.clickId).toBeNull();
     expect(await db.commission.count()).toBe(0);
+  });
+
+  it("uses the verified NOWPayments order ID when the payment list omits it", async () => {
+    const event = queuedEvent("finished");
+    event.rawPayload.order_id = null;
+    getNowPaymentsPaymentMock.mockResolvedValueOnce({
+      payment_id: "payment-21",
+      payment_status: "finished",
+      invoice_id: INVOICE_REFERENCE,
+      order_id: "provider-order-21",
+      price_amount: "31.25",
+      price_currency: "eur",
+      pay_amount: "0.00123456",
+      pay_currency: "btc",
+      actually_paid: "0.00123456",
+      network: "btc",
+      updated_at: new Date().toISOString(),
+    });
+
+    await processEvent(event);
+
+    const payment = await getPayment("provider-order-21");
+    expect(payment.paymentRef).toBe("payment-21");
+    expect(payment.status).toBe("finished");
   });
 
   it("reconciles a registered referral if a signed finished IPN was processed first", async () => {

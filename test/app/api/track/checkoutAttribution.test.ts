@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 const {
   findMerchant,
@@ -98,6 +99,7 @@ describe("POST /api/track/checkout-attribution", () => {
         providerCheckoutRef: CHECKOUT_REFERENCE,
         clickId: "click-1",
         createdAt: expect.any(Date),
+        pollNextAt: expect.any(Date),
       }),
     });
     expect(reconcileAttribution).toHaveBeenCalledWith({
@@ -123,6 +125,30 @@ describe("POST /api/track/checkout-attribution", () => {
 
     expect(response.status).toBe(409);
     expect(createCheckoutAttribution).not.toHaveBeenCalled();
+    expect(reconcileAttribution).not.toHaveBeenCalled();
+  });
+
+  it("keeps the first affiliate when two different affiliates race to register one invoice", async () => {
+    findCheckoutAttribution
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ clickId: "winner-click" });
+    createCheckoutAttribution.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+
+    const response = await POST(
+      request({
+        provider: "nowpayments",
+        checkoutReference: CHECKOUT_REFERENCE,
+        referralToken: REFERRAL_TOKEN,
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(findCheckoutAttribution).toHaveBeenCalledTimes(2);
     expect(reconcileAttribution).not.toHaveBeenCalled();
   });
 
