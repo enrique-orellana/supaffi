@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sheet,
@@ -11,13 +11,6 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -27,14 +20,10 @@ import {
   COMMISSION_DURATION_OPTIONS,
   CommissionDuration,
   commissionDurationLabel,
-  isCommissionDuration,
-  type CommissionDurationValue,
 } from "@/lib/commissionDuration";
 import {
-  changeProgramAction,
   createPasswordLinkAction,
-  setCustomRateAction,
-  setLinkTermAction,
+  saveAffiliateSettingsAction,
 } from "./affiliateActions";
 
 /**
@@ -95,8 +84,18 @@ export function AffiliateSheet({
   listHref: string;
 }) {
   const router = useRouter();
-  // The trigger shows a program name rather than the cuid the form submits.
-  const programNames = Object.fromEntries(programs.map((p) => [p.id, p.name]));
+  const formKey = JSON.stringify({
+    programId: affiliate.programId,
+    rate: affiliate.rateIsOverride ? affiliate.rate : null,
+    links: affiliate.links.map((link) => [
+      link.id,
+      link.commissionRateOverride,
+      link.commissionDurationTypeOverride,
+      link.commissionDurationMonthsOverride,
+      link.attributionWindowDaysOverride,
+      link.holdingPeriodDaysOverride,
+    ]),
+  });
 
   return (
     <Sheet
@@ -105,8 +104,8 @@ export function AffiliateSheet({
         if (!open) router.push(listHref);
       }}
     >
-      <SheetContent className="w-[420px] overflow-y-auto data-[side=right]:sm:max-w-[420px]">
-        <SheetHeader className="pr-12">
+      <SheetContent className="flex w-[420px] flex-col overflow-hidden data-[side=right]:sm:max-w-[420px]">
+        <SheetHeader className="shrink-0 pr-12">
           <SheetTitle className="truncate">
             {affiliate.name ?? affiliate.email}
           </SheetTitle>
@@ -115,415 +114,446 @@ export function AffiliateSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col gap-6 px-4 pb-4">
-          <form
-            action={changeProgramAction.bind(null, product, affiliate.id)}
-            className="flex items-center justify-between gap-3 text-sm"
-          >
-            <span className="text-muted-foreground">Program</span>
-            <Select
-              name="programId"
-              items={programNames}
-              defaultValue={affiliate.programId}
-            >
-              <SelectTrigger
-                className="w-40 cursor-pointer"
-                aria-label="Program"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {programs.map((p) => (
-                  <SelectItem
-                    key={p.id}
-                    value={p.id}
-                    className="cursor-pointer"
-                  >
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="submit"
-              size="sm"
-              variant="secondary"
-              className="cursor-pointer"
-            >
-              Change
-            </Button>
-          </form>
+        <AffiliateSettingsForm
+          key={formKey}
+          affiliate={affiliate}
+          productDomain={productDomain}
+          programs={programs}
+          product={product}
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
 
-          <form
-            action={setCustomRateAction.bind(null, product, affiliate.id)}
-            className="flex flex-col gap-2 rounded-md border border-border/70 bg-background p-3 text-sm"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-foreground">Rate</span>
-              <span className="flex items-center gap-2 text-right">
-                <span className="font-medium tabular-nums">
-                  {affiliate.rate}%
-                </span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {affiliate.rateIsOverride ? "Custom" : "Program default"}
-                </span>
+function AffiliateSettingsForm({
+  affiliate,
+  productDomain,
+  programs,
+  product,
+}: {
+  affiliate: SheetAffiliate;
+  productDomain: string;
+  programs: { id: string; name: string }[];
+  product: { id: string; slug: string };
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const [durationTypes, setDurationTypes] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        affiliate.links.map((link) => [
+          link.id,
+          link.commissionDurationTypeOverride ?? "inherit",
+        ]),
+      ),
+  );
+
+  function cancelChanges() {
+    formRef.current?.reset();
+    setDurationTypes(
+      Object.fromEntries(
+        affiliate.links.map((link) => [
+          link.id,
+          link.commissionDurationTypeOverride ?? "inherit",
+        ]),
+      ),
+    );
+    setError("");
+  }
+
+  function saveChanges(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    startTransition(async () => {
+      const result = await saveAffiliateSettingsAction(
+        product,
+        affiliate.id,
+        formData,
+      );
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+    });
+  }
+
+  return (
+    <form
+      ref={formRef}
+      onSubmit={saveChanges}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-5">
+        <section className="space-y-4">
+          <h3 className="text-sm font-medium">Program and commission</h3>
+
+          <label className="block space-y-1.5 text-sm">
+            <span className="font-medium">Program</span>
+            <select
+              name="programId"
+              defaultValue={affiliate.programId}
+              className={SELECT_FIELD}
+            >
+              {programs.map((program) => (
+                <option key={program.id} value={program.id}>
+                  {program.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <label htmlFor="affiliate-rate" className="font-medium">
+                Commission rate
+              </label>
+              <span className="text-right text-xs text-muted-foreground">
+                Current: {affiliate.rate}% ·{" "}
+                {affiliate.rateIsOverride ? "custom" : "program default"}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
               <Input
-                name="rate"
+                id="affiliate-rate"
+                name="affiliateRate"
                 type="number"
                 min="0.01"
                 max="100"
                 step="0.01"
-                placeholder="Custom rate (%)"
-                className="w-0 flex-1"
-                aria-label="Custom rate (%)"
+                defaultValue={affiliate.rateIsOverride ? affiliate.rate : ""}
+                placeholder="Use program default"
+                className="pr-8 tabular-nums"
+                aria-label="Affiliate commission rate in percent"
               />
-              <Button
-                type="submit"
-                size="sm"
-                variant="secondary"
-                className="cursor-pointer"
-              >
-                Set
-              </Button>
-              {affiliate.rateIsOverride && (
-                // Its own field, not an empty `rate`: a submit button sharing
-                // the input's name loses to whatever was typed in it, so
-                // clearing the override says so instead.
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="ghost"
-                  className="cursor-pointer"
-                  name="intent"
-                  value="default"
-                >
-                  Use default
-                </Button>
-              )}
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                %
+              </span>
             </div>
-          </form>
-
-          <div className="flex items-start justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">Payout</span>
-            <span className="max-w-60 text-right break-words">
-              {affiliate.payoutDetails ?? "Not given yet"}
-            </span>
+            <p className="text-xs text-muted-foreground">
+              Leave empty to use the selected program&apos;s rate.
+            </p>
           </div>
+        </section>
 
+        <section className="space-y-3 border-t border-border pt-5">
+          <h3 className="text-sm font-medium">Payout</h3>
+          <p className="text-sm text-muted-foreground">
+            {affiliate.payoutDetails ?? "No payout details provided yet."}
+          </p>
+        </section>
+
+        <section className="space-y-3 border-t border-border pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-medium">Password</h3>
+            {affiliate.hasPassword ? (
+              <span className="text-sm text-muted-foreground">Set</span>
+            ) : (
+              <span className="text-sm text-status-warning">Not set</span>
+            )}
+          </div>
           <PasswordLink
             affiliateId={affiliate.id}
             hasPassword={affiliate.hasPassword}
             product={product}
             domain={productDomain}
           />
+        </section>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Links</p>
-            <ul className="flex flex-col text-sm">
-              {affiliate.links.map((l) => (
-                <li
-                  key={l.id}
-                  className="flex flex-col gap-3 border-b border-border/70 py-4 last:border-0"
-                >
-                  <div className="flex min-w-0 items-center justify-between gap-3">
-                    <code className="min-w-0 truncate font-mono text-xs text-foreground">
-                      {l.url}
-                    </code>
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground tabular-nums">
-                      {l.clicks} clicks
-                    </span>
-                  </div>
-                  <LinkDurationEditor
-                    key={`${l.id}-duration-${l.commissionDurationTypeOverride ?? "inherit"}-${l.commissionDurationMonthsOverride ?? ""}`}
-                    product={product}
-                    affiliateId={affiliate.id}
-                    linkId={l.id}
-                    valueType={l.commissionDurationTypeOverride}
-                    valueMonths={l.commissionDurationMonthsOverride}
-                    inheritedType={affiliate.commissionDurationType}
-                    inheritedMonths={affiliate.commissionDurationMonths}
-                  />
-                  <LinkTermEditor
-                    key={`${l.id}-rate-${l.commissionRateOverride ?? "inherit"}`}
-                    product={product}
-                    affiliateId={affiliate.id}
-                    linkId={l.id}
-                    term="commission"
-                    label="Commission (%)"
-                    value={l.commissionRateOverride}
-                    inheritedValue={affiliate.rate}
-                    min="0.01"
-                    max="100"
-                    step="0.01"
-                  />
-                  <LinkTermEditor
-                    key={`${l.id}-time-to-buy-${l.attributionWindowDaysOverride ?? "inherit"}`}
-                    product={product}
-                    affiliateId={affiliate.id}
-                    linkId={l.id}
-                    term="timeToBuy"
-                    label="Time to buy (days)"
-                    value={l.attributionWindowDaysOverride?.toString() ?? null}
-                    inheritedValue={affiliate.attributionWindowDays.toString()}
-                    min="1"
-                    step="1"
-                  />
-                  <LinkTermEditor
-                    key={`${l.id}-hold-${l.holdingPeriodDaysOverride ?? "inherit"}`}
-                    product={product}
-                    affiliateId={affiliate.id}
-                    linkId={l.id}
-                    term="holdBeforePaying"
-                    label="Hold before paying (days)"
-                    value={l.holdingPeriodDaysOverride?.toString() ?? null}
-                    inheritedValue={affiliate.holdingPeriodDays.toString()}
-                    min="1"
-                    step="1"
-                  />
-                </li>
-              ))}
-            </ul>
+        <section className="space-y-3 border-t border-border pt-5">
+          <div>
+            <h3 className="text-sm font-medium">Referral links</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leave a code setting empty to inherit its affiliate setting.
+            </p>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Commissions</p>
-            <ul className="flex flex-col gap-1 text-sm">
-              {affiliate.commissions.length === 0 && (
-                <li className="text-muted-foreground">None yet</li>
-              )}
-              {affiliate.commissions.map((c) => (
-                <li key={c.id} className="flex items-center gap-3">
-                  <span className="w-16 text-muted-foreground tabular-nums">
-                    {c.date}
-                  </span>
-                  <span className="flex-1 text-right tabular-nums">
-                    {c.amount}
-                  </span>
-                  <span className="flex w-20 justify-end">
-                    <StatusBadge status={c.status} />
-                  </span>
-                </li>
-              ))}
+          {affiliate.links.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No links yet.</p>
+          ) : (
+            <ul className="space-y-5">
+              {affiliate.links.map((link) => {
+                const durationType = durationTypes[link.id];
+                const effectiveDurationType =
+                  link.commissionDurationTypeOverride ??
+                  affiliate.commissionDurationType;
+                const effectiveDurationMonths =
+                  link.commissionDurationTypeOverride !== null
+                    ? link.commissionDurationMonthsOverride
+                    : affiliate.commissionDurationMonths;
+
+                return (
+                  <li
+                    key={link.id}
+                    className="space-y-3 border-t border-border/70 pt-4 first:border-t-0 first:pt-0"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <code className="min-w-0 truncate font-mono text-xs text-foreground">
+                        {link.url}
+                      </code>
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground tabular-nums">
+                        {link.clicks} clicks
+                      </span>
+                    </div>
+
+                    <input type="hidden" name="linkId" value={link.id} />
+
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+                      <Field
+                        label="Commission rate"
+                        htmlFor={`${link.id}-rate`}
+                      >
+                        <div className="relative">
+                          <Input
+                            id={`${link.id}-rate`}
+                            name={`link.${link.id}.commissionRate`}
+                            type="number"
+                            min="0.01"
+                            max="100"
+                            step="0.01"
+                            defaultValue={link.commissionRateOverride ?? ""}
+                            placeholder="Inherit"
+                            className="pr-8 tabular-nums"
+                            aria-label={`Commission rate for ${link.url}`}
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                            %
+                          </span>
+                        </div>
+                        <CurrentValue>
+                          {link.commissionRateOverride === null
+                            ? `Inherits ${affiliate.rate}%`
+                            : `Code rate: ${link.commissionRateOverride}%`}
+                        </CurrentValue>
+                      </Field>
+
+                      <Field
+                        label="Time to buy"
+                        htmlFor={`${link.id}-time-to-buy`}
+                      >
+                        <NumberInput
+                          id={`${link.id}-time-to-buy`}
+                          name={`link.${link.id}.timeToBuy`}
+                          value={link.attributionWindowDaysOverride}
+                          placeholder={String(affiliate.attributionWindowDays)}
+                          min="1"
+                          step="1"
+                          suffix="days"
+                          label={`Time to buy for ${link.url}`}
+                        />
+                        <CurrentValue>
+                          {link.attributionWindowDaysOverride === null
+                            ? `Inherits ${affiliate.attributionWindowDays} days`
+                            : `Code setting: ${link.attributionWindowDaysOverride} days`}
+                        </CurrentValue>
+                      </Field>
+
+                      <Field
+                        label="Hold before paying"
+                        htmlFor={`${link.id}-hold-before-paying`}
+                      >
+                        <NumberInput
+                          id={`${link.id}-hold-before-paying`}
+                          name={`link.${link.id}.holdBeforePaying`}
+                          value={link.holdingPeriodDaysOverride}
+                          placeholder={String(affiliate.holdingPeriodDays)}
+                          min="1"
+                          step="1"
+                          suffix="days"
+                          label={`Hold before paying for ${link.url}`}
+                        />
+                        <CurrentValue>
+                          {link.holdingPeriodDaysOverride === null
+                            ? `Inherits ${affiliate.holdingPeriodDays} days`
+                            : `Code setting: ${link.holdingPeriodDaysOverride} days`}
+                        </CurrentValue>
+                      </Field>
+
+                      <Field
+                        label="Commission duration"
+                        htmlFor={`${link.id}-duration`}
+                        className="col-span-2"
+                      >
+                        <select
+                          id={`${link.id}-duration`}
+                          name={`link.${link.id}.durationType`}
+                          value={durationType}
+                          onChange={(event) =>
+                            setDurationTypes((current) => ({
+                              ...current,
+                              [link.id]: event.target.value,
+                            }))
+                          }
+                          className={SELECT_FIELD}
+                        >
+                          <option value="inherit">Use affiliate setting</option>
+                          {COMMISSION_DURATION_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.value === CommissionDuration.FOREVER
+                                ? "Every payment · forever"
+                                : option.value ===
+                                    CommissionDuration.FIXED_MONTHS
+                                  ? "Every payment · fixed term"
+                                  : "First payment only"}
+                            </option>
+                          ))}
+                        </select>
+                        <CurrentValue>
+                          {link.commissionDurationTypeOverride === null
+                            ? `Inherits ${commissionDurationLabel(effectiveDurationType, effectiveDurationMonths)}`
+                            : `Code setting: ${commissionDurationLabel(effectiveDurationType, effectiveDurationMonths)}`}
+                        </CurrentValue>
+                      </Field>
+
+                      {durationType === CommissionDuration.FIXED_MONTHS && (
+                        <Field
+                          label="Months"
+                          htmlFor={`${link.id}-duration-months`}
+                          className="col-span-2"
+                        >
+                          <Input
+                            id={`${link.id}-duration-months`}
+                            name={`link.${link.id}.durationMonths`}
+                            type="number"
+                            min="1"
+                            step="1"
+                            defaultValue={
+                              link.commissionDurationMonthsOverride ??
+                              (affiliate.commissionDurationType ===
+                              CommissionDuration.FIXED_MONTHS
+                                ? (affiliate.commissionDurationMonths ?? 12)
+                                : 12)
+                            }
+                            className="tabular-nums"
+                            aria-label={`Commission duration in months for ${link.url}`}
+                          />
+                        </Field>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function LinkTermEditor({
-  product,
-  affiliateId,
-  linkId,
-  term,
-  label,
-  value,
-  inheritedValue,
-  min,
-  max,
-  step,
-}: {
-  product: { id: string; slug: string };
-  affiliateId: string;
-  linkId: string;
-  term: "commission" | "timeToBuy" | "holdBeforePaying";
-  label: string;
-  value: string | null;
-  inheritedValue: string;
-  min: string;
-  max?: string;
-  step: string;
-}) {
-  const inputId = `${linkId}-${term}`;
-
-  return (
-    <form
-      action={setLinkTermAction.bind(null, product, affiliateId, linkId, term)}
-      className="flex flex-col gap-2 rounded-md border border-border/70 bg-background p-3 text-xs"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="font-medium text-foreground">
-          {label}
-        </label>
-        <span className="text-right text-muted-foreground">
-          {value === null
-            ? `Inherits ${inheritedValue}${term === "commission" ? "%" : " days"}`
-            : `This code: ${value}${term === "commission" ? "%" : " days"}`}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Input
-          id={inputId}
-          name="value"
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          defaultValue={value ?? ""}
-          placeholder={inheritedValue}
-          className="h-8 w-24 bg-background text-right tabular-nums"
-          aria-label={label}
-        />
-        <Button
-          type="submit"
-          size="sm"
-          variant="secondary"
-          className="h-8 cursor-pointer"
-        >
-          Save
-        </Button>
-        {value !== null && (
-          <Button
-            type="submit"
-            size="sm"
-            variant="ghost"
-            className="h-8 cursor-pointer px-2"
-            name="intent"
-            value="inherit"
-          >
-            Use inherited
-          </Button>
-        )}
-      </div>
-    </form>
-  );
-}
-
-function LinkDurationEditor({
-  product,
-  affiliateId,
-  linkId,
-  valueType,
-  valueMonths,
-  inheritedType,
-  inheritedMonths,
-}: {
-  product: { id: string; slug: string };
-  affiliateId: string;
-  linkId: string;
-  valueType: CommissionDurationType | null;
-  valueMonths: number | null;
-  inheritedType: CommissionDurationType;
-  inheritedMonths: number | null;
-}) {
-  const [durationType, setDurationType] = useState<CommissionDurationValue>(
-    valueType ?? inheritedType,
-  );
-  const [months, setMonths] = useState(() =>
-    String(
-      valueMonths ??
-        (inheritedType === CommissionDuration.FIXED_MONTHS
-          ? inheritedMonths
-          : 12),
-    ),
-  );
-  const inputId = `${linkId}-commission-duration`;
-  const effectiveType = valueType ?? inheritedType;
-  const effectiveMonths = valueType ? valueMonths : inheritedMonths;
-
-  return (
-    <form
-      action={setLinkTermAction.bind(
-        null,
-        product,
-        affiliateId,
-        linkId,
-        "commissionDuration",
-      )}
-      className="flex flex-col gap-2 rounded-md border border-border/70 bg-background p-3 text-xs"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="font-medium text-foreground">
-          Commission duration
-        </label>
-        <span className="text-right text-muted-foreground">
-          {valueType === null ? "Inherits" : "This code:"}{" "}
-          {commissionDurationLabel(effectiveType, effectiveMonths)}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          name="durationType"
-          value={durationType}
-          onValueChange={(next) => {
-            if (isCommissionDuration(next)) setDurationType(next);
-          }}
-          items={Object.fromEntries(
-            COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [
-              value,
-              label,
-            ]),
           )}
-        >
-          <SelectTrigger
-            id={inputId}
-            className="h-8 min-w-0 flex-1 cursor-pointer"
-            aria-label="Commission duration"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="w-72 max-w-[calc(100vw-2rem)]">
-            {COMMISSION_DURATION_OPTIONS.map(({ value, label }) => (
-              <SelectItem key={value} value={value} className="cursor-pointer">
-                {label}
-              </SelectItem>
+        </section>
+
+        <section className="space-y-3 border-t border-border pt-5">
+          <h3 className="text-sm font-medium">Recent commissions</h3>
+          <ul className="flex flex-col gap-2 text-sm">
+            {affiliate.commissions.length === 0 && (
+              <li className="text-muted-foreground">None yet</li>
+            )}
+            {affiliate.commissions.map((commission) => (
+              <li key={commission.id} className="flex items-center gap-3">
+                <span className="w-16 text-muted-foreground tabular-nums">
+                  {commission.date}
+                </span>
+                <span className="flex-1 text-right tabular-nums">
+                  {commission.amount}
+                </span>
+                <span className="flex w-20 justify-end">
+                  <StatusBadge status={commission.status} />
+                </span>
+              </li>
             ))}
-          </SelectContent>
-        </Select>
-        {durationType === CommissionDuration.FIXED_MONTHS && (
-          <div className="flex items-center gap-2">
-            <Input
-              id={`${inputId}-months`}
-              name="durationMonths"
-              type="number"
-              min="1"
-              step="1"
-              value={months}
-              onChange={(event) => setMonths(event.target.value)}
-              className="h-8 w-20 bg-background text-right tabular-nums"
-              aria-label="Commission months"
-            />
-            <span className="text-muted-foreground">months</span>
-          </div>
+          </ul>
+        </section>
+      </div>
+
+      <div className="shrink-0 border-t border-border bg-background px-4 py-3">
+        {error && (
+          <p role="alert" className="mb-3 text-sm text-status-danger">
+            {error}
+          </p>
         )}
-        <Button
-          type="submit"
-          size="sm"
-          variant="secondary"
-          className="h-8 cursor-pointer"
-        >
-          Save
-        </Button>
-        {valueType !== null && (
+        <div className="flex justify-end gap-2">
           <Button
-            type="submit"
-            size="sm"
-            variant="ghost"
-            className="h-8 cursor-pointer px-2"
-            name="intent"
-            value="inherit"
-            onClick={() => {
-              setDurationType(inheritedType);
-              setMonths(
-                String(
-                  inheritedType === CommissionDuration.FIXED_MONTHS
-                    ? (inheritedMonths ?? 12)
-                    : 12,
-                ),
-              );
-            }}
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={cancelChanges}
           >
-            Use program default
+            Cancel
           </Button>
-        )}
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
       </div>
     </form>
   );
 }
+
+function Field({
+  label,
+  htmlFor,
+  children,
+  className,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 space-y-1.5 ${className ?? ""}`}>
+      <label htmlFor={htmlFor} className="block text-xs font-medium">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function CurrentValue({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-[11px] text-muted-foreground">{children}</p>;
+}
+
+function NumberInput({
+  id,
+  name,
+  value,
+  placeholder,
+  min,
+  step,
+  suffix,
+  label,
+}: {
+  id: string;
+  name: string;
+  value: number | null;
+  placeholder: string;
+  min: string;
+  step: string;
+  suffix: string;
+  label: string;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        name={name}
+        type="number"
+        min={min}
+        step={step}
+        defaultValue={value ?? ""}
+        placeholder={placeholder}
+        className="pr-14 tabular-nums"
+        aria-label={label}
+      />
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
+const SELECT_FIELD =
+  "h-9 w-full min-w-0 rounded-(--radius) border border-input bg-card px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
 /**
  * Supaffi sends no email, so a forgotten password, or an affiliate who signed
@@ -546,22 +576,14 @@ function PasswordLink({
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">Password</span>
-        {hasPassword ? (
-          <span>Set</span>
-        ) : (
-          <span className="text-status-warning">Not set yet</span>
-        )}
-      </div>
+    <div className="space-y-2">
       {link ? (
         <div className="flex gap-2">
           <Input
             readOnly
             value={link}
             className="font-mono text-xs"
-            onFocus={(e) => e.target.select()}
+            onFocus={(event) => event.target.select()}
           />
           <CopyLinkButton link={link} size="sm" label="Copy" />
         </div>
@@ -570,7 +592,6 @@ function PasswordLink({
           type="button"
           size="sm"
           variant="secondary"
-          className="cursor-pointer self-start"
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
@@ -586,7 +607,7 @@ function PasswordLink({
             })
           }
         >
-          Create password link
+          {hasPassword ? "Create password reset link" : "Create password link"}
         </Button>
       )}
       {link && (

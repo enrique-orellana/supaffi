@@ -2,17 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import type { CommissionDurationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { parseCommissionDurationOverride } from "@/lib/commissionDuration";
-
-/**
- * The two writes the affiliate sheet makes: which program someone is in, and
- * what they are paid. Both return nothing, so the sheet stays a form on a
- * server-rendered panel rather than a client screen holding state.
- */
 
 async function owner(): Promise<string> {
   const session = await auth();
@@ -20,132 +14,162 @@ async function owner(): Promise<string> {
   return session.user.id;
 }
 
-export async function changeProgramAction(
+type ParsedNumber = { value: number | null } | { error: string };
+
+function parseOptionalRate(raw: FormDataEntryValue | null): ParsedNumber {
+  if (raw === null || raw === "") return { value: null };
+  if (typeof raw !== "string" || !/^\d+(?:\.\d{1,2})?$/.test(raw.trim())) {
+    return { error: "Enter a commission rate with up to two decimal places." };
+  }
+
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 && value <= 100
+    ? { value }
+    : {
+        error: "Commission rates must be greater than 0 and no more than 100%.",
+      };
+}
+
+function parseOptionalDays(raw: FormDataEntryValue | null): ParsedNumber {
+  if (raw === null || raw === "") return { value: null };
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) {
+    return { error: "Enter a whole number of days." };
+  }
+
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0
+    ? { value }
+    : { error: "Days must be a positive whole number." };
+}
+
+type LinkSettings = {
+  id: string;
+  commissionRate: number | null;
+  commissionDurationType: CommissionDurationType | null;
+  commissionDurationMonths: number | null;
+  attributionWindowDays: number | null;
+  holdingPeriodDays: number | null;
+};
+
+/** Saves the affiliate's program, rate, and every referral-code override together. */
+export async function saveAffiliateSettingsAction(
   product: { id: string; slug: string },
   affiliateId: string,
   formData: FormData,
-): Promise<void> {
+): Promise<{ success: true } | { error: string }> {
   const ownerId = await owner();
   const programId = String(formData.get("programId") ?? "").trim();
-  // An empty id is refused by updateAffiliate, and the select always carries a
-  // real one, so nothing is left to do here but ignore a submit that does not.
-  if (programId === "") return;
-  await updateAffiliate(ownerId, product.id, affiliateId, { programId });
-  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
-}
+  if (!programId) return { error: "Choose a program before saving." };
 
-export async function setCustomRateAction(
-  product: { id: string; slug: string },
-  affiliateId: string,
-  formData: FormData,
-): Promise<void> {
-  const ownerId = await owner();
+  const affiliateRate = parseOptionalRate(formData.get("affiliateRate"));
+  if ("error" in affiliateRate) return affiliateRate;
 
-  // "Use default" carries its own field. Reading an empty `rate` instead
-  // would never fire: the button and the input share a form, and the value
-  // already typed into the input is the one FormData hands back.
-  if (formData.get("intent") === "default") {
-    await updateAffiliate(ownerId, product.id, affiliateId, {
-      customCommissionRate: null,
-    });
-    revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
-    return;
+  const rawLinkIds = formData.getAll("linkId");
+  if (rawLinkIds.some((id) => typeof id !== "string" || id.trim() === "")) {
+    return { error: "Refresh this page and try again." };
+  }
+  const linkIds = rawLinkIds as string[];
+  if (new Set(linkIds).size !== linkIds.length) {
+    return { error: "Refresh this page and try again." };
   }
 
-  const raw = String(formData.get("rate") ?? "").trim();
-  if (raw === "") return;
-  const rate = Number(raw);
-  if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return;
-  await updateAffiliate(ownerId, product.id, affiliateId, {
-    customCommissionRate: rate,
-  });
-  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
-}
-
-type LinkTerm =
-  "commission" | "commissionDuration" | "timeToBuy" | "holdBeforePaying";
-
-/** Owner-only per-code terms. An explicit inherit action clears that override. */
-export async function setLinkTermAction(
-  product: { id: string; slug: string },
-  affiliateId: string,
-  linkId: string,
-  term: LinkTerm,
-  formData: FormData,
-): Promise<void> {
-  const ownerId = await owner();
-  if (term === "commissionDuration") {
-    const inheritDuration = formData.get("intent") === "inherit";
-    const parsed = parseCommissionDurationOverride(
-      formData.get("durationType"),
-      formData.get("durationMonths"),
+  const links: LinkSettings[] = [];
+  for (const id of linkIds) {
+    const commissionRate = parseOptionalRate(
+      formData.get(`link.${id}.commissionRate`),
     );
-    if (!inheritDuration && parsed === null) return;
+    const attributionWindowDays = parseOptionalDays(
+      formData.get(`link.${id}.timeToBuy`),
+    );
+    const holdingPeriodDays = parseOptionalDays(
+      formData.get(`link.${id}.holdBeforePaying`),
+    );
+    if ("error" in commissionRate) return commissionRate;
+    if ("error" in attributionWindowDays) return attributionWindowDays;
+    if ("error" in holdingPeriodDays) return holdingPeriodDays;
 
-    const updatedDuration = await db.affiliateLink.updateMany({
-      where: {
-        id: linkId,
-        affiliateId,
-        merchantId: product.id,
-        affiliate: { merchant: { ownerId } },
-      },
-      data: inheritDuration
-        ? {
-            commissionDurationTypeOverride: null,
-            commissionDurationMonthsOverride: null,
-          }
-        : {
-            commissionDurationTypeOverride: parsed!.type,
-            commissionDurationMonthsOverride: parsed!.months,
-          },
+    const rawDuration = String(formData.get(`link.${id}.durationType`) ?? "");
+    let commissionDurationType: CommissionDurationType | null = null;
+    let commissionDurationMonths: number | null = null;
+    if (rawDuration !== "inherit") {
+      const duration = parseCommissionDurationOverride(
+        rawDuration,
+        formData.get(`link.${id}.durationMonths`),
+      );
+      if (!duration) {
+        return {
+          error:
+            "Choose a commission duration and enter valid months if needed.",
+        };
+      }
+      commissionDurationType = duration.type;
+      commissionDurationMonths = duration.months;
+    }
+
+    links.push({
+      id,
+      commissionRate: commissionRate.value,
+      commissionDurationType,
+      commissionDurationMonths,
+      attributionWindowDays: attributionWindowDays.value,
+      holdingPeriodDays: holdingPeriodDays.value,
     });
-    if (updatedDuration.count > 0) {
-      revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
-    }
-    return;
   }
 
-  if (
-    !(["commission", "timeToBuy", "holdBeforePaying"] as string[]).includes(
-      term,
-    )
-  )
-    return;
+  const result = await db.$transaction(async (tx) => {
+    const affiliate = await tx.affiliate.findFirst({
+      where: {
+        id: affiliateId,
+        merchantId: product.id,
+        merchant: { ownerId },
+      },
+      select: { id: true, links: { select: { id: true } } },
+    });
+    if (!affiliate) return { error: "Affiliate not found." } as const;
 
-  const inherit = formData.get("intent") === "inherit";
-  let value: number | null = null;
-  if (!inherit) {
-    const raw = String(formData.get("value") ?? "").trim();
-    if (raw === "") return;
-    value = Number(raw);
-    if (!Number.isFinite(value)) return;
-
-    if (term === "commission") {
-      if (value <= 0 || value > 100 || Math.round(value * 100) !== value * 100)
-        return;
-    } else if (value <= 0 || !Number.isInteger(value)) {
-      return;
+    const ownedLinkIds = new Set(affiliate.links.map((link) => link.id));
+    if (
+      ownedLinkIds.size !== linkIds.length ||
+      linkIds.some((id) => !ownedLinkIds.has(id))
+    ) {
+      return { error: "Refresh this page and try again." } as const;
     }
-  }
 
-  const data =
-    term === "commission"
-      ? { commissionRateOverride: value }
-      : term === "timeToBuy"
-        ? { attributionWindowDaysOverride: value }
-        : { holdingPeriodDaysOverride: value };
-  const updated = await db.affiliateLink.updateMany({
-    where: {
-      id: linkId,
-      affiliateId,
-      merchantId: product.id,
-      affiliate: { merchant: { ownerId } },
-    },
-    data,
+    const program = await tx.program.findFirst({
+      where: { id: programId, merchantId: product.id },
+      select: { id: true },
+    });
+    if (!program)
+      return { error: "Choose a program for this product." } as const;
+
+    await tx.affiliate.update({
+      where: { id: affiliate.id },
+      data: {
+        programId: program.id,
+        customCommissionRate: affiliateRate.value,
+      },
+    });
+
+    for (const link of links) {
+      await tx.affiliateLink.update({
+        where: { id: link.id },
+        data: {
+          commissionRateOverride: link.commissionRate,
+          commissionDurationTypeOverride: link.commissionDurationType,
+          commissionDurationMonthsOverride: link.commissionDurationMonths,
+          attributionWindowDaysOverride: link.attributionWindowDays,
+          holdingPeriodDaysOverride: link.holdingPeriodDays,
+        },
+      });
+    }
+
+    return { success: true } as const;
   });
-  if (updated.count === 0) return;
+
+  if ("error" in result) return result;
 
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+  return { success: true };
 }
 
 /**

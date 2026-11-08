@@ -59,7 +59,7 @@ type NavItem = {
   icon: LucideIcon;
   label: string;
   badge: number | null;
-  dot?: "ok" | "waiting";
+  trackingStatus?: Counts["tracking"];
 };
 
 // The active product comes from the URL, read here rather than in the layout:
@@ -119,16 +119,7 @@ export function AppSidebar({
             icon: Code2,
             label: "Tracking",
             badge: null,
-            // Green means a sale came through, amber means the script is on
-            // the site and nothing has sold yet, and nothing at all means
-            // tracking has not started. A dot for the last one would claim
-            // there is something to look at.
-            dot:
-              activeCounts.tracking === "verified"
-                ? "ok"
-                : activeCounts.tracking === "awaiting-sale"
-                  ? "waiting"
-                  : undefined,
+            trackingStatus: activeCounts.tracking,
           },
           {
             href: `${base}/settings`,
@@ -178,16 +169,28 @@ export function AppSidebar({
                         {item.badge}
                       </SidebarMenuBadge>
                     )}
-                    {item.dot && (
-                      <SidebarMenuBadge className={NAV_BADGE}>
+                    {item.trackingStatus && (
+                      <SidebarMenuBadge
+                        title={trackingStatusDescription(item.trackingStatus)}
+                        aria-label={`Tracking status: ${trackingStatusLabel(item.trackingStatus)}`}
+                        className={cn(
+                          NAV_BADGE,
+                          "h-6 min-w-0 gap-1.5 rounded-full px-2 text-[11px]",
+                          item.trackingStatus === "verified"
+                            ? "bg-status-success/10 text-status-success"
+                            : "bg-status-warning/10 text-status-warning",
+                        )}
+                      >
                         <span
+                          aria-hidden="true"
                           className={cn(
-                            "block size-2 rounded-[1px]",
-                            item.dot === "ok"
+                            "size-1.5 rounded-full",
+                            item.trackingStatus === "verified"
                               ? "bg-status-success"
-                              : "border-2 border-status-warning",
+                              : "bg-status-warning",
                           )}
                         />
+                        {trackingStatusLabel(item.trackingStatus)}
                       </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>
@@ -218,4 +221,26 @@ export function AppSidebar({
       </SidebarFooter>
     </Sidebar>
   );
+}
+
+function trackingStatusLabel(status: Counts["tracking"]): string {
+  switch (status) {
+    case "verified":
+      return "Verified";
+    case "awaiting-sale":
+      return "Awaiting sale";
+    case "not-started":
+      return "Not set up";
+  }
+}
+
+function trackingStatusDescription(status: Counts["tracking"]): string {
+  switch (status) {
+    case "verified":
+      return "An attributed checkout has confirmed tracking.";
+    case "awaiting-sale":
+      return "Referral clicks are recording; an attributed checkout is still needed to verify sales tracking.";
+    case "not-started":
+      return "Add the tracking script to the product site to begin recording referral clicks.";
+  }
 }
