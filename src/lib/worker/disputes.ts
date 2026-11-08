@@ -25,7 +25,10 @@ export type DisputeState = "clear" | "open" | "lost" | "unknown";
 const SETTLED_FOR_MERCHANT: readonly string[] = ["won", "warning_closed"];
 
 /** What matters from a dispute, wherever it came from: Stripe's list, or an event. */
-type DisputeLike = { status: string; payment_method_details?: { card?: { case_type?: string } } };
+type DisputeLike = {
+  status: string;
+  payment_method_details?: { card?: { case_type?: string } };
+};
 
 /**
  * Whether a "prevented" dispute left the merchant with the money.
@@ -43,13 +46,23 @@ function preventedKeptTheMoney(dispute: DisputeLike): boolean {
 }
 
 /** One answer for every dispute on a charge. A single lost one decides it. */
-export function disputeStateOf(disputes: DisputeLike[]): "clear" | "open" | "lost" {
-  if (disputes.some((dispute) => dispute.status === "lost" || (dispute.status === "prevented" && !preventedKeptTheMoney(dispute)))) {
+export function disputeStateOf(
+  disputes: DisputeLike[],
+): "clear" | "open" | "lost" {
+  if (
+    disputes.some(
+      (dispute) =>
+        dispute.status === "lost" ||
+        (dispute.status === "prevented" && !preventedKeptTheMoney(dispute)),
+    )
+  ) {
     return "lost";
   }
   if (
     disputes.some(
-      (dispute) => !SETTLED_FOR_MERCHANT.includes(dispute.status) && !(dispute.status === "prevented" && preventedKeptTheMoney(dispute))
+      (dispute) =>
+        !SETTLED_FOR_MERCHANT.includes(dispute.status) &&
+        !(dispute.status === "prevented" && preventedKeptTheMoney(dispute)),
     )
   ) {
     return "open";
@@ -87,20 +100,32 @@ export async function disputeStateFor(
   stripe: Stripe,
   paymentIntentId: string,
   trigger?: Stripe.Dispute,
-  emptyMeansUnknown = false
+  emptyMeansUnknown = false,
 ): Promise<DisputeState> {
   try {
-    const page = await stripe.disputes.list({ payment_intent: paymentIntentId, limit: 100 });
+    const page = await stripe.disputes.list({
+      payment_intent: paymentIntentId,
+      limit: 100,
+    });
     const disputes =
       trigger && !page.data.some((d) => d.id === trigger.id)
-        ? [...page.data, { status: trigger.status, payment_method_details: trigger.payment_method_details }]
+        ? [
+            ...page.data,
+            {
+              status: trigger.status,
+              payment_method_details: trigger.payment_method_details,
+            },
+          ]
         : page.data;
     if (emptyMeansUnknown && disputes.length === 0) return "unknown";
     return disputeStateOf(disputes);
   } catch (err) {
-    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}), so the event is retried`);
+    if (isTransientStripeError(err))
+      throw new Error(
+        `[worker] could not reach Stripe for the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}), so the event is retried`,
+      );
     console.warn(
-      `[worker] could not read the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}). Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
+      `[worker] could not read the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}). Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`,
     );
     return "unknown";
   }
@@ -113,7 +138,7 @@ export async function disputeStateFor(
  */
 export async function disputedPayment(
   stripe: Stripe,
-  dispute: Stripe.Dispute
+  dispute: Stripe.Dispute,
 ): Promise<{ paymentRefs: string[]; paymentIntentId: string | null } | null> {
   let paymentIntentId = idOf(dispute.payment_intent);
   let legacyInvoice: string | { id: string } | null = null;
@@ -121,12 +146,19 @@ export async function disputedPayment(
     // Older disputes can arrive without the PaymentIntent inline; the Charge
     // always has it, at the cost of one retrieve.
     const charge =
-      typeof dispute.charge === "string" ? await stripe.charges.retrieve(dispute.charge) : dispute.charge;
+      typeof dispute.charge === "string"
+        ? await stripe.charges.retrieve(dispute.charge)
+        : dispute.charge;
     paymentIntentId = idOf(charge.payment_intent);
-    legacyInvoice = (charge as unknown as { invoice?: string | { id: string } | null }).invoice ?? null;
+    legacyInvoice =
+      (charge as unknown as { invoice?: string | { id: string } | null })
+        .invoice ?? null;
   }
 
-  const paymentRefs = await resolvePaymentReferenceIds(stripe, { legacyInvoice, paymentIntentId });
+  const paymentRefs = await resolvePaymentReferenceIds(stripe, {
+    legacyInvoice,
+    paymentIntentId,
+  });
   return paymentRefs.length > 0 ? { paymentRefs, paymentIntentId } : null;
 }
 
@@ -143,9 +175,16 @@ export async function disputedPayment(
  * so a row being marked paid at the same moment ends up PAID and untouched: a
  * paid commission is final. The first date is kept on a repeated event.
  */
-export async function holdForDispute(commissionId: string, now: Date = new Date()): Promise<void> {
+export async function holdForDispute(
+  commissionId: string,
+  now: Date = new Date(),
+): Promise<void> {
   await db.commission.updateMany({
-    where: { id: commissionId, status: { in: ["PENDING", "FLAGGED"] }, disputeOpenedAt: null },
+    where: {
+      id: commissionId,
+      status: { in: ["PENDING", "FLAGGED"] },
+      disputeOpenedAt: null,
+    },
     data: { disputeOpenedAt: now },
   });
   await db.commission.updateMany({
@@ -159,7 +198,10 @@ export async function holdForDispute(commissionId: string, now: Date = new Date(
  * dismissing a flag does: PAYABLE when the Holding Period is over, otherwise
  * PENDING for the sweep. A flagged row stays flagged.
  */
-export async function releaseDisputeHold(commissionId: string, now: Date = new Date()): Promise<void> {
+export async function releaseDisputeHold(
+  commissionId: string,
+  now: Date = new Date(),
+): Promise<void> {
   await db.commission.updateMany({
     where: {
       id: commissionId,
@@ -171,7 +213,11 @@ export async function releaseDisputeHold(commissionId: string, now: Date = new D
     data: { status: "PAYABLE", disputeOpenedAt: null },
   });
   await db.commission.updateMany({
-    where: { id: commissionId, status: { in: ["PENDING", "FLAGGED"] }, disputeOpenedAt: { not: null } },
+    where: {
+      id: commissionId,
+      status: { in: ["PENDING", "FLAGGED"] },
+      disputeOpenedAt: { not: null },
+    },
     data: { disputeOpenedAt: null },
   });
 }
@@ -188,12 +234,18 @@ export async function releaseDisputeHold(commissionId: string, now: Date = new D
  * A commission not recorded yet is left to its creation, which reads the same
  * disputes (paymentState.ts).
  */
-export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Dispute): Promise<void> {
+export async function settleDisputeHold(
+  merchant: Merchant,
+  dispute: Stripe.Dispute,
+): Promise<void> {
   const stripe = await stripeClientFor(merchant);
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 
-  const commission = await findCommissionForPayment(merchant, payment.paymentRefs);
+  const commission = await findCommissionForPayment(
+    merchant,
+    payment.paymentRefs,
+  );
   if (!commission) return;
   if (commission.status === "PAID" || commission.status === "VOIDED") return;
 
@@ -209,12 +261,17 @@ export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Disp
     }
   } else {
     console.warn(
-      `[worker] dispute ${dispute.id} has no payment to list disputes by, so commission ${commission.id} is held.`
+      `[worker] dispute ${dispute.id} has no payment to list disputes by, so commission ${commission.id} is held.`,
     );
   }
 
   if (state === "lost") {
-    await reverseCommission(merchant, payment.paymentRefs, "chargeback", () => ({ void: true }));
+    await reverseCommission(
+      merchant,
+      payment.paymentRefs,
+      "chargeback",
+      () => ({ void: true }),
+    );
     return;
   }
   if (state === "clear") {

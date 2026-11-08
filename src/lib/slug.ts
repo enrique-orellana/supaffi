@@ -40,7 +40,7 @@ export function slugify(input: string): string {
 export async function uniqueSlug(
   name: string,
   fallback: string,
-  taken: (candidate: string) => Promise<boolean>
+  taken: (candidate: string) => Promise<boolean>,
 ): Promise<string> {
   const base = slugify(name) || fallback;
   let candidate = base;

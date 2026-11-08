@@ -21,24 +21,28 @@ async function owner(): Promise<string> {
 
 export async function changeEmailAction(
   _prev: { error: string; done: boolean },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string; done: boolean }> {
   const result = await changeOwnerEmail(
     await owner(),
     String(formData.get("password") ?? ""),
-    String(formData.get("email") ?? "")
+    String(formData.get("email") ?? ""),
   );
-  return result ? { error: result.error, done: false } : { error: "", done: true };
+  return result
+    ? { error: result.error, done: false }
+    : { error: "", done: true };
 }
 
 export async function changePasswordAction(
   _prev: { error: string; done: boolean },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string; done: boolean }> {
   const result = await changeOwnerPassword(
     await owner(),
     String(formData.get("current") ?? ""),
-    String(formData.get("next") ?? "")
+    String(formData.get("next") ?? ""),
   );
-  return result ? { error: result.error, done: false } : { error: "", done: true };
+  return result
+    ? { error: result.error, done: false }
+    : { error: "", done: true };
 }

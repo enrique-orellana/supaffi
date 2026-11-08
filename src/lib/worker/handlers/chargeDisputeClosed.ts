@@ -17,7 +17,10 @@ import { disputedPayment, settleDisputeHold } from "../disputes";
  * move the merchant's balance and follow the opening and closing events, which
  * already say everything the commission needs.
  */
-export async function handleChargeDisputeClosed(merchant: Merchant, dispute: Stripe.Dispute): Promise<void> {
+export async function handleChargeDisputeClosed(
+  merchant: Merchant,
+  dispute: Stripe.Dispute,
+): Promise<void> {
   if (dispute.status !== "lost") {
     await settleDisputeHold(merchant, dispute);
     return;
@@ -27,5 +30,7 @@ export async function handleChargeDisputeClosed(merchant: Merchant, dispute: Str
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 
-  await reverseCommission(merchant, payment.paymentRefs, "chargeback", () => ({ void: true }));
+  await reverseCommission(merchant, payment.paymentRefs, "chargeback", () => ({
+    void: true,
+  }));
 }

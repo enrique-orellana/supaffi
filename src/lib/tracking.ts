@@ -16,7 +16,9 @@ import { db } from "@/lib/db";
  */
 export type TrackingStatus = "not-started" | "awaiting-sale" | "verified";
 
-export async function getTrackingStatus(merchantId: string): Promise<TrackingStatus> {
+export async function getTrackingStatus(
+  merchantId: string,
+): Promise<TrackingStatus> {
   const merchant = await db.merchant.findUnique({
     where: { id: merchantId },
     select: { trackingVerifiedAt: true },
@@ -45,7 +47,9 @@ export type TrackingTimestamps = {
 };
 
 /** The two dates the tracking status screen shows: last click, last sale. */
-export async function getTrackingTimestamps(merchantId: string): Promise<TrackingTimestamps> {
+export async function getTrackingTimestamps(
+  merchantId: string,
+): Promise<TrackingTimestamps> {
   const [merchant, lastClick] = await Promise.all([
     db.merchant.findUnique({
       where: { id: merchantId },
@@ -71,7 +75,9 @@ export async function getTrackingTimestamps(merchantId: string): Promise<Trackin
  * from the second sale onwards, so the timestamp keeps meaning "the first
  * time" and the celebration keyed off it cannot be re-triggered.
  */
-export async function recordTrackingVerified(merchantId: string): Promise<void> {
+export async function recordTrackingVerified(
+  merchantId: string,
+): Promise<void> {
   await db.merchant.updateMany({
     where: { id: merchantId, trackingVerifiedAt: null },
     data: { trackingVerifiedAt: new Date() },
@@ -84,19 +90,25 @@ export async function recordTrackingVerified(merchantId: string): Promise<void> 
  * Separate from `TrackingStatus` because it is about what the Owner has seen,
  * not about what is true of the integration.
  */
-export async function shouldCelebrateTracking(merchantId: string): Promise<boolean> {
+export async function shouldCelebrateTracking(
+  merchantId: string,
+): Promise<boolean> {
   const merchant = await db.merchant.findUnique({
     where: { id: merchantId },
     select: { trackingVerifiedAt: true, trackingVerifiedSeenAt: true },
   });
-  return Boolean(merchant?.trackingVerifiedAt && !merchant.trackingVerifiedSeenAt);
+  return Boolean(
+    merchant?.trackingVerifiedAt && !merchant.trackingVerifiedSeenAt,
+  );
 }
 
 /**
  * Spends the moment. Scoped by `trackingVerifiedSeenAt: null` so two tabs
  * rendering at once cannot overwrite each other's stamp with a later one.
  */
-export async function markTrackingCelebrationSeen(merchantId: string): Promise<void> {
+export async function markTrackingCelebrationSeen(
+  merchantId: string,
+): Promise<void> {
   await db.merchant.updateMany({
     where: { id: merchantId, trackingVerifiedSeenAt: null },
     data: { trackingVerifiedSeenAt: new Date() },
@@ -106,6 +118,9 @@ export async function markTrackingCelebrationSeen(merchantId: string): Promise<v
 const RECENT_CLICK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Whether the last click is from the past week. */
-export function clickedRecently(lastClickAt: Date | null, now: number = Date.now()): boolean {
+export function clickedRecently(
+  lastClickAt: Date | null,
+  now: number = Date.now(),
+): boolean {
   return lastClickAt !== null && now - lastClickAt.getTime() < RECENT_CLICK_MS;
 }

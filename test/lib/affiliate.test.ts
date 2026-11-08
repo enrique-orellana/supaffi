@@ -32,7 +32,7 @@ if (process.env.DATABASE_URL) {
 
 if (!hasDatabase) {
   console.warn(
-    "Skipping test/lib/affiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/affiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -167,9 +167,15 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   });
 
   it("getAffiliateByEmail is case/whitespace-insensitive on lookup", async () => {
-    await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+    await createAffiliate(merchantId, programId, {
+      name: "Sarah",
+      email: "sarah@example.com",
+    });
 
-    const result = await getAffiliateByEmail(merchantId, "  SARAH@example.com ");
+    const result = await getAffiliateByEmail(
+      merchantId,
+      "  SARAH@example.com ",
+    );
     expect(result?.email).toBe("sarah@example.com");
   });
 
@@ -210,7 +216,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   // two tests prove isUniqueConstraintErrorOn correctly distinguishes a
   // real P2002 triggered by each constraint.
   it("isUniqueConstraintErrorOn identifies an (merchantId, email) collision as an email violation, not a code one", async () => {
-    await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+    await createAffiliate(merchantId, programId, {
+      name: "Sarah",
+      email: "sarah@example.com",
+    });
 
     let caught: unknown;
     try {
@@ -220,7 +229,9 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
           programId,
           email: "sarah@example.com",
           name: "Sarah Duplicate",
-          links: { create: { code: "some-other-unused-code", isPrimary: true } },
+          links: {
+            create: { code: "some-other-unused-code", isPrimary: true },
+          },
         },
       });
     } catch (err) {
@@ -233,7 +244,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   });
 
   it("allows different Merchants to use the same referral code", async () => {
-    await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+    await createAffiliate(merchantId, programId, {
+      name: "Sarah",
+      email: "sarah@example.com",
+    });
     const affiliate = await createAffiliate(otherMerchantId, otherProgramId, {
       name: "Sarah",
       email: "sarah-from-other-merchant@example.com",
@@ -253,7 +267,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
       const click = await db.click.create({
-        data: { merchantId: affiliate.merchantId, affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
+        data: {
+          merchantId: affiliate.merchantId,
+          affiliateId: affiliate.id,
+          referralToken: "history-token",
+          expiresAt: new Date(Date.now() + 60_000),
+        },
       });
       for (let i = 0; i < 3; i++) {
         await db.commission.create({
@@ -270,17 +289,25 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         });
       }
 
-      const page1 = await listAffiliateCommissions(affiliate.id, { page: 1, pageSize: 2 });
+      const page1 = await listAffiliateCommissions(affiliate.id, {
+        page: 1,
+        pageSize: 2,
+      });
       expect(page1.total).toBe(3);
       expect(page1.rows).toHaveLength(2);
       expect(page1.rows[0].amount).toBe("3.00"); // newest first
       expect(page1.rows[1].amount).toBe("2.00");
 
-      const page2 = await listAffiliateCommissions(affiliate.id, { page: 2, pageSize: 2 });
+      const page2 = await listAffiliateCommissions(affiliate.id, {
+        page: 2,
+        pageSize: 2,
+      });
       expect(page2.rows).toHaveLength(1);
       expect(page2.rows[0].amount).toBe("1.00");
       expect(page2.rows[0].status).toBe("PENDING"); // was FLAGGED, must read as PENDING
-      expect((page2.rows[0] as unknown as { flagReason?: unknown }).flagReason).toBeUndefined();
+      expect(
+        (page2.rows[0] as unknown as { flagReason?: unknown }).flagReason,
+      ).toBeUndefined();
     });
 
     it("updates payout details, and blanks out to null rather than storing an empty string", async () => {
@@ -293,12 +320,19 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
 
-      await updateAffiliatePayoutDetails(affiliate.id, "PayPal: payout@example.com");
-      let updated = await db.affiliate.findUniqueOrThrow({ where: { id: affiliate.id } });
+      await updateAffiliatePayoutDetails(
+        affiliate.id,
+        "PayPal: payout@example.com",
+      );
+      let updated = await db.affiliate.findUniqueOrThrow({
+        where: { id: affiliate.id },
+      });
       expect(updated.payoutDetails).toBe("PayPal: payout@example.com");
 
       await updateAffiliatePayoutDetails(affiliate.id, "");
-      updated = await db.affiliate.findUniqueOrThrow({ where: { id: affiliate.id } });
+      updated = await db.affiliate.findUniqueOrThrow({
+        where: { id: affiliate.id },
+      });
       expect(updated.payoutDetails).toBeNull();
 
       expect(await getAffiliatePayoutDetails(affiliate.id)).toBeNull();
@@ -315,11 +349,17 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
 
-      expect(await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1001))).toEqual({
+      expect(
+        await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1001)),
+      ).toEqual({
         error: expect.any(String),
       });
-      expect(await getAffiliatePayoutDetails(affiliate.id)).toBe("PayPal: before@example.com");
-      expect(await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1000))).toBeNull();
+      expect(await getAffiliatePayoutDetails(affiliate.id)).toBe(
+        "PayPal: before@example.com",
+      );
+      expect(
+        await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1000)),
+      ).toBeNull();
     });
 
     it("toDisplayStatus defaults an unrecognized status to PENDING (fail closed)", () => {
@@ -353,7 +393,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   }
 
   async function makeClick(affiliateId: string) {
-    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
+    const affiliate = await db.affiliate.findUniqueOrThrow({
+      where: { id: affiliateId },
+      select: { merchantId: true },
+    });
     return db.click.create({
       data: {
         merchantId: affiliate.merchantId,
@@ -368,7 +411,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     affiliateId: string,
     amount: string,
     currency: string,
-    status: "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED" = "PAYABLE"
+    status: "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED" = "PAYABLE",
   ) {
     const click = await makeClick(affiliateId);
     return db.commission.create({
@@ -389,14 +432,22 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     const PAGE = { page: 1, pageSize: 25 };
 
     it("falls back to the Program's default rate and prefers the override when set", async () => {
-      const standard = await makeAffiliate({ email: "sarah@example.com", referralCode: "sarah" });
+      const standard = await makeAffiliate({
+        email: "sarah@example.com",
+        referralCode: "sarah",
+      });
       const overridden = await makeAffiliate({
         email: "rob@example.com",
         referralCode: "rob",
         customCommissionRate: "42.50",
       });
 
-      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+      const { rows } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE,
+      );
       const byId = new Map(rows.map((r) => [r.id, r]));
 
       expect(byId.get(standard.id)?.commissionRate).toBe("20");
@@ -412,7 +463,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         customCommissionRate: "0.00",
       });
 
-      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+      const { rows } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE,
+      );
       const row = rows.find((r) => r.id === unpaid.id);
 
       expect(row?.commissionRate).toBe("0");
@@ -420,8 +476,14 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     });
 
     it("counts clicks and conversions per affiliate", async () => {
-      const busy = await makeAffiliate({ email: "busy@example.com", referralCode: "busy" });
-      const quiet = await makeAffiliate({ email: "quiet@example.com", referralCode: "quiet" });
+      const busy = await makeAffiliate({
+        email: "busy@example.com",
+        referralCode: "busy",
+      });
+      const quiet = await makeAffiliate({
+        email: "quiet@example.com",
+        referralCode: "quiet",
+      });
 
       await makeClick(busy.id);
       await makeCommission(busy.id, "10.00", "usd");
@@ -432,7 +494,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         NO_FILTERS,
-        PAGE
+        PAGE,
       );
       const byId = new Map(rows.map((r) => [r.id, r]));
 
@@ -445,13 +507,21 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     });
 
     it("keeps earnings per currency and leaves voided money out", async () => {
-      const affiliate = await makeAffiliate({ email: "multi@example.com", referralCode: "multi" });
+      const affiliate = await makeAffiliate({
+        email: "multi@example.com",
+        referralCode: "multi",
+      });
       await makeCommission(affiliate.id, "10.00", "usd", "PAYABLE");
       await makeCommission(affiliate.id, "5.00", "usd", "PAID");
       await makeCommission(affiliate.id, "7.00", "eur", "PENDING");
       await makeCommission(affiliate.id, "99.00", "usd", "VOIDED");
 
-      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+      const { rows } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE,
+      );
 
       expect(rows[0].earned).toEqual([
         { currency: "eur", total: "7.00" },
@@ -460,7 +530,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     });
 
     it("keeps a legacy PAID adjustment in Earned but leaves an unpaid one out", async () => {
-      const affiliate = await makeAffiliate({ email: "adj@example.com", referralCode: "adj" });
+      const affiliate = await makeAffiliate({
+        email: "adj@example.com",
+        referralCode: "adj",
+      });
       const sale = await makeCommission(affiliate.id, "20.00", "usd", "PAID");
       await db.commission.create({
         data: {
@@ -473,7 +546,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
           payableAt: new Date(),
         },
       });
-      const unpaidSale = await makeCommission(affiliate.id, "30.00", "usd", "PAYABLE");
+      const unpaidSale = await makeCommission(
+        affiliate.id,
+        "30.00",
+        "usd",
+        "PAYABLE",
+      );
       await db.commission.create({
         data: {
           affiliateId: affiliate.id,
@@ -486,7 +564,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
 
-      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+      const { rows } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE,
+      );
 
       // 20 - 5 (paid adjustment, kept) + 30 (unpaid sale, kept) = 45; the
       // unpaid -10 adjustment counts nowhere.
@@ -505,7 +588,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         { programId: vipProgramId, query: null },
-        PAGE
+        PAGE,
       );
 
       expect(total).toBe(1);
@@ -535,7 +618,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         { programId: null, query: "marguer" },
-        PAGE
+        PAGE,
       );
       expect(nameHit.rows.map((r) => r.id)).toEqual([byName.id]);
 
@@ -543,7 +626,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         { programId: null, query: "NEEDLE.test" },
-        PAGE
+        PAGE,
       );
       expect(emailHit.rows.map((r) => r.id)).toEqual([byEmail.id]);
 
@@ -551,7 +634,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         { programId: null, query: "haystack" },
-        PAGE
+        PAGE,
       );
       expect(codeHit.rows.map((r) => r.id)).toEqual([byCode.id]);
     });
@@ -569,7 +652,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         ownerId,
         merchantId,
         NO_FILTERS,
-        PAGE
+        PAGE,
       );
 
       expect(total).toBe(1);
@@ -578,7 +661,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     it("throws for a Merchant that belongs to another Owner", async () => {
       await expect(
-        listAffiliatesForMerchant(foreignOwnerId, merchantId, NO_FILTERS, PAGE)
+        listAffiliatesForMerchant(foreignOwnerId, merchantId, NO_FILTERS, PAGE),
       ).rejects.toThrow("Merchant not found");
     });
   });
@@ -589,8 +672,14 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         email: "voided@example.com",
         referralCode: "voided",
       });
-      const earner = await makeAffiliate({ email: "earner@example.com", referralCode: "earner" });
-      const idle = await makeAffiliate({ email: "idle@example.com", referralCode: "idle" });
+      const earner = await makeAffiliate({
+        email: "earner@example.com",
+        referralCode: "earner",
+      });
+      const idle = await makeAffiliate({
+        email: "idle@example.com",
+        referralCode: "idle",
+      });
 
       await makeCommission(voidedOnly.id, "50.00", "usd", "VOIDED");
       await makeCommission(voidedOnly.id, "20.00", "usd", "VOIDED");
@@ -604,7 +693,10 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     });
 
     it("counts a flagged commission as earning, since it has not been voided", async () => {
-      const flagged = await makeAffiliate({ email: "flag@example.com", referralCode: "flag" });
+      const flagged = await makeAffiliate({
+        email: "flag@example.com",
+        referralCode: "flag",
+      });
       await makeCommission(flagged.id, "10.00", "usd", "FLAGGED");
 
       const signals = await getAffiliateSignals(ownerId, merchantId);
@@ -624,62 +716,94 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(signals.total).toBe(1);
       expect(signals.joinedThisMonth).toBe(1);
 
-      await expect(getAffiliateSignals(foreignOwnerId, merchantId)).rejects.toThrow(
-        "Merchant not found"
-      );
+      await expect(
+        getAffiliateSignals(foreignOwnerId, merchantId),
+      ).rejects.toThrow("Merchant not found");
     });
   });
 
   describe("updateAffiliate", () => {
     it("moves an affiliate to another program of the same product", async () => {
-      const affiliate = await makeAffiliate({ email: "move@example.com", referralCode: "move" });
+      const affiliate = await makeAffiliate({
+        email: "move@example.com",
+        referralCode: "move",
+      });
 
-      await updateAffiliate(ownerId, merchantId, affiliate.id, { programId: vipProgramId });
+      await updateAffiliate(ownerId, merchantId, affiliate.id, {
+        programId: vipProgramId,
+      });
 
-      const row = await db.affiliate.findUnique({ where: { id: affiliate.id } });
+      const row = await db.affiliate.findUnique({
+        where: { id: affiliate.id },
+      });
       expect(row?.programId).toBe(vipProgramId);
     });
 
     it("sets and clears a custom rate", async () => {
-      const affiliate = await makeAffiliate({ email: "rate@example.com", referralCode: "rate" });
+      const affiliate = await makeAffiliate({
+        email: "rate@example.com",
+        referralCode: "rate",
+      });
 
-      await updateAffiliate(ownerId, merchantId, affiliate.id, { customCommissionRate: 25 });
+      await updateAffiliate(ownerId, merchantId, affiliate.id, {
+        customCommissionRate: 25,
+      });
       expect(
-        Number((await db.affiliate.findUnique({ where: { id: affiliate.id } }))?.customCommissionRate)
+        Number(
+          (await db.affiliate.findUnique({ where: { id: affiliate.id } }))
+            ?.customCommissionRate,
+        ),
       ).toBe(25);
 
-      await updateAffiliate(ownerId, merchantId, affiliate.id, { customCommissionRate: null });
+      await updateAffiliate(ownerId, merchantId, affiliate.id, {
+        customCommissionRate: null,
+      });
       expect(
-        (await db.affiliate.findUnique({ where: { id: affiliate.id } }))?.customCommissionRate
+        (await db.affiliate.findUnique({ where: { id: affiliate.id } }))
+          ?.customCommissionRate,
       ).toBeNull();
     });
 
     it("refuses a program that belongs to another product", async () => {
-      const affiliate = await makeAffiliate({ email: "cross@example.com", referralCode: "cross" });
+      const affiliate = await makeAffiliate({
+        email: "cross@example.com",
+        referralCode: "cross",
+      });
 
       await expect(
-        updateAffiliate(ownerId, merchantId, affiliate.id, { programId: otherProgramId })
+        updateAffiliate(ownerId, merchantId, affiliate.id, {
+          programId: otherProgramId,
+        }),
       ).rejects.toThrow();
     });
 
     it("refuses an empty program id instead of reading it as nothing to change", async () => {
-      const affiliate = await makeAffiliate({ email: "blank@example.com", referralCode: "blank" });
+      const affiliate = await makeAffiliate({
+        email: "blank@example.com",
+        referralCode: "blank",
+      });
 
       await expect(
-        updateAffiliate(ownerId, merchantId, affiliate.id, { programId: "" })
+        updateAffiliate(ownerId, merchantId, affiliate.id, { programId: "" }),
       ).rejects.toThrow(/program not found/i);
 
-      const row = await db.affiliate.findUnique({ where: { id: affiliate.id } });
+      const row = await db.affiliate.findUnique({
+        where: { id: affiliate.id },
+      });
       expect(row?.programId).toBe(programId);
     });
 
     it("refuses another owner's affiliate", async () => {
-      const affiliate = await makeAffiliate({ email: "stranger@example.com", referralCode: "stranger" });
+      const affiliate = await makeAffiliate({
+        email: "stranger@example.com",
+        referralCode: "stranger",
+      });
 
       await expect(
-        updateAffiliate(foreignOwnerId, merchantId, affiliate.id, { customCommissionRate: 1 })
+        updateAffiliate(foreignOwnerId, merchantId, affiliate.id, {
+          customCommissionRate: 1,
+        }),
       ).rejects.toThrow();
     });
   });
-
 });

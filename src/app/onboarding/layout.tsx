@@ -16,7 +16,11 @@ import { signOutAction } from "@/app/dashboard/signOutAction";
 // its own weight and the rest is set in the rail's muted register.
 const COLUMN = "mx-auto w-full max-w-[calc(256px+48px+640px+2*24px)] px-6";
 
-export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
+export default async function OnboardingLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
@@ -35,10 +39,20 @@ export default async function OnboardingLayout({ children }: { children: React.R
           />
         </span>
         <div className="flex items-center gap-2.5 text-xs">
-          <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">{session.user.email ?? ""}</span>
-          <span className="hidden h-3.5 w-px bg-neutral-300 sm:block" aria-hidden />
+          <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">
+            {session.user.email ?? ""}
+          </span>
+          <span
+            className="hidden h-3.5 w-px bg-neutral-300 sm:block"
+            aria-hidden
+          />
           <form action={signOutAction}>
-            <Button type="submit" variant="ghost" size="xs" className="-mr-2 px-2 font-medium text-neutral-600 hover:text-foreground">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="xs"
+              className="-mr-2 px-2 font-medium text-neutral-600 hover:text-foreground"
+            >
               Log out
             </Button>
           </form>

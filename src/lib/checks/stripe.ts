@@ -3,12 +3,18 @@ import { db } from "@/lib/db";
 import type { CheckResult } from "@/lib/checks/dns";
 import { stripeApiLocation } from "@/lib/stripeApi";
 
-type MinimalStripe = { customers: { list: (params: { limit: number }) => Promise<unknown> } };
+type MinimalStripe = {
+  customers: { list: (params: { limit: number }) => Promise<unknown> };
+};
 
 // Stripe's own default is 80 seconds, which on a screen that says
 // "Checking" is indistinguishable from hung.
 function defaultClient(key: string): MinimalStripe {
-  return new Stripe(key, { timeout: 10_000, maxNetworkRetries: 0, ...stripeApiLocation() }) as unknown as MinimalStripe;
+  return new Stripe(key, {
+    timeout: 10_000,
+    maxNetworkRetries: 0,
+    ...stripeApiLocation(),
+  }) as unknown as MinimalStripe;
 }
 
 /**
@@ -19,10 +25,13 @@ function defaultClient(key: string): MinimalStripe {
  */
 export async function stripeKeyWorks(
   secretKey: string,
-  makeClient: (key: string) => MinimalStripe = defaultClient
+  makeClient: (key: string) => MinimalStripe = defaultClient,
 ): Promise<CheckResult> {
   if (!/^(rk|sk)_(live|test)_/.test(secretKey)) {
-    return { ok: false, detail: "That is not a Stripe secret or restricted key" };
+    return {
+      ok: false,
+      detail: "That is not a Stripe secret or restricted key",
+    };
   }
   try {
     await makeClient(secretKey).customers.list({ limit: 1 });
@@ -30,7 +39,11 @@ export async function stripeKeyWorks(
   } catch (err) {
     const type = (err as { type?: string })?.type ?? "";
     if (type === "StripePermissionError") {
-      return { ok: false, detail: "The key is missing a permission. Create it from the button above." };
+      return {
+        ok: false,
+        detail:
+          "The key is missing a permission. Create it from the button above.",
+      };
     }
     if (type === "StripeAuthenticationError") {
       return { ok: false, detail: "Stripe says this key is not valid" };
@@ -47,7 +60,7 @@ export async function stripeKeyWorks(
  */
 export async function webhookEventReceived(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<CheckResult> {
   const any = await db.webhookEvent.findFirst({
     where: { merchantId, merchant: { ownerId } },

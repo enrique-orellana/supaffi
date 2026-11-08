@@ -25,7 +25,11 @@ export function EmptyState({
       )}
       <div className="flex flex-col gap-1">
         <p className="text-[15px] font-medium tracking-tight">{title}</p>
-        {body && <p className="max-w-[36ch] text-sm text-muted-foreground text-pretty">{body}</p>}
+        {body && (
+          <p className="max-w-[36ch] text-sm text-muted-foreground text-pretty">
+            {body}
+          </p>
+        )}
       </div>
       {action && <div className="mt-1">{action}</div>}
     </div>

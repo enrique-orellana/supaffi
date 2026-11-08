@@ -8,7 +8,10 @@ import {
   getMerchantForOwner,
   getStripeWebhookEndpointId,
 } from "@/lib/merchant";
-import { connectNowPayments, disconnectNowPayments } from "@/lib/paymentConnections";
+import {
+  connectNowPayments,
+  disconnectNowPayments,
+} from "@/lib/paymentConnections";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
@@ -27,7 +30,7 @@ async function owner(): Promise<string> {
 export async function saveStripeKeyAction(
   product: ProductRef,
   _prev: ActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionState> {
   const ownerId = await owner();
   const key = String(formData.get("value") ?? "").trim();
@@ -43,7 +46,10 @@ export async function saveStripeKeyAction(
     return { error: "" };
   }
 
-  const existingEndpoint = await getStripeWebhookEndpointId(ownerId, product.id);
+  const existingEndpoint = await getStripeWebhookEndpointId(
+    ownerId,
+    product.id,
+  );
   if (existingEndpoint) {
     await connectStripe(ownerId, product.id, { secretKey: key });
   } else {
@@ -76,13 +82,17 @@ export async function saveStripeKeyAction(
 export async function saveWebhookSecretAction(
   product: ProductRef,
   _prev: ActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionState> {
   const ownerId = await owner();
   const secret = String(formData.get("value") ?? "").trim();
-  if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
+  if (!secret.startsWith("whsec_"))
+    return { error: "The signing secret starts with whsec_" };
 
-  await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
+  await connectStripe(ownerId, product.id, {
+    webhookSecret: secret,
+    webhookEndpointId: null,
+  });
   revalidatePath(stepPath(product.slug, "payments"));
   return { error: "" };
 }
@@ -90,7 +100,7 @@ export async function saveWebhookSecretAction(
 export async function saveNowPaymentsOnboardingAction(
   product: ProductRef,
   _prev: ActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionState> {
   const ownerId = await owner();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
@@ -103,7 +113,7 @@ export async function saveNowPaymentsOnboardingAction(
 
 export async function disconnectNowPaymentsOnboardingAction(
   product: ProductRef,
-  _formData: FormData
+  _formData: FormData,
 ): Promise<void> {
   const ownerId = await owner();
   await disconnectNowPayments(ownerId, product.id);

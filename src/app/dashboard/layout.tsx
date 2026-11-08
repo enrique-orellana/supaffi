@@ -7,14 +7,22 @@ import { getCommissionTotals } from "@/lib/commission";
 import { getTrackingStatus } from "@/lib/tracking";
 import { countPayouts } from "@/lib/analytics";
 import { availableUpdate, installedVersion } from "@/lib/version";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { AppSidebar, type Counts } from "./AppSidebar";
 
 // Defense-in-depth: every page under /dashboard already checks role itself
 // (added during the Affiliate Auth plan). This layout-level check is an
 // additional, cheap guard — it does not replace the per-page checks, which
 // stay as-is.
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
   const ownerId = session.user.id;
@@ -33,13 +41,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // revalidatePath("/dashboard", "layout"), which refreshes these.
   const counted = await Promise.all(
     merchants.map(async (m): Promise<[string, Counts]> => {
-      const [affiliates, programs, totals, tracking, payouts] = await Promise.all([
-        countAffiliatesForMerchant(m.id),
-        listProgramsForMerchant(ownerId, m.id),
-        getCommissionTotals(ownerId, m.id),
-        getTrackingStatus(m.id),
-        countPayouts(m.id),
-      ]);
+      const [affiliates, programs, totals, tracking, payouts] =
+        await Promise.all([
+          countAffiliatesForMerchant(m.id),
+          listProgramsForMerchant(ownerId, m.id),
+          getCommissionTotals(ownerId, m.id),
+          getTrackingStatus(m.id),
+          countPayouts(m.id),
+        ]);
       return [
         m.slug,
         {
@@ -50,7 +59,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           tracking,
         },
       ];
-    })
+    }),
   );
   const counts = Object.fromEntries(counted);
 
@@ -61,13 +70,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const update = availableUpdate();
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
+    <SidebarProvider
+      style={{ "--sidebar-width": "264px" } as React.CSSProperties}
+    >
       <AppSidebar
         merchants={merchants}
         counts={counts}
         email={session.user.email ?? ""}
         version={installedVersion()}
-        update={update && { version: update.version, url: update.url, security: update.security }}
+        update={
+          update && {
+            version: update.version,
+            url: update.url,
+            security: update.security,
+          }
+        }
       />
       <SidebarInset>
         {/* Views are built to fit, so this should never scroll. It is a

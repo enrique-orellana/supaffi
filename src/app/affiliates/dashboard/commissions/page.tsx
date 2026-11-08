@@ -9,7 +9,12 @@ import {
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/dashboard/TablePagination";
-import { CommissionLedger, STATUS_LABELS, toLedgerRow, type LedgerRow } from "./CommissionLedger";
+import {
+  CommissionLedger,
+  STATUS_LABELS,
+  toLedgerRow,
+  type LedgerRow,
+} from "./CommissionLedger";
 
 /**
  * Every commission, and why each one is the amount it is.
@@ -21,9 +26,16 @@ import { CommissionLedger, STATUS_LABELS, toLedgerRow, type LedgerRow } from "./
 
 const PAGE_SIZE = 25;
 
-const STATUSES: readonly AffiliateCommissionStatus[] = ["PENDING", "PAYABLE", "PAID", "VOIDED"];
+const STATUSES: readonly AffiliateCommissionStatus[] = [
+  "PENDING",
+  "PAYABLE",
+  "PAID",
+  "VOIDED",
+];
 
-function parseStatus(raw: string | undefined): AffiliateCommissionStatus | null {
+function parseStatus(
+  raw: string | undefined,
+): AffiliateCommissionStatus | null {
   const upper = raw?.toUpperCase();
   return STATUSES.find((s) => s === upper) ?? null;
 }
@@ -45,7 +57,11 @@ export default async function AffiliateCommissionsPage({
   const page = sanitizePage(query.page);
 
   const [{ rows, total }, totals] = await Promise.all([
-    listAffiliateCommissions(affiliateId, { page, pageSize: PAGE_SIZE, status }),
+    listAffiliateCommissions(affiliateId, {
+      page,
+      pageSize: PAGE_SIZE,
+      status,
+    }),
     getAffiliateCommissionTotals(affiliateId),
   ]);
 
@@ -66,14 +82,26 @@ export default async function AffiliateCommissionsPage({
   // Same hole as the owner ledger: a page number past the end rendered an
   // empty ledger under a label counting rows that are not there.
   if (page > totalPages) {
-    const search = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
-    redirect(`/affiliates/dashboard/commissions${search === "?" ? "" : search}`);
+    const search = hrefWith({
+      page: totalPages > 1 ? String(totalPages) : null,
+    });
+    redirect(
+      `/affiliates/dashboard/commissions${search === "?" ? "" : search}`,
+    );
   }
 
   const allCount = totals.reduce((sum, t) => sum + t.count, 0);
-  const tabs: { label: string; count: number; status: AffiliateCommissionStatus | null }[] = [
+  const tabs: {
+    label: string;
+    count: number;
+    status: AffiliateCommissionStatus | null;
+  }[] = [
     { label: "All", count: allCount, status: null },
-    ...totals.map((t) => ({ label: STATUS_LABELS[t.status], count: t.count, status: t.status })),
+    ...totals.map((t) => ({
+      label: STATUS_LABELS[t.status],
+      count: t.count,
+      status: t.status,
+    })),
   ];
 
   const ledgerRows: LedgerRow[] = rows.map(toLedgerRow);
@@ -86,25 +114,34 @@ export default async function AffiliateCommissionsPage({
             key={tab.label}
             value={tab.status ?? "all"}
             render={
-              <Link href={hrefWith({ status: tab.status, page: null })} className="cursor-pointer" />
+              <Link
+                href={hrefWith({ status: tab.status, page: null })}
+                className="cursor-pointer"
+              />
             }
           >
             {tab.label}
-            <span className="ml-1.5 text-muted-foreground tabular-nums">{tab.count}</span>
+            <span className="ml-1.5 text-muted-foreground tabular-nums">
+              {tab.count}
+            </span>
           </TabsTrigger>
         ))}
       </TabsList>
     </Tabs>
   );
 
-
   return (
     <Page>
-      <PageTitle title="Commissions" actions={<div className="hidden md:block">{statusTabs}</div>} />
+      <PageTitle
+        title="Commissions"
+        actions={<div className="hidden md:block">{statusTabs}</div>}
+      />
 
       {/* The same tabs get their own row on a phone, where five of them plus a
           heading do not fit on one line and would push the page sideways. */}
-      <div className="-mx-8 shrink-0 overflow-x-auto px-8 md:hidden">{statusTabs}</div>
+      <div className="-mx-8 shrink-0 overflow-x-auto px-8 md:hidden">
+        {statusTabs}
+      </div>
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}

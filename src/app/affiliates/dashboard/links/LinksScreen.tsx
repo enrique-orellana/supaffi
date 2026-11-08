@@ -1,7 +1,14 @@
 import { Plus } from "lucide-react";
-import { MAX_LINKS_PER_AFFILIATE, type AffiliateLinkStats } from "@/lib/affiliateLink";
+import {
+  MAX_LINKS_PER_AFFILIATE,
+  type AffiliateLinkStats,
+} from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { LinksTable } from "./LinksTable";
 import { LinkDialog } from "./LinkDialog";
@@ -37,19 +44,27 @@ export function LinksScreen({
     <Page>
       <PageTitle
         title="Links"
-        subtitle={near ? `${links.length} of ${MAX_LINKS_PER_AFFILIATE} used` : undefined}
+        subtitle={
+          near
+            ? `${links.length} of ${MAX_LINKS_PER_AFFILIATE} used`
+            : undefined
+        }
         actions={
           atMax ? (
             // A disabled button swallows its own pointer events, so the
             // tooltip hangs off a wrapper rather than off the button.
             <Tooltip>
-              <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
+              <TooltipTrigger
+                render={<span className="inline-flex cursor-not-allowed" />}
+              >
                 <Button size="sm" disabled className="cursor-pointer">
                   <Plus />
                   New link
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Delete one to add another.</TooltipContent>
+              <TooltipContent side="bottom">
+                Delete one to add another.
+              </TooltipContent>
             </Tooltip>
           ) : (
             // The dialog owns its own trigger: see LinkDialog on why a trigger

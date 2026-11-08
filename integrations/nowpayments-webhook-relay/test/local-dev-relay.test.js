@@ -14,18 +14,26 @@ async function listen(server) {
 }
 
 afterEach(async () => {
-  await Promise.all([...servers].map((server) => new Promise((resolve) => server.close(resolve))));
+  await Promise.all(
+    [...servers].map(
+      (server) => new Promise((resolve) => server.close(resolve)),
+    ),
+  );
   servers.clear();
 });
 
 test("local relay forwards exact signed JSON to both loopback receivers", async () => {
-  const payload = Buffer.from('{"payment_status":"finished","order_id":"qa-42"}');
+  const payload = Buffer.from(
+    '{"payment_status":"finished","order_id":"qa-42"}',
+  );
   const signature = "original-provider-signature";
   const calls = [];
   const server = createLocalRelayServer({
     env: {
-      EXISTING_WEBHOOK_URL: "http://127.0.0.1:18282/webhooks/billing/nowpayments",
-      SUPAFFI_WEBHOOK_URL: "http://localhost:3000/api/webhooks/nowpayments/qa-connection",
+      EXISTING_WEBHOOK_URL:
+        "http://127.0.0.1:18282/webhooks/billing/nowpayments",
+      SUPAFFI_WEBHOOK_URL:
+        "http://localhost:3000/api/webhooks/nowpayments/qa-connection",
     },
     fetchFn: async (url, options) => {
       calls.push({ url, options, body: Buffer.from(options.body) });
@@ -57,8 +65,10 @@ test("local relay refuses non-loopback destinations", async () => {
   let called = false;
   const server = createLocalRelayServer({
     env: {
-      EXISTING_WEBHOOK_URL: "http://127.0.0.1:18282/webhooks/billing/nowpayments",
-      SUPAFFI_WEBHOOK_URL: "https://external.example/api/webhooks/nowpayments/qa-connection",
+      EXISTING_WEBHOOK_URL:
+        "http://127.0.0.1:18282/webhooks/billing/nowpayments",
+      SUPAFFI_WEBHOOK_URL:
+        "https://external.example/api/webhooks/nowpayments/qa-connection",
     },
     fetchFn: async () => {
       called = true;

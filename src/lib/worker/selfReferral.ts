@@ -8,7 +8,10 @@ function normalize(email: string): string {
 
 // Cheap vector, always on: both checkout.session.completed and invoice.paid
 // carry the buyer's email inline in the payload already, no extra API call.
-export function checkSelfReferralEmail(affiliate: Affiliate, buyerEmail: string | null): string | null {
+export function checkSelfReferralEmail(
+  affiliate: Affiliate,
+  buyerEmail: string | null,
+): string | null {
   if (buyerEmail && normalize(buyerEmail) === normalize(affiliate.email)) {
     return `email:${buyerEmail.trim()} ${affiliate.email.trim()}`;
   }
@@ -23,34 +26,57 @@ export function checkSelfReferralEmail(affiliate: Affiliate, buyerEmail: string 
 // creation. An outage throws, so the event is retried rather than skipping it.
 export async function resolveBuyerFingerprint(
   stripe: Stripe,
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ): Promise<string | null> {
   try {
     if (session.mode === "payment" && session.payment_intent) {
       const piId =
-        typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent.id;
-      const pi = await stripe.paymentIntents.retrieve(piId, { expand: ["payment_method"] });
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent.id;
+      const pi = await stripe.paymentIntents.retrieve(piId, {
+        expand: ["payment_method"],
+      });
       const pm = pi.payment_method;
-      return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
+      return typeof pm === "string" || !pm
+        ? null
+        : (pm.card?.fingerprint ?? null);
     }
     if (session.mode === "subscription" && session.subscription) {
       const subId =
-        typeof session.subscription === "string" ? session.subscription : session.subscription.id;
-      const sub = await stripe.subscriptions.retrieve(subId, { expand: ["latest_invoice"] });
+        typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription.id;
+      const sub = await stripe.subscriptions.retrieve(subId, {
+        expand: ["latest_invoice"],
+      });
       const invoice = sub.latest_invoice;
       const invoiceId = typeof invoice === "string" ? invoice : invoice?.id;
       if (!invoiceId) return null;
-      const payments = await stripe.invoicePayments.list({ invoice: invoiceId, limit: 1 });
+      const payments = await stripe.invoicePayments.list({
+        invoice: invoiceId,
+        limit: 1,
+      });
       const paymentIntent = payments.data[0]?.payment.payment_intent;
-      const piId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+      const piId =
+        typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
       if (!piId) return null;
-      const fullPi = await stripe.paymentIntents.retrieve(piId, { expand: ["payment_method"] });
+      const fullPi = await stripe.paymentIntents.retrieve(piId, {
+        expand: ["payment_method"],
+      });
       const pm = fullPi.payment_method;
-      return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
+      return typeof pm === "string" || !pm
+        ? null
+        : (pm.card?.fingerprint ?? null);
     }
   } catch (err) {
-    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the card on session ${session.id} (${stripeErrorLabel(err)}), so the event is retried`);
-    console.warn(`[worker] card check skipped for session ${session.id} (${stripeErrorLabel(err)})`);
+    if (isTransientStripeError(err))
+      throw new Error(
+        `[worker] could not reach Stripe for the card on session ${session.id} (${stripeErrorLabel(err)}), so the event is retried`,
+      );
+    console.warn(
+      `[worker] card check skipped for session ${session.id} (${stripeErrorLabel(err)})`,
+    );
   }
   return null;
 }
@@ -60,18 +86,35 @@ export async function resolveBuyerFingerprint(
 // renewal, so every renewal is checked, not only the first purchase. Found
 // through the invoice's payment, then its PaymentIntent. Best-effort in the
 // same way: a key that cannot read it skips the check, an outage retries.
-export async function resolveInvoiceFingerprint(stripe: Stripe, invoiceId: string): Promise<string | null> {
+export async function resolveInvoiceFingerprint(
+  stripe: Stripe,
+  invoiceId: string,
+): Promise<string | null> {
   try {
-    const payments = await stripe.invoicePayments.list({ invoice: invoiceId, status: "paid", limit: 1 });
+    const payments = await stripe.invoicePayments.list({
+      invoice: invoiceId,
+      status: "paid",
+      limit: 1,
+    });
     const paymentIntent = payments.data[0]?.payment.payment_intent;
-    const piId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+    const piId =
+      typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
     if (!piId) return null;
-    const pi = await stripe.paymentIntents.retrieve(piId, { expand: ["payment_method"] });
+    const pi = await stripe.paymentIntents.retrieve(piId, {
+      expand: ["payment_method"],
+    });
     const pm = pi.payment_method;
-    return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
+    return typeof pm === "string" || !pm
+      ? null
+      : (pm.card?.fingerprint ?? null);
   } catch (err) {
-    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the card on invoice ${invoiceId} (${stripeErrorLabel(err)}), so the event is retried`);
-    console.warn(`[worker] card check skipped for invoice ${invoiceId} (${stripeErrorLabel(err)})`);
+    if (isTransientStripeError(err))
+      throw new Error(
+        `[worker] could not reach Stripe for the card on invoice ${invoiceId} (${stripeErrorLabel(err)}), so the event is retried`,
+      );
+    console.warn(
+      `[worker] card check skipped for invoice ${invoiceId} (${stripeErrorLabel(err)})`,
+    );
   }
   return null;
 }
@@ -85,21 +128,32 @@ export async function checkPaymentMethodOverlap(
   stripe: Stripe,
   affiliate: Affiliate,
   buyerFingerprint: string | null,
-  buyerCustomerId: string | null
+  buyerCustomerId: string | null,
 ): Promise<string | null> {
   if (!buyerFingerprint) return null;
   try {
-    const candidates = await stripe.customers.list({ email: affiliate.email, limit: 3 });
+    const candidates = await stripe.customers.list({
+      email: affiliate.email,
+      limit: 3,
+    });
     for (const candidate of candidates.data) {
       if (candidate.id === buyerCustomerId) continue;
-      const methods = await stripe.paymentMethods.list({ customer: candidate.id, type: "card" });
+      const methods = await stripe.paymentMethods.list({
+        customer: candidate.id,
+        type: "card",
+      });
       if (methods.data.some((m) => m.card?.fingerprint === buyerFingerprint)) {
         return "card";
       }
     }
   } catch (err) {
-    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for affiliate ${affiliate.id}'s cards (${stripeErrorLabel(err)}), so the event is retried`);
-    console.warn(`[worker] payment-method overlap check failed for affiliate ${affiliate.id} (${stripeErrorLabel(err)})`);
+    if (isTransientStripeError(err))
+      throw new Error(
+        `[worker] could not reach Stripe for affiliate ${affiliate.id}'s cards (${stripeErrorLabel(err)}), so the event is retried`,
+      );
+    console.warn(
+      `[worker] payment-method overlap check failed for affiliate ${affiliate.id} (${stripeErrorLabel(err)})`,
+    );
   }
   return null;
 }

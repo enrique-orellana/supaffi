@@ -16,7 +16,8 @@ import type Stripe from "stripe";
  * still available at that point is a total with the tax inside it.
  */
 
-type ShippingCost = { amount_total: number; amount_tax: number } | null | undefined;
+type ShippingCost =
+  { amount_total: number; amount_tax: number } | null | undefined;
 
 // Total minus tax rather than amount_subtotal: with a tax-inclusive shipping
 // rate the subtotal can still hold the tax, while this difference is shipping
@@ -53,7 +54,10 @@ function shippingBeforeTax(shipping: ShippingCost): number {
  * rather than ever risk leaving shipping tax inside the base.
  */
 export function checkoutSessionBaseMinor(
-  session: Pick<Stripe.Checkout.Session, "amount_total" | "total_details" | "shipping_cost">
+  session: Pick<
+    Stripe.Checkout.Session,
+    "amount_total" | "total_details" | "shipping_cost"
+  >,
 ): number | null {
   if (session.amount_total == null || !session.total_details) return null;
   const taxes = session.total_details.breakdown?.taxes;
@@ -67,17 +71,23 @@ export function checkoutSessionBaseMinor(
 // `total_taxes`. Supaffi creates its webhook endpoint without pinning a
 // version, so an older Stripe account still delivers that shape even though
 // the pinned SDK types no longer declare it.
-type LegacyInvoiceTax = { total_tax_amounts?: Array<{ amount: number }> | null };
+type LegacyInvoiceTax = {
+  total_tax_amounts?: Array<{ amount: number }> | null;
+};
 
 function sumAmounts(lines: Array<{ amount: number }>): number {
   return lines.reduce((total, line) => total + line.amount, 0);
 }
 
 function invoiceTotalBeforeTax(
-  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes">
+  invoice: Pick<
+    Stripe.Invoice,
+    "total" | "total_excluding_tax" | "total_taxes"
+  >,
 ): number | null {
   if (invoice.total_excluding_tax != null) return invoice.total_excluding_tax;
-  if (Array.isArray(invoice.total_taxes)) return invoice.total - sumAmounts(invoice.total_taxes);
+  if (Array.isArray(invoice.total_taxes))
+    return invoice.total - sumAmounts(invoice.total_taxes);
   const legacy = (invoice as unknown as LegacyInvoiceTax).total_tax_amounts;
   if (Array.isArray(legacy)) return invoice.total - sumAmounts(legacy);
   return null;
@@ -90,7 +100,10 @@ function invoiceTotalBeforeTax(
  * carried.
  */
 export function invoiceLinesBeforeTax(
-  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "shipping_cost">
+  invoice: Pick<
+    Stripe.Invoice,
+    "total" | "total_excluding_tax" | "total_taxes" | "shipping_cost"
+  >,
 ): number | null {
   const beforeTax = invoiceTotalBeforeTax(invoice);
   if (beforeTax === null) return null;
@@ -102,7 +115,10 @@ export function invoiceLinesBeforeTax(
  * partial payment covered the rest, and only money that was actually paid
  * earns commission, in the same pre-tax proportion.
  */
-export function scaleToAmountPaid(baseMinor: number, invoice: Pick<Stripe.Invoice, "total" | "amount_paid">): number {
+export function scaleToAmountPaid(
+  baseMinor: number,
+  invoice: Pick<Stripe.Invoice, "total" | "amount_paid">,
+): number {
   // A fully discounted invoice has nothing to earn on, and nothing to divide by.
   if (invoice.total <= 0) return 0;
   if (invoice.amount_paid >= invoice.total) return baseMinor;
@@ -117,7 +133,14 @@ export function scaleToAmountPaid(baseMinor: number, invoice: Pick<Stripe.Invoic
 }
 
 export function invoiceBaseMinor(
-  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost">
+  invoice: Pick<
+    Stripe.Invoice,
+    | "total"
+    | "total_excluding_tax"
+    | "total_taxes"
+    | "amount_paid"
+    | "shipping_cost"
+  >,
 ): number | null {
   const linesBeforeTax = invoiceLinesBeforeTax(invoice);
   if (linesBeforeTax === null) return null;

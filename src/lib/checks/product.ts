@@ -1,15 +1,27 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { resolvesTo as resolvesToImpl, httpsReachable as httpsReachableImpl, type CheckResult } from "@/lib/checks/dns";
-import { stripeKeyWorks as stripeKeyWorksImpl, webhookEventReceived as webhookEventReceivedImpl } from "@/lib/checks/stripe";
+import {
+  resolvesTo as resolvesToImpl,
+  httpsReachable as httpsReachableImpl,
+  type CheckResult,
+} from "@/lib/checks/dns";
+import {
+  stripeKeyWorks as stripeKeyWorksImpl,
+  webhookEventReceived as webhookEventReceivedImpl,
+} from "@/lib/checks/stripe";
 import { scriptFound as scriptFoundImpl } from "@/lib/checks/script";
 
 export type CheckDeps = {
   resolvesTo: (hostname: string, ip: string) => Promise<CheckResult>;
-  httpsReachable: (hostname: string) => Promise<{ reachable: CheckResult; certificate: CheckResult }>;
+  httpsReachable: (
+    hostname: string,
+  ) => Promise<{ reachable: CheckResult; certificate: CheckResult }>;
   stripeKeyWorks: (key: string) => Promise<CheckResult>;
-  webhookEventReceived: (ownerId: string, merchantId: string) => Promise<CheckResult>;
+  webhookEventReceived: (
+    ownerId: string,
+    merchantId: string,
+  ) => Promise<CheckResult>;
   scriptFound: (websiteUrl: string, domain: string) => Promise<CheckResult>;
 };
 
@@ -34,7 +46,10 @@ const NOT_CONNECTED: CheckResult = { ok: false, detail: "Not connected yet" };
  * its checks shows grey dots rather than a wall of red crosses.
  */
 const CHECKING: CheckResult = { ok: false, detail: "Checking" };
-const NO_ADDRESS: CheckResult = { ok: false, detail: "This server's address is not configured" };
+const NO_ADDRESS: CheckResult = {
+  ok: false,
+  detail: "This server's address is not configured",
+};
 const FAILED: CheckResult = { ok: false, detail: "Could not check" };
 
 /**
@@ -110,7 +125,11 @@ export type RunOptions = {
 /** The last answer for a section, whatever its age, or the not-looked-yet one. */
 function lastKnown(cached: SectionCache): ProductChecks {
   return {
-    dns: cached.dns?.value ?? { resolves: CHECKING, https: CHECKING, certificate: CHECKING },
+    dns: cached.dns?.value ?? {
+      resolves: CHECKING,
+      https: CHECKING,
+      certificate: CHECKING,
+    },
     stripe: cached.stripe?.value ?? { key: CHECKING, webhook: CHECKING },
     tracking: cached.tracking?.value ?? { script: CHECKING },
   };
@@ -132,7 +151,7 @@ function refresh(
   merchantId: string,
   sections: CheckSection[],
   deps: CheckDeps,
-  now: () => number
+  now: () => number,
 ): Promise<Partial<ProductChecks>> {
   const key = `${merchantId}:${[...sections].sort().join(",")}`;
   const existing = inFlight.get(key);
@@ -154,7 +173,9 @@ function refresh(
     if (!merchant) throw new Error("Merchant not found");
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
-    const stripeKey = safeDecrypt(merchant.paymentConnections[0]?.apiKeyEnc ?? null);
+    const stripeKey = safeDecrypt(
+      merchant.paymentConnections[0]?.apiKeyEnc ?? null,
+    );
     const wanted = new Set(sections);
     const result: Partial<ProductChecks> = {};
 
@@ -162,16 +183,27 @@ function refresh(
       wanted.has("dns")
         ? (async () => {
             const [resolves, https] = await Promise.all([
-              hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
-              settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
+              hostIp
+                ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED)
+                : Promise.resolve(NO_ADDRESS),
+              settle(deps.httpsReachable(merchant.domain), {
+                reachable: FAILED,
+                certificate: FAILED,
+              }),
             ]);
-            result.dns = { resolves, https: https.reachable, certificate: https.certificate };
+            result.dns = {
+              resolves,
+              https: https.reachable,
+              certificate: https.certificate,
+            };
           })()
         : null,
       wanted.has(PaymentProvider.STRIPE.id)
         ? (async () => {
             const [key, webhook] = await Promise.all([
-              stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+              stripeKey
+                ? settle(deps.stripeKeyWorks(stripeKey), FAILED)
+                : Promise.resolve(NOT_CONNECTED),
               settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
             ]);
             result.stripe = { key, webhook };
@@ -179,7 +211,12 @@ function refresh(
         : null,
       wanted.has("tracking")
         ? (async () => {
-            result.tracking = { script: await settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED) };
+            result.tracking = {
+              script: await settle(
+                deps.scriptFound(merchant.websiteUrl, merchant.domain),
+                FAILED,
+              ),
+            };
           })()
         : null,
     ]);
@@ -192,7 +229,9 @@ function refresh(
       if (!value) continue;
       // The one trace a self-hosted instance has of what its checks are
       // doing, and how long the outside world took to answer.
-      console.log(`[checks] ${section} ${merchant.domain} ${at - started}ms ${JSON.stringify(value)}`);
+      console.log(
+        `[checks] ${section} ${merchant.domain} ${at - started}ms ${JSON.stringify(value)}`,
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (next as any)[section] = { value, at };
     }
@@ -223,13 +262,16 @@ function refresh(
 export async function runProductChecks(
   ownerId: string,
   merchantId: string,
-  options: RunOptions = {}
+  options: RunOptions = {},
 ): Promise<ProductChecks> {
   const deps = { ...defaults, ...options.overrides };
   const now = options.now ?? Date.now;
   const stamp = now();
   const cached = recent.get(merchantId) ?? {};
-  const usable = <T>(entry: Timed<T> | undefined, section: CheckSection): T | null => {
+  const usable = <T>(
+    entry: Timed<T> | undefined,
+    section: CheckSection,
+  ): T | null => {
     if (!entry || options.fresh?.has(section)) return null;
     return stamp - entry.at < MAX_AGE_MS ? entry.value : null;
   };
@@ -238,7 +280,9 @@ export async function runProductChecks(
     stripe: usable(cached.stripe, PaymentProvider.STRIPE.id),
     tracking: usable(cached.tracking, "tracking"),
   };
-  const stale = (["dns", PaymentProvider.STRIPE.id, "tracking"] as const).filter((s) => !warm[s]);
+  const stale = (
+    ["dns", PaymentProvider.STRIPE.id, "tracking"] as const
+  ).filter((s) => !warm[s]);
 
   // Nothing to run: no database round trip either, which is the point.
   if (stale.length === 0) {

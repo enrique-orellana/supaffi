@@ -6,10 +6,21 @@ import { dnsCheckRows } from "@/components/onboarding/checkRows";
 import { EditableField } from "@/components/onboarding/EditableField";
 import { RecordTable } from "@/components/onboarding/RecordTable";
 import { StepShell } from "@/components/onboarding/StepShell";
-import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
+import {
+  TaskCard,
+  TaskCardHeader,
+  TaskCardSection,
+} from "@/components/onboarding/TaskCard";
 import { detectDnsProvider } from "@/lib/checks/dns";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
-import { displayStep, dnsRecordName, dnsZone, nextStep, splitSubdomain, stepPath } from "@/lib/onboarding";
+import {
+  displayStep,
+  dnsRecordName,
+  dnsZone,
+  nextStep,
+  splitSubdomain,
+  stepPath,
+} from "@/lib/onboarding";
 import { isLocalDomain } from "@/lib/url";
 import { isDevInstance } from "@/lib/instanceMode";
 import { AutoRefresh } from "../../AutoRefresh";
@@ -44,7 +55,10 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
         title="Point a subdomain here"
         lede="Your affiliate program lives on its own address, on your domain."
         action={
-          <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>
+          <Button
+            size="lg"
+            render={<Link href={stepPath(merchant.slug, next)} />}
+          >
             Continue
           </Button>
         }
@@ -67,7 +81,10 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
       title="Point a subdomain here"
       lede="Your affiliate program lives on its own address, on your domain."
       action={
-        <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>
+        <Button
+          size="lg"
+          render={<Link href={stepPath(merchant.slug, next)} />}
+        >
           Continue
         </Button>
       }
@@ -76,15 +93,31 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
       <TaskCard>
         <TaskCardSection>{field}</TaskCardSection>
         <TaskCardHeader
-          title={provider === "cloudflare" ? "Add this record at Cloudflare" : "Add this record at your DNS provider"}
+          title={
+            provider === "cloudflare"
+              ? "Add this record at Cloudflare"
+              : "Add this record at your DNS provider"
+          }
           action={
             provider === "cloudflare" ? (
               <Button
                 variant="secondary"
                 size="sm"
-                render={<a href={cloudflareDnsRecordsUrl(dnsZone(merchant.domain))} target="_blank" rel="noreferrer" />}
+                render={
+                  <a
+                    href={cloudflareDnsRecordsUrl(dnsZone(merchant.domain))}
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
               >
-                <Image src="/logos/cloudflare-icon.svg" alt="" width={16} height={16} className="mr-1 size-4" />
+                <Image
+                  src="/logos/cloudflare-icon.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="mr-1 size-4"
+                />
                 Open Cloudflare
               </Button>
             ) : undefined
@@ -95,13 +128,20 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
             records={[
               { label: "Type", value: "A", badge: true, copyable: false },
               { label: "Name", value: dnsRecordName(merchant.domain) },
-              { label: "Value", value: hostIp, missing: "This server's address is not set yet" },
+              {
+                label: "Value",
+                value: hostIp,
+                missing: "This server's address is not set yet",
+              },
               { label: "Proxy", value: "Off", copyable: false },
             ]}
           />
         </TaskCardSection>
         <TaskCardSection sunken>
-          <CheckList rows={rows} onRecheck={recheckAction.bind(null, product, "subdomain")} />
+          <CheckList
+            rows={rows}
+            onRecheck={recheckAction.bind(null, product, "subdomain")}
+          />
         </TaskCardSection>
       </TaskCard>
     </StepShell>

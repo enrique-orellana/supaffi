@@ -18,6 +18,8 @@ export default async function SetupPage() {
   }
 
   return (
-    <CenteredShell>{setupTokenExists() ? <SetupForm /> : <SetupClosed />}</CenteredShell>
+    <CenteredShell>
+      {setupTokenExists() ? <SetupForm /> : <SetupClosed />}
+    </CenteredShell>
   );
 }

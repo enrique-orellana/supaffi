@@ -94,7 +94,10 @@ const LINES_PAGE_SIZE = 100;
  * there would silently judge the renewal on a partial list that happens to
  * reconcile.
  */
-export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promise<Stripe.InvoiceLineItem[]> {
+export async function listInvoiceLines(
+  stripe: Stripe,
+  invoiceId: string,
+): Promise<Stripe.InvoiceLineItem[]> {
   const lines: Stripe.InvoiceLineItem[] = [];
   let startingAfter: string | undefined;
   for (;;) {
@@ -102,7 +105,9 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
     try {
       page = await stripe.invoices.listLineItems(
         invoiceId,
-        startingAfter ? { limit: LINES_PAGE_SIZE, starting_after: startingAfter } : { limit: LINES_PAGE_SIZE }
+        startingAfter
+          ? { limit: LINES_PAGE_SIZE, starting_after: startingAfter }
+          : { limit: LINES_PAGE_SIZE },
       );
     } catch (err) {
       // Only the error's type and code go into the thrown message, and the
@@ -114,11 +119,13 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
       // retrieveSessionForEarning in checkoutSessionCompleted.ts uses.
       const { type, code } = err as { type?: string; code?: string };
       throw new Error(
-        `could not list the lines of invoice ${invoiceId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`
+        `could not list the lines of invoice ${invoiceId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`,
       );
     }
     if (page.data.length === 0 && page.has_more) {
-      throw new Error(`invoice ${invoiceId} returned an empty page of lines while still claiming more`);
+      throw new Error(
+        `invoice ${invoiceId} returned an empty page of lines while still claiming more`,
+      );
     }
     lines.push(...page.data);
     if (!page.has_more) return lines;
@@ -136,11 +143,20 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
  * API version, so the shape does not depend on the version the payload was
  * sent in.
  */
-export const EARNING_INVOICE_EXPAND = ["amount_paid_off_stripe", "customer", "parent.subscription_details.subscription"];
+export const EARNING_INVOICE_EXPAND = [
+  "amount_paid_off_stripe",
+  "customer",
+  "parent.subscription_details.subscription",
+];
 
 /** Reads an invoice that can earn. A failed read throws, so the event is retried. */
-export function retrieveInvoiceForEarning(stripe: Stripe, invoiceId: string): Promise<Stripe.Invoice> {
-  return stripe.invoices.retrieve(invoiceId, { expand: EARNING_INVOICE_EXPAND });
+export function retrieveInvoiceForEarning(
+  stripe: Stripe,
+  invoiceId: string,
+): Promise<Stripe.Invoice> {
+  return stripe.invoices.retrieve(invoiceId, {
+    expand: EARNING_INVOICE_EXPAND,
+  });
 }
 
 /**
@@ -152,16 +168,24 @@ export function retrieveInvoiceForEarning(stripe: Stripe, invoiceId: string): Pr
 export function exclusionSourcesOf(
   read: Stripe.Invoice,
   subscriptionId: string | null,
-  customerId: string | null
+  customerId: string | null,
 ): ExclusionSources {
   const expandedSubscription =
-    read.parent?.type === "subscription_details" ? read.parent.subscription_details?.subscription : null;
+    read.parent?.type === "subscription_details"
+      ? read.parent.subscription_details?.subscription
+      : null;
   const subscription =
-    subscriptionId && expandedSubscription && typeof expandedSubscription !== "string" && expandedSubscription.id === subscriptionId
+    subscriptionId &&
+    expandedSubscription &&
+    typeof expandedSubscription !== "string" &&
+    expandedSubscription.id === subscriptionId
       ? expandedSubscription
       : subscriptionId;
   const customer =
-    customerId && read.customer && typeof read.customer !== "string" && read.customer.id === customerId
+    customerId &&
+    read.customer &&
+    typeof read.customer !== "string" &&
+    read.customer.id === customerId
       ? read.customer
       : customerId;
   return { invoice: read, subscription, customer };
@@ -180,10 +204,13 @@ function productOf(line: Stripe.InvoiceLineItem): string | null {
 function placeLine(
   line: Stripe.InvoiceLineItem,
   subscriptionId: string,
-  subscriptionItemIds: string[] | undefined
+  subscriptionItemIds: string[] | undefined,
 ): PlacedLine {
   const parent = line.parent;
-  if (parent?.type === "subscription_item_details" && parent.subscription_item_details) {
+  if (
+    parent?.type === "subscription_item_details" &&
+    parent.subscription_item_details
+  ) {
     const details = parent.subscription_item_details;
     // A line naming this invoice's subscription is referred. One naming a
     // different, non-null subscription never is. A null subscription proves
@@ -192,10 +219,16 @@ function placeLine(
     // them.
     const referred =
       details.subscription === subscriptionId ||
-      (details.subscription === null && (subscriptionItemIds ?? []).includes(details.subscription_item));
-    if (!referred) return { kind: "not_referred", proration: details.proration };
+      (details.subscription === null &&
+        (subscriptionItemIds ?? []).includes(details.subscription_item));
+    if (!referred)
+      return { kind: "not_referred", proration: details.proration };
     const product = productOf(line);
-    if (!product) return { kind: "unreadable", reason: `has a subscription line ${line.id} without a product` };
+    if (!product)
+      return {
+        kind: "unreadable",
+        reason: `has a subscription line ${line.id} without a product`,
+      };
     return { kind: "subscription", product, proration: details.proration };
   }
   if (parent?.type === "invoice_item_details" && parent.invoice_item_details) {
@@ -211,26 +244,39 @@ function placeLine(
       return { kind: "not_referred", proration: details.proration };
     }
     const product = productOf(line);
-    if (!product) return { kind: "unreadable", reason: `has a proration line ${line.id} without a product` };
+    if (!product)
+      return {
+        kind: "unreadable",
+        reason: `has a proration line ${line.id} without a product`,
+      };
     return { kind: "subscription", product, proration: true };
   }
-  return { kind: "unreadable", reason: `has a line ${line.id} whose origin Supaffi cannot read` };
+  return {
+    kind: "unreadable",
+    reason: `has a line ${line.id} whose origin Supaffi cannot read`,
+  };
 }
 
-function sumAmounts(entries: Array<{ amount: number }> | null | undefined): number {
+function sumAmounts(
+  entries: Array<{ amount: number }> | null | undefined,
+): number {
   return (entries ?? []).reduce((total, entry) => total + entry.amount, 0);
 }
 
 // Tax inside a tax-inclusive price is part of the line's amount. Tax added on
 // top of an exclusive price never was, so only the inclusive part comes off.
 function inclusiveTax(line: Stripe.InvoiceLineItem): number {
-  return sumAmounts((line.taxes ?? []).filter((tax) => tax.tax_behavior === "inclusive"));
+  return sumAmounts(
+    (line.taxes ?? []).filter((tax) => tax.tax_behavior === "inclusive"),
+  );
 }
 
 // pretax_credit_amounts lists discounts and credit grants together and repeats
 // what discount_amounts holds, so it is used on its own whenever it is present.
 function credits(line: Stripe.InvoiceLineItem): number {
-  return line.pretax_credit_amounts != null ? sumAmounts(line.pretax_credit_amounts) : sumAmounts(line.discount_amounts);
+  return line.pretax_credit_amounts != null
+    ? sumAmounts(line.pretax_credit_amounts)
+    : sumAmounts(line.discount_amounts);
 }
 
 // Tax added on top of the price, never folded into `amount` (see
@@ -239,7 +285,9 @@ function credits(line: Stripe.InvoiceLineItem): number {
 // exclusive" and "taxes.amount (integer) The amount of the tax, in the
 // smallest currency unit" (Stripe docs, invoice-line-item object).
 function exclusiveTax(line: Stripe.InvoiceLineItem): number {
-  return sumAmounts((line.taxes ?? []).filter((tax) => tax.tax_behavior === "exclusive"));
+  return sumAmounts(
+    (line.taxes ?? []).filter((tax) => tax.tax_behavior === "exclusive"),
+  );
 }
 
 // `taxes` is documented as "array of objects, nullable", so null is a
@@ -258,12 +306,20 @@ function taxesUnreadable(line: Stripe.InvoiceLineItem): boolean {
  * one can match. Null when neither does, meaning lines are missing or shaped
  * in a way this code does not know.
  */
-function lineBases(lines: Stripe.InvoiceLineItem[], invoiceBeforeTax: number): number[] | null {
+function lineBases(
+  lines: Stripe.InvoiceLineItem[],
+  invoiceBeforeTax: number,
+): number[] | null {
   const readings = [
     lines.map((line) => line.amount - inclusiveTax(line) - credits(line)),
     lines.map((line) => line.amount - inclusiveTax(line)),
   ];
-  return readings.find((bases) => bases.reduce((total, base) => total + base, 0) === invoiceBeforeTax) ?? null;
+  return (
+    readings.find(
+      (bases) =>
+        bases.reduce((total, base) => total + base, 0) === invoiceBeforeTax,
+    ) ?? null
+  );
 }
 
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
@@ -271,7 +327,12 @@ const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
 export function referredInvoiceBase(
   invoice: Pick<
     Stripe.Invoice,
-    "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost" | "amount_paid_off_stripe"
+    | "total"
+    | "total_excluding_tax"
+    | "total_taxes"
+    | "amount_paid"
+    | "shipping_cost"
+    | "amount_paid_off_stripe"
   >,
   lines: Stripe.InvoiceLineItem[],
   subscriptionId: string,
@@ -282,7 +343,7 @@ export function referredInvoiceBase(
    * list, a subscription line that does not name its subscription earns
    * nothing.
    */
-  subscriptionItemIds?: string[]
+  subscriptionItemIds?: string[],
 ): ReferredRevenue {
   const invoiceBeforeTax = invoiceLinesBeforeTax(invoice);
   if (invoiceBeforeTax === null) return { kind: "no_tax_breakdown" };
@@ -290,7 +351,8 @@ export function referredInvoiceBase(
   // An out-of-band payment is money the affiliate's referral never brought
   // through Stripe, so it is taken back out before scaling. An invoice paid
   // entirely that way earns nothing.
-  const onStripePaid = invoice.amount_paid - (invoice.amount_paid_off_stripe ?? 0);
+  const onStripePaid =
+    invoice.amount_paid - (invoice.amount_paid_off_stripe ?? 0);
   if (onStripePaid <= 0) return { kind: "off_stripe" };
 
   const placed: PlacedLine[] = [];
@@ -301,10 +363,22 @@ export function referredInvoiceBase(
   }
 
   const bases = lineBases(lines, invoiceBeforeTax);
-  if (!bases) return { kind: "unreadable", reason: "has lines that do not add up to its total before tax" };
+  if (!bases)
+    return {
+      kind: "unreadable",
+      reason: "has lines that do not add up to its total before tax",
+    };
 
   const ownLines = placed.flatMap((place, index) =>
-    place.kind === "subscription" ? [{ product: place.product, proration: place.proration, base: bases[index] }] : []
+    place.kind === "subscription"
+      ? [
+          {
+            product: place.product,
+            proration: place.proration,
+            base: bases[index],
+          },
+        ]
+      : [],
   );
 
   // A subscription recorded without its products takes them from the prices
@@ -315,13 +389,22 @@ export function referredInvoiceBase(
   const productIds =
     referredProductIds.length > 0
       ? referredProductIds
-      : uniqueSorted(ownLines.filter((line) => !line.proration).map((line) => line.product));
+      : uniqueSorted(
+          ownLines
+            .filter((line) => !line.proration)
+            .map((line) => line.product),
+        );
   if (productIds.length === 0) {
-    return { kind: "unreadable", reason: `bills no price of subscription ${subscriptionId} to learn its products from` };
+    return {
+      kind: "unreadable",
+      reason: `bills no price of subscription ${subscriptionId} to learn its products from`,
+    };
   }
 
   const otherProductIds = uniqueSorted(
-    ownLines.filter((line) => !productIds.includes(line.product)).map((line) => line.product)
+    ownLines
+      .filter((line) => !productIds.includes(line.product))
+      .map((line) => line.product),
   );
 
   // A negative line that never counts as a referred product's own line still
@@ -336,7 +419,8 @@ export function referredInvoiceBase(
   let chargeUnitsReadable = true;
   for (const [index, place] of placed.entries()) {
     if (place.kind === "unreadable") continue; // unreachable: already returned above
-    const isReferredLine = place.kind === "subscription" && productIds.includes(place.product);
+    const isReferredLine =
+      place.kind === "subscription" && productIds.includes(place.product);
     const isCredit = !isReferredLine && !place.proration && bases[index] < 0;
     if (!isReferredLine && !isCredit) continue;
     referred += bases[index];
@@ -346,7 +430,8 @@ export function referredInvoiceBase(
       // bases[index] already has inclusive tax taken off (see lineBases), and
       // inclusive tax is still part of what the charge actually collected, so
       // it is added back here together with any exclusive tax on top.
-      chargeUnits += bases[index] + inclusiveTax(lines[index]) + exclusiveTax(lines[index]);
+      chargeUnits +=
+        bases[index] + inclusiveTax(lines[index]) + exclusiveTax(lines[index]);
     }
   }
 
@@ -366,7 +451,11 @@ export function referredInvoiceBase(
   const chargeBase = chargeUnitsReadable
     ? Math.max(0, Math.min(chargeUnits, invoice.total))
     : invoiceBeforeTax > 0
-      ? new Prisma.Decimal(base).mul(invoice.total).div(invoiceBeforeTax).toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN).toNumber()
+      ? new Prisma.Decimal(base)
+          .mul(invoice.total)
+          .div(invoiceBeforeTax)
+          .toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN)
+          .toNumber()
       : 0;
   const referredChargeMinor =
     paidInvoice.total <= 0

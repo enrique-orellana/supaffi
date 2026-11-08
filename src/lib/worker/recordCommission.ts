@@ -21,7 +21,9 @@ export async function createCommissionUnlessSelfReferral(args: {
   data: Prisma.CommissionUncheckedCreateInput;
 }): Promise<boolean> {
   return db.$transaction(async (tx) => {
-    const [click] = await tx.$queryRaw<{ fraudConfirmedAt: Date | null }[]>(Prisma.sql`
+    const [click] = await tx.$queryRaw<
+      { fraudConfirmedAt: Date | null }[]
+    >(Prisma.sql`
       SELECT ${SqlSchema.tables.Click.fraudConfirmedAt}
       FROM ${SqlSchema.tables.Click.name}
       WHERE ${SqlSchema.tables.Click.id} = ${args.data.clickId}

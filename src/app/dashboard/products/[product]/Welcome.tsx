@@ -20,17 +20,33 @@ export function Welcome({
 }) {
   return (
     <div className="relative flex flex-col gap-3 rounded-(--radius) border border-accent-200 bg-accent-50 p-5">
-      <form action={dismissWelcomeAction.bind(null, product)} className="absolute top-3 right-3">
-        <Button type="submit" variant="ghost" size="sm" className="cursor-pointer" aria-label="Dismiss">
+      <form
+        action={dismissWelcomeAction.bind(null, product)}
+        className="absolute top-3 right-3"
+      >
+        <Button
+          type="submit"
+          variant="ghost"
+          size="sm"
+          className="cursor-pointer"
+          aria-label="Dismiss"
+        >
           <X className="size-4" />
         </Button>
       </form>
       <p className="text-sm font-medium">Your program is live.</p>
-      <p className="text-sm text-muted-foreground">Nobody has joined yet. Share your link, then come back here.</p>
+      <p className="text-sm text-muted-foreground">
+        Nobody has joined yet. Share your link, then come back here.
+      </p>
       <code className="break-all font-mono text-xs">{link}</code>
       <div className="flex gap-2">
         <CopyLinkButton link={link} size="sm" label="Copy link" />
-        <Button variant="ghost" size="sm" className="cursor-pointer" render={<a href={link} target="_blank" rel="noreferrer" />}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="cursor-pointer"
+          render={<a href={link} target="_blank" rel="noreferrer" />}
+        >
           Preview what they see
         </Button>
       </div>

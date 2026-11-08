@@ -14,7 +14,9 @@ import type { ReactNode } from "react";
  */
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex w-full flex-col gap-4 lg:h-full lg:min-h-0">{children}</div>
+    <div className="flex w-full flex-col gap-4 lg:h-full lg:min-h-0">
+      {children}
+    </div>
   );
 }
 
@@ -30,16 +32,28 @@ export function PageHeader({
   return (
     <header className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="font-heading text-xl font-medium tracking-tight">{title}</h1>
-        {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+        <h1 className="font-heading text-xl font-medium tracking-tight">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
+        )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      )}
     </header>
   );
 }
 
 /** Metric tiles, edge to edge. Two up on a phone, all of them on a desktop. */
-export function SignalRow({ children, columns }: { children: ReactNode; columns: 3 | 4 | 5 | 6 }) {
+export function SignalRow({
+  children,
+  columns,
+}: {
+  children: ReactNode;
+  columns: 3 | 4 | 5 | 6;
+}) {
   const lg = {
     3: "lg:grid-cols-3",
     4: "lg:grid-cols-4",
@@ -47,7 +61,9 @@ export function SignalRow({ children, columns }: { children: ReactNode; columns:
     6: "lg:grid-cols-6",
   }[columns];
   return (
-    <div className={`grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 ${lg}`}>{children}</div>
+    <div className={`grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 ${lg}`}>
+      {children}
+    </div>
   );
 }
 
@@ -114,5 +130,8 @@ export function cardGrid(count: number): {
   const withGhost = count + 1;
   const columns = (withGhost <= 4 ? withGhost : 3) as keyof typeof COLUMNS;
   const remainder = count % columns;
-  return { columns, ghostSpan: remainder === 0 ? columns : columns - remainder };
+  return {
+    columns,
+    ghostSpan: remainder === 0 ? columns : columns - remainder,
+  };
 }

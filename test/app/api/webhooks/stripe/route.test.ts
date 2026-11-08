@@ -7,7 +7,9 @@ import { NextRequest } from "next/server";
 // already cover against a real database.
 const findFirst = vi.fn();
 const create = vi.fn();
-vi.mock("@/lib/db", () => ({ db: { paymentConnection: { findFirst }, webhookEvent: { create } } }));
+vi.mock("@/lib/db", () => ({
+  db: { paymentConnection: { findFirst }, webhookEvent: { create } },
+}));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => value }));
 
 const { POST } = await import("@/app/api/webhooks/stripe/route");
@@ -18,7 +20,13 @@ const SECRET = "whsec_route_test";
 const MINUTE = 60_000;
 
 function payload(id: string): string {
-  return JSON.stringify({ id, object: "event", type: "invoice.paid", created: 1_700_000_000, data: { object: {} } });
+  return JSON.stringify({
+    id,
+    object: "event",
+    type: "invoice.paid",
+    created: 1_700_000_000,
+    data: { object: {} },
+  });
 }
 
 function request(body: string, signature: string): NextRequest {

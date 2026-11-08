@@ -6,6 +6,6 @@ export async function POST(_request: Request) {
       error:
         "Checkout creation through Supaffi is disabled. Keep your existing checkout and relay payment events to Supaffi.",
     },
-    { status: 410 }
+    { status: 410 },
   );
 }

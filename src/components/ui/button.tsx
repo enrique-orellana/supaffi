@@ -1,7 +1,7 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
-import { cva, type VariantProps } from "class-variance-authority"
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
+import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-(--radius) border border-transparent text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer outline-none select-none active:not-aria-[haspopup]:scale-[0.97] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -10,7 +10,8 @@ const buttonVariants = cva(
       variant: {
         // Flat fills. The edge is the fill itself or a hairline, never a
         // shadow; hover changes one colour step, press scales down.
-        default: "border-0 bg-primary text-primary-foreground hover:bg-primary-hover",
+        default:
+          "border-0 bg-primary text-primary-foreground hover:bg-primary-hover",
         outline:
           "border-border bg-card text-foreground hover:border-neutral-300 hover:bg-neutral-50 aria-expanded:border-neutral-300 aria-expanded:bg-neutral-50",
         secondary:
@@ -41,8 +42,8 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
-)
+  },
+);
 
 function Button({
   className,
@@ -64,7 +65,7 @@ function Button({
       render={render}
       {...props}
     />
-  )
+  );
 }
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };

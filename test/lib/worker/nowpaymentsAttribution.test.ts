@@ -3,7 +3,10 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import type { Merchant, WebhookEvent } from "@prisma/client";
-import { PaymentProvider, type VerifiedProviderEvent } from "@/lib/payments/types";
+import {
+  PaymentProvider,
+  type VerifiedProviderEvent,
+} from "@/lib/payments/types";
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { POST as registerCheckoutRoute } from "@/app/api/track/checkout-attribution/route";
@@ -21,24 +24,36 @@ const MOCK_INVOICE_REFERENCE = "90020";
 const NOWPAYMENTS_SECRET = "local-mock-ipn-secret";
 const TEST_ENCRYPTION_KEY = "a".repeat(64);
 
-type TestQueuedEvent = VerifiedProviderEvent & { rawPayload: Record<string, unknown> };
+type TestQueuedEvent = VerifiedProviderEvent & {
+  rawPayload: Record<string, unknown>;
+};
 
 function sortForSignature(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortForSignature);
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, sortForSignature(item)])
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, sortForSignature(item)]),
     );
   }
   return value;
 }
 
-function queuedEvent(paymentStatus: "finished" | "waiting" | "refunded", paymentRef = "payment-21"): TestQueuedEvent {
+function queuedEvent(
+  paymentStatus: "finished" | "waiting" | "refunded",
+  paymentRef = "payment-21",
+): TestQueuedEvent {
   const updatedAt = new Date();
   return {
     provider: PaymentProvider.NOWPAYMENTS.id,
     eventId: `${paymentRef}:${paymentStatus}`,
-    kind: paymentStatus === "finished" ? "payment_succeeded" : paymentStatus === "refunded" ? "payment_refunded" : "payment_pending",
+    kind:
+      paymentStatus === "finished"
+        ? "payment_succeeded"
+        : paymentStatus === "refunded"
+          ? "payment_refunded"
+          : "payment_pending",
     paymentRef,
     checkoutRef: INVOICE_REFERENCE,
     saleAmount: "31.25",
@@ -64,7 +79,9 @@ function queuedEvent(paymentStatus: "finished" | "waiting" | "refunded", payment
 async function clearAll() {
   await db.commerceEventDelivery.deleteMany();
   await db.webhookEvent.deleteMany();
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.paymentRecord.deleteMany();
   await db.commerceCheckout.deleteMany();
@@ -86,7 +103,10 @@ describe("NOWPayments checkout attribution", () => {
   beforeEach(async () => {
     await clearAll();
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -141,7 +161,10 @@ describe("NOWPayments checkout attribution", () => {
     await db.$disconnect();
   });
 
-  async function registerCheckout(reference = INVOICE_REFERENCE, createdAt?: Date) {
+  async function registerCheckout(
+    reference = INVOICE_REFERENCE,
+    createdAt?: Date,
+  ) {
     await db.checkoutAttribution.create({
       data: {
         merchantId: merchant.id,
@@ -156,7 +179,7 @@ describe("NOWPayments checkout attribution", () => {
   async function processEvent(
     event = queuedEvent("finished"),
     providerEventId = event.eventId,
-    createdAt = new Date()
+    createdAt = new Date(),
   ) {
     await handleNowPaymentsEvent({
       merchantId: merchant.id,
@@ -168,7 +191,10 @@ describe("NOWPayments checkout attribution", () => {
     } as unknown as WebhookEvent);
   }
 
-  async function persistEvent(event = queuedEvent("finished"), createdAt = new Date()) {
+  async function persistEvent(
+    event = queuedEvent("finished"),
+    createdAt = new Date(),
+  ) {
     await db.webhookEvent.create({
       data: {
         merchantId: merchant.id,
@@ -202,7 +228,9 @@ describe("NOWPayments checkout attribution", () => {
     expect(payment.checkoutRef).toBe(INVOICE_REFERENCE);
     expect(payment.saleAmount.toString()).toBe("31.25");
     expect(payment.saleCurrency).toBe("eur");
-    const commission = await db.commission.findUniqueOrThrow({ where: { paymentRecordId: payment.id } });
+    const commission = await db.commission.findUniqueOrThrow({
+      where: { paymentRecordId: payment.id },
+    });
     expect(commission.clickId).toBe(clickId);
     expect(commission.saleAmount?.toString()).toBe("31.25");
     expect(commission.amount.toString()).toBe("6.25");
@@ -213,23 +241,35 @@ describe("NOWPayments checkout attribution", () => {
     const priorEncryptionKey = process.env.MASTER_ENCRYPTION_KEY;
     process.env.MASTER_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
 
-    const invoiceRequests: { method: string; path: string; headers: Record<string, string | string[] | undefined>; body: Record<string, unknown> }[] = [];
+    const invoiceRequests: {
+      method: string;
+      path: string;
+      headers: Record<string, string | string[] | undefined>;
+      body: Record<string, unknown>;
+    }[] = [];
     const mockNowPayments = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const rawBody = Buffer.concat(chunks).toString("utf8");
       const body = JSON.parse(rawBody) as Record<string, unknown>;
-      invoiceRequests.push({ method: request.method ?? "", path: request.url ?? "", headers: request.headers, body });
+      invoiceRequests.push({
+        method: request.method ?? "",
+        path: request.url ?? "",
+        headers: request.headers,
+        body,
+      });
 
       if (request.method !== "POST" || request.url !== "/v1/invoice") {
         response.writeHead(404).end();
         return;
       }
 
-      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
-        id: MOCK_INVOICE_REFERENCE,
-        invoice_url: `https://sandbox.nowpayments.io/payment/?iid=${MOCK_INVOICE_REFERENCE}`,
-      }));
+      response.writeHead(200, { "content-type": "application/json" }).end(
+        JSON.stringify({
+          id: MOCK_INVOICE_REFERENCE,
+          invoice_url: `https://sandbox.nowpayments.io/payment/?iid=${MOCK_INVOICE_REFERENCE}`,
+        }),
+      );
     });
     let relayServer: ReturnType<typeof createLocalRelayServer> | null = null;
 
@@ -237,10 +277,14 @@ describe("NOWPayments checkout attribution", () => {
       mockNowPayments.listen(0, "127.0.0.1");
       await once(mockNowPayments, "listening");
       const mockAddress = mockNowPayments.address();
-      if (!mockAddress || typeof mockAddress === "string") throw new Error("Mock NOWPayments server did not bind to a TCP port");
+      if (!mockAddress || typeof mockAddress === "string")
+        throw new Error("Mock NOWPayments server did not bind to a TCP port");
 
       const connection = await db.paymentConnection.findFirstOrThrow({
-        where: { merchantId: merchant.id, provider: PaymentProvider.NOWPAYMENTS.database },
+        where: {
+          merchantId: merchant.id,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+        },
         select: { id: true, webhookRouteId: true },
       });
       await db.paymentConnection.update({
@@ -248,7 +292,11 @@ describe("NOWPayments checkout attribution", () => {
         data: { webhookSecretEnc: encrypt(NOWPAYMENTS_SECRET) },
       });
 
-      const forwardedEvents: { url: string; body: string; signature: string | null }[] = [];
+      const forwardedEvents: {
+        url: string;
+        body: string;
+        signature: string | null;
+      }[] = [];
       const relay = createLocalRelayServer({
         env: {
           EXISTING_WEBHOOK_URL: "http://127.0.0.1:19001/existing-webhook",
@@ -256,21 +304,29 @@ describe("NOWPayments checkout attribution", () => {
         },
         fetchFn: async (input, init) => {
           const url = String(input);
-          const rawBody = Buffer.from(init?.body as ArrayBuffer).toString("utf8");
+          const rawBody = Buffer.from(init?.body as ArrayBuffer).toString(
+            "utf8",
+          );
           const signature = new Headers(init?.headers).get("x-nowpayments-sig");
           forwardedEvents.push({ url, body: rawBody, signature });
 
           if (url.includes("19001")) return new Response(null, { status: 200 });
-          if (!url.includes("19002")) return new Response(null, { status: 404 });
+          if (!url.includes("19002"))
+            return new Response(null, { status: 404 });
 
           const providerRequest = new Request(url, {
             method: "POST",
             headers: init?.headers,
             body: rawBody,
           });
-          const providerResponse = await receiveNowPaymentsIpn(providerRequest, {
-            params: Promise.resolve({ connectionId: connection.webhookRouteId }),
-          });
+          const providerResponse = await receiveNowPaymentsIpn(
+            providerRequest,
+            {
+              params: Promise.resolve({
+                connectionId: connection.webhookRouteId,
+              }),
+            },
+          );
           return new Response(null, { status: providerResponse.status });
         },
       });
@@ -278,7 +334,8 @@ describe("NOWPayments checkout attribution", () => {
       relay.listen(0, "127.0.0.1");
       await once(relay, "listening");
       const relayAddress = relay.address();
-      if (!relayAddress || typeof relayAddress === "string") throw new Error("Mock IPN relay did not bind to a TCP port");
+      if (!relayAddress || typeof relayAddress === "string")
+        throw new Error("Mock IPN relay did not bind to a TCP port");
 
       const invoiceRequest = {
         price_amount: 31.25,
@@ -289,16 +346,28 @@ describe("NOWPayments checkout attribution", () => {
         cancel_url: "https://product.example.com/cancel",
         ipn_callback_url: `http://127.0.0.1:${relayAddress.port}/ipn`,
       };
-      const invoiceResponse = await fetch(`http://127.0.0.1:${mockAddress.port}/v1/invoice`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": "mock-api-key" },
-        body: JSON.stringify(invoiceRequest),
-      });
+      const invoiceResponse = await fetch(
+        `http://127.0.0.1:${mockAddress.port}/v1/invoice`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "mock-api-key",
+          },
+          body: JSON.stringify(invoiceRequest),
+        },
+      );
       expect(invoiceResponse.status).toBe(200);
-      const invoice = await invoiceResponse.json() as { id: string; invoice_url: string };
+      const invoice = (await invoiceResponse.json()) as {
+        id: string;
+        invoice_url: string;
+      };
 
       expect(invoiceRequests).toHaveLength(1);
-      expect(invoiceRequests[0]).toMatchObject({ method: "POST", path: "/v1/invoice" });
+      expect(invoiceRequests[0]).toMatchObject({
+        method: "POST",
+        path: "/v1/invoice",
+      });
       expect(invoiceRequests[0].headers["x-api-key"]).toBe("mock-api-key");
       expect(invoiceRequests[0].body).toEqual(invoiceRequest);
       expect(invoice).toEqual({
@@ -306,23 +375,27 @@ describe("NOWPayments checkout attribution", () => {
         invoice_url: `https://sandbox.nowpayments.io/payment/?iid=${MOCK_INVOICE_REFERENCE}`,
       });
 
-      const checkoutReference = new URL(invoice.invoice_url).searchParams.get("iid");
-      const attributionResponse = await registerCheckoutRoute(new Request(
-        `https://${merchant.domain}/api/track/checkout-attribution`,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            host: merchant.domain,
-            origin: merchant.websiteUrl,
+      const checkoutReference = new URL(invoice.invoice_url).searchParams.get(
+        "iid",
+      );
+      const attributionResponse = await registerCheckoutRoute(
+        new Request(
+          `https://${merchant.domain}/api/track/checkout-attribution`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              host: merchant.domain,
+              origin: merchant.websiteUrl,
+            },
+            body: JSON.stringify({
+              provider: "nowpayments",
+              checkoutReference,
+              referralToken: REFERRAL_TOKEN,
+            }),
           },
-          body: JSON.stringify({
-            provider: "nowpayments",
-            checkoutReference,
-            referralToken: REFERRAL_TOKEN,
-          }),
-        }
-      ));
+        ),
+      );
       expect(attributionResponse.status).toBe(204);
 
       const providerUpdatedAt = new Date(Date.now() + 1_000).toISOString();
@@ -351,16 +424,25 @@ describe("NOWPayments checkout attribution", () => {
       const rawIpn = JSON.stringify(ipnPayload, null, 2);
       const ipnResponse = await fetch(invoiceRequest.ipn_callback_url, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-nowpayments-sig": signature },
+        headers: {
+          "content-type": "application/json",
+          "x-nowpayments-sig": signature,
+        },
         body: rawIpn,
       });
       expect(ipnResponse.status).toBe(200);
       expect(forwardedEvents).toHaveLength(2);
-      expect(forwardedEvents.every((event) => event.body === rawIpn && event.signature === signature)).toBe(true);
-      expect(forwardedEvents.map((event) => event.url).sort()).toEqual([
-        "http://127.0.0.1:19001/existing-webhook",
-        `http://127.0.0.1:19002/api/webhooks/nowpayments/${connection.webhookRouteId}`,
-      ].sort());
+      expect(
+        forwardedEvents.every(
+          (event) => event.body === rawIpn && event.signature === signature,
+        ),
+      ).toBe(true);
+      expect(forwardedEvents.map((event) => event.url).sort()).toEqual(
+        [
+          "http://127.0.0.1:19001/existing-webhook",
+          `http://127.0.0.1:19002/api/webhooks/nowpayments/${connection.webhookRouteId}`,
+        ].sort(),
+      );
 
       await runTick();
 
@@ -373,19 +455,30 @@ describe("NOWPayments checkout attribution", () => {
       expect(payment.cryptoAmount?.toString()).toBe("0.0005");
       expect(payment.cryptoCurrency).toBe("btc");
       expect(payment.cryptoNetwork).toBe("btc");
-      const commission = await db.commission.findUniqueOrThrow({ where: { paymentRecordId: payment.id } });
+      const commission = await db.commission.findUniqueOrThrow({
+        where: { paymentRecordId: payment.id },
+      });
       expect(commission.amount.toString()).toBe("6.25");
       expect(commission.saleAmount?.toString()).toBe("31.25");
-      expect(await db.webhookEvent.count({ where: { merchantId: merchant.id, status: "PROCESSED" } })).toBe(1);
+      expect(
+        await db.webhookEvent.count({
+          where: { merchantId: merchant.id, status: "PROCESSED" },
+        }),
+      ).toBe(1);
     } finally {
       if (mockNowPayments.listening) {
-        await new Promise<void>((resolve, reject) => mockNowPayments.close((error) => error ? reject(error) : resolve()));
+        await new Promise<void>((resolve, reject) =>
+          mockNowPayments.close((error) => (error ? reject(error) : resolve())),
+        );
       }
       const relay = relayServer;
       if (relay?.listening) {
-        await new Promise<void>((resolve, reject) => relay.close((error) => error ? reject(error) : resolve()));
+        await new Promise<void>((resolve, reject) =>
+          relay.close((error) => (error ? reject(error) : resolve())),
+        );
       }
-      if (priorEncryptionKey === undefined) delete process.env.MASTER_ENCRYPTION_KEY;
+      if (priorEncryptionKey === undefined)
+        delete process.env.MASTER_ENCRYPTION_KEY;
       else process.env.MASTER_ENCRYPTION_KEY = priorEncryptionKey;
     }
   });
@@ -410,8 +503,16 @@ describe("NOWPayments checkout attribution", () => {
     const secondPayment = await getPayment("local-order-22");
     expect(firstPayment.clickId).toBe(clickId);
     expect(secondPayment.clickId).toBeNull();
-    expect(await db.commission.count({ where: { paymentRecordId: firstPayment.id } })).toBe(1);
-    expect(await db.commission.count({ where: { paymentRecordId: secondPayment.id } })).toBe(0);
+    expect(
+      await db.commission.count({
+        where: { paymentRecordId: firstPayment.id },
+      }),
+    ).toBe(1);
+    expect(
+      await db.commission.count({
+        where: { paymentRecordId: secondPayment.id },
+      }),
+    ).toBe(0);
   });
 
   it("accepts signed events without optional order and invoice references", async () => {
@@ -449,7 +550,11 @@ describe("NOWPayments checkout attribution", () => {
 
     const payment = await getPayment();
     expect(payment.clickId).toBe(clickId);
-    expect(await db.commission.count({ where: { paymentRecordId: payment.id, clickId } })).toBe(1);
+    expect(
+      await db.commission.count({
+        where: { paymentRecordId: payment.id, clickId },
+      }),
+    ).toBe(1);
   });
 
   it("does not reconcile an invoice registration received after the signed payment update", async () => {
@@ -458,7 +563,10 @@ describe("NOWPayments checkout attribution", () => {
     await persistEvent(event, ipnReceivedAt);
     await processEvent(event, event.eventId, ipnReceivedAt);
 
-    await registerCheckout(INVOICE_REFERENCE, new Date(event.occurredAt.getTime() + 1_000));
+    await registerCheckout(
+      INVOICE_REFERENCE,
+      new Date(event.occurredAt.getTime() + 1_000),
+    );
     await reconcileNowPaymentsCheckoutAttribution({
       merchantId: merchant.id,
       providerCheckoutRef: INVOICE_REFERENCE,
@@ -487,7 +595,9 @@ describe("NOWPayments checkout attribution", () => {
     const payment = await getPayment();
     expect(payment.status).toBe("finished");
     expect(payment.saleAmount.toString()).toBe("31.25");
-    expect(await db.commission.count({ where: { paymentRecordId: payment.id } })).toBe(1);
+    expect(
+      await db.commission.count({ where: { paymentRecordId: payment.id } }),
+    ).toBe(1);
   });
 
   it("voids the commission when the same provider payment is refunded", async () => {
@@ -497,7 +607,11 @@ describe("NOWPayments checkout attribution", () => {
 
     const payment = await getPayment();
     expect(payment.status).toBe("refunded");
-    expect(await db.commission.findUniqueOrThrow({ where: { paymentRecordId: payment.id } })).toMatchObject({
+    expect(
+      await db.commission.findUniqueOrThrow({
+        where: { paymentRecordId: payment.id },
+      }),
+    ).toMatchObject({
       status: "VOIDED",
       voidReason: "refund",
     });
@@ -513,7 +627,13 @@ describe("NOWPayments checkout attribution", () => {
     const payment = await getPayment();
     expect(payment.paymentRef).toBe("payment-21");
     expect(payment.status).toBe("finished");
-    expect(await db.paymentRecord.count({ where: { sourceOrderId: "local-order-21" } })).toBe(1);
-    expect(await db.commission.count({ where: { paymentRecordId: payment.id } })).toBe(1);
+    expect(
+      await db.paymentRecord.count({
+        where: { sourceOrderId: "local-order-21" },
+      }),
+    ).toBe(1);
+    expect(
+      await db.commission.count({ where: { paymentRecordId: payment.id } }),
+    ).toBe(1);
   });
 });

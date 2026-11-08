@@ -31,7 +31,6 @@ import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
  * from the new rows. Flagged is a tab, never a page of its own.
  */
 
-
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
   { label: "Payable", status: "PAYABLE" },
@@ -80,10 +79,14 @@ function stateLabel(row: CommissionRow): string {
 // A Stripe reference is worth following, so it is a link into the dashboard
 // the owner already has open. Anything that is not a payment or an invoice id
 // is shown as it came, rather than guessed into a URL that would 404.
-function referenceFor(ref: string | null): { text: string; href: string | null } | null {
+function referenceFor(
+  ref: string | null,
+): { text: string; href: string | null } | null {
   if (!ref) return null;
-  if (ref.startsWith("pi_")) return { text: ref, href: `https://dashboard.stripe.com/payments/${ref}` };
-  if (ref.startsWith("in_")) return { text: ref, href: `https://dashboard.stripe.com/invoices/${ref}` };
+  if (ref.startsWith("pi_"))
+    return { text: ref, href: `https://dashboard.stripe.com/payments/${ref}` };
+  if (ref.startsWith("in_"))
+    return { text: ref, href: `https://dashboard.stripe.com/invoices/${ref}` };
   return { text: ref, href: null };
 }
 
@@ -136,7 +139,10 @@ export default async function CommissionsPage({
   // Owed and payable now come from the same helper the overview uses, so the
   // two screens cannot disagree.
   const [{ rows, total }, options, { owed, payableNow }] = await Promise.all([
-    listCommissions(ownerId, merchant.id, filters, { page, pageSize: COMMISSIONS_PAGE_SIZE }),
+    listCommissions(ownerId, merchant.id, filters, {
+      page,
+      pageSize: COMMISSIONS_PAGE_SIZE,
+    }),
     getCommissionFilterOptions(ownerId, merchant.id),
     getOwedTotals(ownerId, merchant.id),
   ]);
@@ -146,12 +152,14 @@ export default async function CommissionsPage({
   // Same hole as the affiliates list: a page number past the end rendered an
   // empty ledger under a label counting rows that are not there.
   if (page > totalPages) {
-    const corrected = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
+    const corrected = hrefWith({
+      page: totalPages > 1 ? String(totalPages) : null,
+    });
     redirect(`${base}/commissions${corrected === "?" ? "" : corrected}`);
   }
 
   const anyFilterActive = Boolean(
-    filters.status || filters.affiliateId || filters.currency || filters.query
+    filters.status || filters.affiliateId || filters.currency || filters.query,
   );
 
   // Every href keeps what is already on and changes one thing, so switching
@@ -189,8 +197,13 @@ export default async function CommissionsPage({
 
   // Only a commission on the page being read can be opened: the id in the URL
   // is a selection within this list, not a route of its own.
-  const selected = query.commission ? rows.find((r) => r.id === query.commission) ?? null : null;
-  const paymentRecordReference = selected?.paymentRecord?.paymentRef ?? selected?.paymentRecord?.checkoutRef ?? null;
+  const selected = query.commission
+    ? (rows.find((r) => r.id === query.commission) ?? null)
+    : null;
+  const paymentRecordReference =
+    selected?.paymentRecord?.paymentRef ??
+    selected?.paymentRecord?.checkoutRef ??
+    null;
   const sheetCommission: SheetCommission | null = selected
     ? {
         id: selected.id,
@@ -213,10 +226,13 @@ export default async function CommissionsPage({
         flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
         reference: selected.paymentRecord
-          ? paymentRecordReference ? { text: paymentRecordReference, href: null } : null
+          ? paymentRecordReference
+            ? { text: paymentRecordReference, href: null }
+            : null
           : referenceFor(selected.stripePaymentRef),
         paymentProvider: selected.paymentRecord
-          ? selected.paymentRecord.provider === PaymentProvider.NOWPAYMENTS.database
+          ? selected.paymentRecord.provider ===
+            PaymentProvider.NOWPAYMENTS.database
             ? "NOWPayments"
             : selected.paymentRecord.provider
           : selected.stripePaymentRef
@@ -234,14 +250,17 @@ export default async function CommissionsPage({
       }
     : null;
 
-
   // What closing the sheet goes back to: this same list, tab and filters kept.
   const unselected = hrefWith({});
   const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
   const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
-  const alreadyPaid = alreadyPaidNote(query.already, query.paidOn, query.recorded);
+  const alreadyPaid = alreadyPaidNote(
+    query.already,
+    query.paidOn,
+    query.recorded,
+  );
 
   return (
     <Page>
@@ -270,9 +289,17 @@ export default async function CommissionsPage({
         }
       />
 
-      {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
-      {skipped && <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>}
-      {alreadyPaid && <p className="shrink-0 text-[13px] text-status-warning">{alreadyPaid}</p>}
+      {refusal && (
+        <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>
+      )}
+      {skipped && (
+        <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>
+      )}
+      {alreadyPaid && (
+        <p className="shrink-0 text-[13px] text-status-warning">
+          {alreadyPaid}
+        </p>
+      )}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}

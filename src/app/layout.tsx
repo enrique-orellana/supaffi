@@ -9,9 +9,17 @@ export const metadata = {
   title: "Supaffi",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="antialiased">
         <AppThemeProvider>
           {/* Grouping: once one tooltip is open, moving to an adjacent trigger

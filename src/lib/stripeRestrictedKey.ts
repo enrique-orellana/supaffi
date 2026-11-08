@@ -116,7 +116,7 @@ export function restrictedKeyUrl(productName?: string): string {
   const params = new URLSearchParams();
   params.set("name", keyName(productName));
   const permissions = KEY_PERMISSIONS.map(
-    (permission) => `permissions[]=${encodeURIComponent(permission.token)}`
+    (permission) => `permissions[]=${encodeURIComponent(permission.token)}`,
   ).join("&");
   return `https://dashboard.stripe.com/apikeys/create?${params.toString()}&${permissions}`;
 }

@@ -51,11 +51,17 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     await clearAll();
 
     const owner = await db.owner.create({
-      data: { email: `analytics-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `analytics-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     ownerId = owner.id;
     const other = await db.owner.create({
-      data: { email: `other-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `other-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     otherOwnerId = other.id;
 
@@ -102,14 +108,20 @@ describe.skipIf(!hasDatabase)("analytics", () => {
         email: `aff-${suffix}@example.com`,
         name: `Aff ${suffix}`,
         links: {
-          create: { code: `code-${suffix}-${crypto.randomUUID().slice(0, 8)}`, isPrimary: true },
+          create: {
+            code: `code-${suffix}-${crypto.randomUUID().slice(0, 8)}`,
+            isPrimary: true,
+          },
         },
       },
     });
   }
 
   async function makeClick(affiliateId: string, createdAt = new Date()) {
-    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
+    const affiliate = await db.affiliate.findUniqueOrThrow({
+      where: { id: affiliateId },
+      select: { merchantId: true },
+    });
     return db.click.create({
       data: {
         merchantId: affiliate.merchantId,
@@ -130,7 +142,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       status: "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
       createdAt: Date;
       adjustsCommissionId: string;
-    }> = {}
+    }> = {},
   ) {
     return db.commission.create({
       data: {
@@ -172,7 +184,11 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const metrics = await getProductMetrics(ownerId, merchantId, 30);
 
     expect(metrics.conversions).toBe(1);
-    expect(metrics.current.amounts.usd).toEqual({ gross: 100, commission: 30, sales: 1 });
+    expect(metrics.current.amounts.usd).toEqual({
+      gross: 100,
+      commission: 30,
+      sales: 1,
+    });
   });
 
   it("zero-fills every day in the window, oldest first", async () => {
@@ -186,7 +202,9 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.series).toHaveLength(7);
     expect(metrics.series[0].date < metrics.series[6].date).toBe(true);
     expect(metrics.series.filter((d) => d.clicks > 0)).toHaveLength(1);
-    expect(metrics.series.every((d) => typeof d.clicks === "number")).toBe(true);
+    expect(metrics.series.every((d) => typeof d.clicks === "number")).toBe(
+      true,
+    );
   });
 
   it("ignores anything older than the window", async () => {
@@ -200,7 +218,10 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   it("keeps owed money per currency and counts pending, payable and flagged", async () => {
     const affiliate = await makeAffiliate("a");
     const click = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click.id, { amount: "10.00", status: "PENDING" });
+    await makeCommission(affiliate.id, click.id, {
+      amount: "10.00",
+      status: "PENDING",
+    });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "15.50",
       status: "PAYABLE",
@@ -238,7 +259,10 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   it("leaves a legacy unpaid adjustment row out of owed and payable now, matching the Pay bar group", async () => {
     const affiliate = await makeAffiliate("a");
     const click = await makeClick(affiliate.id);
-    const sale = await makeCommission(affiliate.id, click.id, { amount: "30.00", status: "PAYABLE" });
+    const sale = await makeCommission(affiliate.id, click.id, {
+      amount: "30.00",
+      status: "PAYABLE",
+    });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "-10.00",
       status: "PAYABLE",
@@ -254,7 +278,11 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
     const groups = await getPayableGroups(ownerId, merchantId);
     expect(groups).toEqual([
-      expect.objectContaining({ affiliateId: affiliate.id, currency: "usd", total: "30.00" }),
+      expect.objectContaining({
+        affiliateId: affiliate.id,
+        currency: "usd",
+        total: "30.00",
+      }),
     ]);
   });
 
@@ -265,16 +293,23 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   });
 
   it("never leaks another owner's product", async () => {
-    await expect(getProductMetrics(otherOwnerId, merchantId, 30)).rejects.toThrow();
+    await expect(
+      getProductMetrics(otherOwnerId, merchantId, 30),
+    ).rejects.toThrow();
     await expect(getPayableGroups(otherOwnerId, merchantId)).rejects.toThrow();
     await expect(getTopAffiliates(otherOwnerId, merchantId)).rejects.toThrow();
     await expect(getOwedTotals(otherOwnerId, merchantId)).rejects.toThrow();
-    await expect(listPayouts(otherOwnerId, merchantId, { page: 1, pageSize: 10 })).rejects.toThrow();
+    await expect(
+      listPayouts(otherOwnerId, merchantId, { page: 1, pageSize: 10 }),
+    ).rejects.toThrow();
   });
 
   it("carries the affiliate's payout details on each payable group", async () => {
     const affiliate = await makeAffiliate("details");
-    await db.affiliate.update({ where: { id: affiliate.id }, data: { payoutDetails: "PayPal: a@example.com" } });
+    await db.affiliate.update({
+      where: { id: affiliate.id },
+      data: { payoutDetails: "PayPal: a@example.com" },
+    });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id);
 
     const [group] = await getPayableGroups(ownerId, merchantId);
@@ -288,7 +323,9 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     await makeCommission(a.id, (await makeClick(a.id)).id);
     await makeCommission(a.id, (await makeClick(a.id)).id, { currency: "eur" });
     await makeCommission(b.id, (await makeClick(b.id)).id);
-    await makeCommission(b.id, (await makeClick(b.id)).id, { status: "PENDING" });
+    await makeCommission(b.id, (await makeClick(b.id)).id, {
+      status: "PENDING",
+    });
 
     expect(await countPayouts(merchantId)).toBe(3);
     expect(await countPayouts(emptyMerchantId)).toBe(0);
@@ -305,22 +342,46 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       [a.id, october, "7.50"],
       [b.id, october, "5.00"],
     ] as const) {
-      const commission = await makeCommission(affiliateId, (await makeClick(affiliateId)).id, { amount, status: "PAID" });
-      await db.commission.update({ where: { id: commission.id }, data: { paidAt } });
+      const commission = await makeCommission(
+        affiliateId,
+        (await makeClick(affiliateId)).id,
+        { amount, status: "PAID" },
+      );
+      await db.commission.update({
+        where: { id: commission.id },
+        data: { paidAt },
+      });
     }
     await makeCommission(a.id, (await makeClick(a.id)).id);
 
-    const { rows, total } = await listPayouts(ownerId, merchantId, { page: 1, pageSize: 10 });
+    const { rows, total } = await listPayouts(ownerId, merchantId, {
+      page: 1,
+      pageSize: 10,
+    });
     expect(total).toBe(3);
-    expect(rows.map((r) => [r.affiliateEmail, r.paidAt.toISOString(), r.total, r.count])).toEqual(
+    expect(
+      rows.map((r) => [
+        r.affiliateEmail,
+        r.paidAt.toISOString(),
+        r.total,
+        r.count,
+      ]),
+    ).toEqual(
       expect.arrayContaining([
         ["aff-paid-a@example.com", october.toISOString(), "20.00", 2],
         ["aff-paid-b@example.com", october.toISOString(), "5.00", 1],
-      ])
+      ]),
     );
-    expect(rows[2]).toMatchObject({ affiliateEmail: "aff-paid-a@example.com", total: "10.00", count: 1 });
+    expect(rows[2]).toMatchObject({
+      affiliateEmail: "aff-paid-a@example.com",
+      total: "10.00",
+      count: 1,
+    });
 
-    const second = await listPayouts(ownerId, merchantId, { page: 2, pageSize: 2 });
+    const second = await listPayouts(ownerId, merchantId, {
+      page: 2,
+      pageSize: 2,
+    });
     expect(second.rows).toHaveLength(1);
     expect(second.total).toBe(3);
   });
@@ -329,8 +390,12 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const busy = await makeAffiliate("busy");
     const earner = await makeAffiliate("earner");
     for (let i = 0; i < 5; i += 1) await makeClick(busy.id);
-    await makeCommission(busy.id, (await makeClick(busy.id)).id, { amount: "1.00" });
-    await makeCommission(earner.id, (await makeClick(earner.id)).id, { amount: "500.00" });
+    await makeCommission(busy.id, (await makeClick(busy.id)).id, {
+      amount: "1.00",
+    });
+    await makeCommission(earner.id, (await makeClick(earner.id)).id, {
+      amount: "500.00",
+    });
 
     const top = await getTopAffiliates(ownerId, merchantId, 5);
 
@@ -345,10 +410,16 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     // The adjustment here is a legacy PAYABLE row an older version left
     // behind: unpaid, so it counts nowhere until the migration voids it.
     const affiliate = await makeAffiliate("a");
-    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      amount: "20.00",
+    const first = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      {
+        amount: "20.00",
+      },
+    );
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "30.00",
     });
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "30.00" });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "-20.00",
       status: "PAYABLE",
@@ -364,10 +435,14 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
   it("keeps a legacy PAID adjustment in Earned: history, unlike its unpaid counterparts", async () => {
     const affiliate = await makeAffiliate("a");
-    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      amount: "20.00",
-      status: "PAID",
-    });
+    const first = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      {
+        amount: "20.00",
+        status: "PAID",
+      },
+    );
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "-5.00",
       status: "PAID",
@@ -382,8 +457,12 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
   it("returns payable groups carrying the exact commission ids behind each total", async () => {
     const affiliate = await makeAffiliate("a");
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "15.50" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "15.50",
+    });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "99.00",
       status: "PENDING",
@@ -395,8 +474,13 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups[0].total).toBe("25.50");
     expect(groups[0].commissionIds).toHaveLength(2);
     // The amounts each id was rendered at, which is what Mark paid binds.
-    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual(["10.00", "15.50"]);
-    expect(groups[0].commissions.map((c) => c.id).sort()).toEqual([...groups[0].commissionIds].sort());
+    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual([
+      "10.00",
+      "15.50",
+    ]);
+    expect(groups[0].commissions.map((c) => c.id).sort()).toEqual(
+      [...groups[0].commissionIds].sort(),
+    );
   });
 
   it("leaves a commission held by a dispute out of the payable groups", async () => {
@@ -456,8 +540,12 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     // A stray negative row that is not (or is no longer) linked as an
     // adjustment must not block or shrink a group a payout button offers.
     const affiliate = await makeAffiliate("a");
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "-5.00" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-5.00",
+    });
 
     const groups = await getPayableGroups(ownerId, merchantId);
 
@@ -505,13 +593,20 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
     expect(groups).toHaveLength(1);
     expect(groups[0].total).toBe("25.00");
-    expect(groups[0].commissionIds.sort()).toEqual([oldest.id, middle.id].sort());
-    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual(["10.00", "15.00"]);
+    expect(groups[0].commissionIds.sort()).toEqual(
+      [oldest.id, middle.id].sort(),
+    );
+    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual([
+      "10.00",
+      "15.00",
+    ]);
   });
 
   it("splits payable groups by currency, never summing across them", async () => {
     const affiliate = await makeAffiliate("a");
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "10.00",
       currency: "eur",
@@ -528,11 +623,43 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const clickId = click.id;
     await db.commission.createMany({
       data: [
-        { affiliateId, clickId, amount: 10, saleAmount: 50, currency: "usd", status: "PENDING", payableAt: new Date() },
-        { affiliateId, clickId, amount: 8, saleAmount: 40, currency: "usd", status: "PAID", payableAt: new Date() },
-        { affiliateId, clickId, amount: 9, saleAmount: 45, currency: "eur", status: "PENDING", payableAt: new Date() },
+        {
+          affiliateId,
+          clickId,
+          amount: 10,
+          saleAmount: 50,
+          currency: "usd",
+          status: "PENDING",
+          payableAt: new Date(),
+        },
+        {
+          affiliateId,
+          clickId,
+          amount: 8,
+          saleAmount: 40,
+          currency: "usd",
+          status: "PAID",
+          payableAt: new Date(),
+        },
+        {
+          affiliateId,
+          clickId,
+          amount: 9,
+          saleAmount: 45,
+          currency: "eur",
+          status: "PENDING",
+          payableAt: new Date(),
+        },
         // An adjustment carries no sale.
-        { affiliateId, clickId, amount: -8, saleAmount: null, currency: "usd", status: "VOIDED", payableAt: new Date() },
+        {
+          affiliateId,
+          clickId,
+          amount: -8,
+          saleAmount: null,
+          currency: "usd",
+          status: "VOIDED",
+          payableAt: new Date(),
+        },
       ],
     });
     await db.affiliate.create({
@@ -551,23 +678,29 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   it("carries a signup on the day the affiliate joined", async () => {
     const joined = daysAgo(3);
     await db.affiliate.create({
-      data: { merchantId, programId, email: "joined@example.com", createdAt: joined },
+      data: {
+        merchantId,
+        programId,
+        email: "joined@example.com",
+        createdAt: joined,
+      },
     });
 
     const metrics = await getProductMetrics(ownerId, merchantId, 7);
 
-    const day = metrics.series.find((d) => d.date === joined.toISOString().slice(0, 10));
+    const day = metrics.series.find(
+      (d) => d.date === joined.toISOString().slice(0, 10),
+    );
     expect(day?.signups).toBe(1);
     expect(metrics.series.reduce((sum, d) => sum + d.signups, 0)).toBe(1);
   });
-
 });
 
 // Pure function, no database: builds synthetic day series and checks the
 // bucketing rules toWeeks documents rather than merely implements.
 function daySeries(
   count: number,
-  make: (i: number) => Partial<DayPoint> = () => ({})
+  make: (i: number) => Partial<DayPoint> = () => ({}),
 ): DayPoint[] {
   return Array.from({ length: count }, (_, i) => {
     const date = new Date("2026-01-01T00:00:00Z");
@@ -591,7 +724,9 @@ describe("toWeeks", () => {
     const weeks = toWeeks(daily);
 
     expect(weeks).toHaveLength(12);
-    expect(weeks.every((w) => w.clicks === 7 && w.conversions === 7)).toBe(true);
+    expect(weeks.every((w) => w.clicks === 7 && w.conversions === 7)).toBe(
+      true,
+    );
     // Oldest first, one bucket date per 7-day chunk.
     expect(weeks[0].date).toBe(daily[0].date);
     expect(weeks[11].date).toBe(daily[77].date);

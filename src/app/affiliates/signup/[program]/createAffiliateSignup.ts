@@ -20,7 +20,7 @@ const ALREADY_SIGNED_UP = "You already have an account here. Log in instead.";
 export async function createAffiliateSignup(
   programSlug: string,
   _prevState: FormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<FormState> {
   const result = validateSignupInput({
     name: String(formData.get("name") ?? ""),
@@ -63,14 +63,17 @@ export async function createAffiliateSignup(
   // Merchant's affiliate list with junk nor holds the Argon2 slots.
   const address = clientAddress(new Headers(requestHeaders));
   if (!reserveAffiliateSignup(merchant.id, address)) {
-    return { error: "Too many signups from this network. Try again in a few minutes." };
+    return {
+      error: "Too many signups from this network. Try again in a few minutes.",
+    };
   }
 
   let passwordHash: string;
   try {
     passwordHash = await hashPassword(password);
   } catch (err) {
-    if (err instanceof ConcurrencyLimitError) return { error: "Busy right now. Try again in a moment." };
+    if (err instanceof ConcurrencyLimitError)
+      return { error: "Busy right now. Try again in a moment." };
     throw err;
   }
 
@@ -110,11 +113,16 @@ export async function createAffiliateSignup(
   }
 
   try {
-    await signIn("affiliate-password", { email: result.email, password, redirectTo: "/affiliates/dashboard" });
+    await signIn("affiliate-password", {
+      email: result.email,
+      password,
+      redirectTo: "/affiliates/dashboard",
+    });
   } catch (err) {
     // The account exists either way; a refused login (the throttle, a full
     // Argon2 queue) only means logging in by hand.
-    if (err instanceof AuthError) return { error: "Your account is ready. Log in to continue." };
+    if (err instanceof AuthError)
+      return { error: "Your account is ready. Log in to continue." };
     throw err; // Auth.js throws a redirect internally on success, must re-throw
   }
   return { error: "" };

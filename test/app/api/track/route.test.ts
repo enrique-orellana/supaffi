@@ -30,7 +30,7 @@ if (process.env.DATABASE_URL) {
 
 if (!hasDatabase) {
   console.warn(
-    "Skipping test/app/api/track/route.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/app/api/track/route.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -66,14 +66,23 @@ async function seedMerchantWithAffiliate(tag: string) {
       links: { create: { code: `track-route-${tag}-code`, isPrimary: true } },
     },
   });
-  const link = await db.affiliateLink.findFirstOrThrow({ where: { affiliateId: affiliate.id } });
+  const link = await db.affiliateLink.findFirstOrThrow({
+    where: { affiliateId: affiliate.id },
+  });
   return { merchant, affiliate, link };
 }
 
-function requestFor(host: string, code: string, headers: Record<string, string> = {}): NextRequest {
-  return new NextRequest(`http://${host}/api/track?${REFERRAL_QUERY_PARAM}=${code}`, {
-    headers: { host, ...headers },
-  });
+function requestFor(
+  host: string,
+  code: string,
+  headers: Record<string, string> = {},
+): NextRequest {
+  return new NextRequest(
+    `http://${host}/api/track?${REFERRAL_QUERY_PARAM}=${code}`,
+    {
+      headers: { host, ...headers },
+    },
+  );
 }
 
 describe.skipIf(!hasDatabase)("GET /api/track", () => {
@@ -140,22 +149,32 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
 
     const response = await GET(requestFor(a.merchant.domain, a.link.code));
     const { referralToken } = await response.json();
-    const click = await db.click.findUniqueOrThrow({ where: { referralToken } });
+    const click = await db.click.findUniqueOrThrow({
+      where: { referralToken },
+    });
 
     expect(click.commissionRateSnapshot?.toFixed(2)).toBe("12.50");
     expect(click.commissionDurationTypeSnapshot).toBe("FIXED_MONTHS");
     expect(click.commissionDurationMonthsSnapshot).toBe(8);
     expect(click.holdingPeriodDaysSnapshot).toBe(7);
-    expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeGreaterThanOrEqual(14 * 24 * 60 * 60 * 1000);
-    expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeLessThan(14 * 24 * 60 * 60 * 1000 + 1000);
+    expect(
+      click.expiresAt.getTime() - click.createdAt.getTime(),
+    ).toBeGreaterThanOrEqual(14 * 24 * 60 * 60 * 1000);
+    expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeLessThan(
+      14 * 24 * 60 * 60 * 1000 + 1000,
+    );
   });
 
   it("gives two visitors behind one address their own clicks", async () => {
     const a = await seedMerchantWithAffiliate("a");
     const office = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code, office))).json();
-    const second = await (await GET(requestFor(a.merchant.domain, a.link.code, office))).json();
+    const first = await (
+      await GET(requestFor(a.merchant.domain, a.link.code, office))
+    ).json();
+    const second = await (
+      await GET(requestFor(a.merchant.domain, a.link.code, office))
+    ).json();
 
     expect(second.referralToken).not.toBe(first.referralToken);
     expect(await db.click.count()).toBe(2);
@@ -164,9 +183,16 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("hands a browser that sends back its live token that same token instead of a second click", async () => {
     const a = await seedMerchantWithAffiliate("a");
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    const first = await (
+      await GET(requestFor(a.merchant.domain, a.link.code))
+    ).json();
     const again = await (
-      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+      await GET(
+        requestFor(
+          a.merchant.domain,
+          `${a.link.code}&token=${first.referralToken}`,
+        ),
+      )
     ).json();
 
     expect(again.referralToken).toBe(first.referralToken);
@@ -176,13 +202,20 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("starts a new click when the token sent back is from an earlier visit, not a reload", async () => {
     const a = await seedMerchantWithAffiliate("a");
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    const first = await (
+      await GET(requestFor(a.merchant.domain, a.link.code))
+    ).json();
     await db.click.update({
       where: { referralToken: first.referralToken },
       data: { createdAt: new Date(Date.now() - 11 * 60 * 1000) },
     });
     const later = await (
-      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+      await GET(
+        requestFor(
+          a.merchant.domain,
+          `${a.link.code}&token=${first.referralToken}`,
+        ),
+      )
     ).json();
 
     expect(later.referralToken).not.toBe(first.referralToken);
@@ -192,10 +225,20 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("never hands back a click confirmed as a self referral", async () => {
     const a = await seedMerchantWithAffiliate("a");
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
-    await db.click.update({ where: { referralToken: first.referralToken }, data: { fraudConfirmedAt: new Date() } });
+    const first = await (
+      await GET(requestFor(a.merchant.domain, a.link.code))
+    ).json();
+    await db.click.update({
+      where: { referralToken: first.referralToken },
+      data: { fraudConfirmedAt: new Date() },
+    });
     const again = await (
-      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+      await GET(
+        requestFor(
+          a.merchant.domain,
+          `${a.link.code}&token=${first.referralToken}`,
+        ),
+      )
     ).json();
 
     expect(again.referralToken).not.toBe(first.referralToken);
@@ -204,12 +247,23 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("starts a new click when the token sent back belongs to another link", async () => {
     const a = await seedMerchantWithAffiliate("a");
     const other = await db.affiliateLink.create({
-      data: { code: "track-route-a-second", affiliateId: a.affiliate.id, merchantId: a.merchant.id },
+      data: {
+        code: "track-route-a-second",
+        affiliateId: a.affiliate.id,
+        merchantId: a.merchant.id,
+      },
     });
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    const first = await (
+      await GET(requestFor(a.merchant.domain, a.link.code))
+    ).json();
     const next = await (
-      await GET(requestFor(a.merchant.domain, `${other.code}&token=${first.referralToken}`))
+      await GET(
+        requestFor(
+          a.merchant.domain,
+          `${other.code}&token=${first.referralToken}`,
+        ),
+      )
     ).json();
 
     expect(next.referralToken).not.toBe(first.referralToken);
@@ -219,7 +273,11 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   it("does not attribute a code its affiliate retired", async () => {
     const a = await seedMerchantWithAffiliate("a");
     await db.retiredLinkCode.create({
-      data: { code: "track-route-a-old", affiliateId: a.affiliate.id, merchantId: a.merchant.id },
+      data: {
+        code: "track-route-a-old",
+        affiliateId: a.affiliate.id,
+        merchantId: a.merchant.id,
+      },
     });
 
     const res = await GET(requestFor(a.merchant.domain, "track-route-a-old"));

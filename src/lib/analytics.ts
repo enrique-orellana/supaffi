@@ -4,7 +4,13 @@ import { MAX_SHOWN } from "@/lib/commission";
 import { DEFAULT_RANGE } from "@/lib/analyticsShared";
 import type { ChartRange } from "@/lib/analyticsShared";
 
-export { CHART_RANGES, DEFAULT_RANGE, isChartRange, rangeFromQuery, rangeLabel } from "@/lib/analyticsShared";
+export {
+  CHART_RANGES,
+  DEFAULT_RANGE,
+  isChartRange,
+  rangeFromQuery,
+  rangeLabel,
+} from "@/lib/analyticsShared";
 export type { ChartRange } from "@/lib/analyticsShared";
 
 /**
@@ -68,8 +74,13 @@ export type Window = { since: Date; until: Date; bucket: Bucket };
  * so today's chart stops at the current hour rather than drawing empty
  * hours that have not happened.
  */
-export function resolveRange(range: ChartRange | number, now: Date, startedAt: Date): Window {
-  const day = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+export function resolveRange(
+  range: ChartRange | number,
+  now: Date,
+  startedAt: Date,
+): Window {
+  const day = (d: Date) =>
+    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const today = day(now);
   const daysAgo = (n: number) => new Date(today.getTime() - n * 86_400_000);
   if (typeof range === "number") {
@@ -80,7 +91,11 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
       return { since: today, until: now, bucket: "hour" };
     case "yesterday": {
       const start = daysAgo(1);
-      return { since: start, until: new Date(today.getTime() - 1), bucket: "hour" };
+      return {
+        since: start,
+        until: new Date(today.getTime() - 1),
+        bucket: "hour",
+      };
     }
     case "this-week": {
       // Monday, as the week starts everywhere Supaffi is likely to be run.
@@ -90,12 +105,18 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
     case "7d":
       return { since: daysAgo(6), until: now, bucket: "day" };
     case "this-month":
-      return { since: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), until: now, bucket: "day" };
+      return {
+        since: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+        until: now,
+        bucket: "day",
+      };
     case "30d":
       return { since: daysAgo(29), until: now, bucket: "day" };
     case "12m":
       return {
-        since: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1)),
+        since: new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1),
+        ),
         until: now,
         bucket: "month",
       };
@@ -106,7 +127,13 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
       // sixty-plus daily bars in a card read as noise, so it turns to months.
       return span < 60
         ? { since: start, until: now, bucket: "day" }
-        : { since: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)), until: now, bucket: "month" };
+        : {
+            since: new Date(
+              Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1),
+            ),
+            until: now,
+            bucket: "month",
+          };
     }
   }
 }
@@ -115,16 +142,35 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
  * The window of the same length immediately before this one, so a figure can
  * say how it compares. Null for "all time", which has nothing before it.
  */
-export function previousWindow(window: Window, range: ChartRange | number): Window | null {
+export function previousWindow(
+  window: Window,
+  range: ChartRange | number,
+): Window | null {
   if (range === "all") return null;
   if (window.bucket === "month") {
-    const months = (window.until.getUTCFullYear() - window.since.getUTCFullYear()) * 12
-      + (window.until.getUTCMonth() - window.since.getUTCMonth()) + 1;
-    const since = new Date(Date.UTC(window.since.getUTCFullYear(), window.since.getUTCMonth() - months, 1));
-    return { since, until: new Date(window.since.getTime() - 1), bucket: "month" };
+    const months =
+      (window.until.getUTCFullYear() - window.since.getUTCFullYear()) * 12 +
+      (window.until.getUTCMonth() - window.since.getUTCMonth()) +
+      1;
+    const since = new Date(
+      Date.UTC(
+        window.since.getUTCFullYear(),
+        window.since.getUTCMonth() - months,
+        1,
+      ),
+    );
+    return {
+      since,
+      until: new Date(window.since.getTime() - 1),
+      bucket: "month",
+    };
   }
   const length = window.until.getTime() - window.since.getTime();
-  return { since: new Date(window.since.getTime() - length - 1), until: new Date(window.since.getTime() - 1), bucket: window.bucket };
+  return {
+    since: new Date(window.since.getTime() - length - 1),
+    until: new Date(window.since.getTime() - 1),
+    bucket: window.bucket,
+  };
 }
 
 /** What a window added up to: the figures a tile prints and compares. */
@@ -141,7 +187,8 @@ export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
       const entry = out[currency] ?? { gross: 0, commission: 0, sales: 0 };
       out[currency] = {
         gross: Math.round((entry.gross + value.gross) * 100) / 100,
-        commission: Math.round((entry.commission + value.commission) * 100) / 100,
+        commission:
+          Math.round((entry.commission + value.commission) * 100) / 100,
         sales: entry.sales + value.sales,
       };
     }
@@ -155,7 +202,10 @@ export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
  * was zero or below. Growth from nothing is not a percentage, and dividing by
  * a negative would flip the sign.
  */
-export function change(current: number, previous: number | null | undefined): number | null {
+export function change(
+  current: number,
+  previous: number | null | undefined,
+): number | null {
   if (previous === null || previous === undefined || previous <= 0) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
@@ -167,7 +217,9 @@ export function change(current: number, previous: number | null | undefined): nu
  * came to nothing or less, so an empty bucket always sits on the baseline.
  */
 export function earnedTrend(series: DayPoint[], currency: string): number[] {
-  return series.map((point) => Math.max(0, point.amounts[currency]?.gross ?? 0));
+  return series.map((point) =>
+    Math.max(0, point.amounts[currency]?.gross ?? 0),
+  );
 }
 
 /** The key a moment falls under, for the bucket in use. */
@@ -208,15 +260,31 @@ function emptySeries(window: Window): Map<string, DayPoint> {
   let cursor = new Date(bucketKey(window.since, window.bucket));
   while (cursor <= window.until) {
     const key = bucketKey(cursor, window.bucket);
-    series.set(key, { date: key, clicks: 0, conversions: 0, revenue: 0, signups: 0, amounts: {} });
+    series.set(key, {
+      date: key,
+      clicks: 0,
+      conversions: 0,
+      revenue: 0,
+      signups: 0,
+      amounts: {},
+    });
     cursor = nextBucket(cursor, window.bucket);
   }
   return series;
 }
 
 /** Adds one sale's money to a bucket. */
-function addAmount(point: DayPoint, currency: string, gross: number, commission: number): void {
-  const entry = point.amounts[currency] ?? { gross: 0, commission: 0, sales: 0 };
+function addAmount(
+  point: DayPoint,
+  currency: string,
+  gross: number,
+  commission: number,
+): void {
+  const entry = point.amounts[currency] ?? {
+    gross: 0,
+    commission: 0,
+    sales: 0,
+  };
   point.amounts[currency] = {
     gross: Math.round((entry.gross + gross) * 100) / 100,
     commission: Math.round((entry.commission + commission) * 100) / 100,
@@ -248,13 +316,16 @@ export function currenciesByUse(series: DayPoint[]): string[] {
 }
 
 /** The one to open on, or null when nothing has sold. */
-export function pickCurrency(present: string[], requested: string | undefined): string | null {
+export function pickCurrency(
+  present: string[],
+  requested: string | undefined,
+): string | null {
   if (requested && present.includes(requested)) return requested;
   return present[0] ?? null;
 }
 
 function totalsByCurrency(
-  rows: { currency: string; _sum: { amount: Prisma.Decimal | null } }[]
+  rows: { currency: string; _sum: { amount: Prisma.Decimal | null } }[],
 ): CurrencyTotal[] {
   return rows
     .map((row) => ({
@@ -280,7 +351,7 @@ export const OWED_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
  */
 async function owedTotals(
   scope: { merchantId: string } | { affiliateId: string },
-  statuses: readonly (typeof OWED_STATUSES)[number][] = OWED_STATUSES
+  statuses: readonly (typeof OWED_STATUSES)[number][] = OWED_STATUSES,
 ): Promise<CurrencyTotal[]> {
   const where: Prisma.CommissionWhereInput =
     "merchantId" in scope
@@ -332,10 +403,17 @@ export type ProductMetrics = {
  * the Owner the money is what customers paid; for the Affiliate it is what
  * they earned.
  */
-async function periodFor(where: { merchantId?: string; affiliateId?: string }, window: Window): Promise<Period> {
-  const scope = where.merchantId ? { affiliate: { merchantId: where.merchantId } } : { affiliateId: where.affiliateId };
+async function periodFor(
+  where: { merchantId?: string; affiliateId?: string },
+  window: Window,
+): Promise<Period> {
+  const scope = where.merchantId
+    ? { affiliate: { merchantId: where.merchantId } }
+    : { affiliateId: where.affiliateId };
   const [clicks, rows] = await Promise.all([
-    db.click.count({ where: { ...scope, createdAt: { gte: window.since, lte: window.until } } }),
+    db.click.count({
+      where: { ...scope, createdAt: { gte: window.since, lte: window.until } },
+    }),
     db.commission.findMany({
       where: {
         ...scope,
@@ -348,7 +426,11 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
   ]);
   const amounts: Record<string, Amounts> = {};
   for (const row of rows) {
-    const entry = amounts[row.currency] ?? { gross: 0, commission: 0, sales: 0 };
+    const entry = amounts[row.currency] ?? {
+      gross: 0,
+      commission: 0,
+      sales: 0,
+    };
     const commission = row.amount.toNumber();
     // For the affiliate the money is what they earned, on both sides.
     const gross = where.merchantId ? Number(row.saleAmount ?? 0) : commission;
@@ -364,7 +446,7 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
 export async function getProductMetrics(
   ownerId: string,
   merchantId: string,
-  range: ChartRange | number = DEFAULT_RANGE
+  range: ChartRange | number = DEFAULT_RANGE,
 ): Promise<ProductMetrics> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
@@ -376,51 +458,69 @@ export async function getProductMetrics(
   const since = window.since;
   const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, owed, paidRows, revenueRows, signupRows, flagged, previous] =
-    await Promise.all([
-      db.click.findMany({
-        where: { affiliate: { merchantId }, createdAt: { gte: since, lte: window.until } },
-        select: { createdAt: true },
-      }),
-      db.commission.findMany({
-        where: {
-          affiliate: { merchantId },
-          createdAt: { gte: since, lte: window.until },
-          // A void is a refund or a caught self referral: it brought in
-          // nothing and costs nothing. An adjustment is the negative row
-          // that corrects another sale, not a sale of its own. Counting
-          // either put a bar on the chart with no money in it.
-          status: { not: "VOIDED" },
-          adjustsCommissionId: null,
-        },
-        select: { createdAt: true, saleAmount: true, amount: true, currency: true },
-      }),
-      owedTotals({ merchantId }),
-      db.commission.groupBy({
-        by: ["currency"],
-        where: { affiliate: { merchantId }, status: "PAID" },
-        _sum: { amount: true },
-      }),
-      db.commission.groupBy({
-        by: ["currency"],
-        where: {
-          affiliate: { merchantId },
-          createdAt: { gte: since, lte: window.until },
-          saleAmount: { not: null },
-          status: { not: "VOIDED" },
-          adjustsCommissionId: null,
-        },
-        _sum: { saleAmount: true },
-      }),
-      db.affiliate.findMany({
-        where: { merchantId, createdAt: { gte: since, lte: window.until } },
-        select: { createdAt: true },
-      }),
-      // Not windowed: a flagged commission stays the Owner's problem however
-      // long it has sat there.
-      db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
-      before ? periodFor({ merchantId }, before) : Promise.resolve(null),
-    ]);
+  const [
+    clickRows,
+    commissionRows,
+    owed,
+    paidRows,
+    revenueRows,
+    signupRows,
+    flagged,
+    previous,
+  ] = await Promise.all([
+    db.click.findMany({
+      where: {
+        affiliate: { merchantId },
+        createdAt: { gte: since, lte: window.until },
+      },
+      select: { createdAt: true },
+    }),
+    db.commission.findMany({
+      where: {
+        affiliate: { merchantId },
+        createdAt: { gte: since, lte: window.until },
+        // A void is a refund or a caught self referral: it brought in
+        // nothing and costs nothing. An adjustment is the negative row
+        // that corrects another sale, not a sale of its own. Counting
+        // either put a bar on the chart with no money in it.
+        status: { not: "VOIDED" },
+        adjustsCommissionId: null,
+      },
+      select: {
+        createdAt: true,
+        saleAmount: true,
+        amount: true,
+        currency: true,
+      },
+    }),
+    owedTotals({ merchantId }),
+    db.commission.groupBy({
+      by: ["currency"],
+      where: { affiliate: { merchantId }, status: "PAID" },
+      _sum: { amount: true },
+    }),
+    db.commission.groupBy({
+      by: ["currency"],
+      where: {
+        affiliate: { merchantId },
+        createdAt: { gte: since, lte: window.until },
+        saleAmount: { not: null },
+        status: { not: "VOIDED" },
+        adjustsCommissionId: null,
+      },
+      _sum: { saleAmount: true },
+    }),
+    db.affiliate.findMany({
+      where: { merchantId, createdAt: { gte: since, lte: window.until } },
+      select: { createdAt: true },
+    }),
+    // Not windowed: a flagged commission stays the Owner's problem however
+    // long it has sat there.
+    db.commission.count({
+      where: { affiliate: { merchantId }, status: "FLAGGED" },
+    }),
+    before ? periodFor({ merchantId }, before) : Promise.resolve(null),
+  ]);
 
   const series = emptySeries(window);
   const key = (d: Date) => bucketKey(d, window.bucket);
@@ -437,7 +537,7 @@ export async function getProductMetrics(
       point,
       commission.currency,
       Number(commission.saleAmount ?? 0),
-      commission.amount.toNumber()
+      commission.amount.toNumber(),
     );
   }
   for (const affiliate of signupRows) {
@@ -451,11 +551,15 @@ export async function getProductMetrics(
   return {
     clicks,
     conversions,
-    conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
+    conversionRate:
+      clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
     owed,
     paid: totalsByCurrency(paidRows),
     revenue: totalsByCurrency(
-      revenueRows.map((row) => ({ currency: row.currency, _sum: { amount: row._sum.saleAmount } }))
+      revenueRows.map((row) => ({
+        currency: row.currency,
+        _sum: { amount: row._sum.saleAmount },
+      })),
     ),
     signups: signupRows.length,
     flagged,
@@ -498,7 +602,8 @@ export function toWeeks(daily: DayPoint[]): DayPoint[] {
           const entry = acc[currency] ?? { gross: 0, commission: 0, sales: 0 };
           acc[currency] = {
             gross: Math.round((entry.gross + amounts.gross) * 100) / 100,
-            commission: Math.round((entry.commission + amounts.commission) * 100) / 100,
+            commission:
+              Math.round((entry.commission + amounts.commission) * 100) / 100,
             sales: entry.sales + amounts.sales,
           };
         }
@@ -527,13 +632,15 @@ export async function getTopAffiliates(
   ownerId: string,
   merchantId: string,
   limit = 5,
-  window?: Window
+  window?: Window,
 ): Promise<TopAffiliate[]> {
   await assertOwns(ownerId, merchantId);
 
   // Within the window the page is showing, when it has one, so the list
   // and the chart beside it answer the same question.
-  const inWindow = window ? { createdAt: { gte: window.since, lte: window.until } } : {};
+  const inWindow = window
+    ? { createdAt: { gte: window.since, lte: window.until } }
+    : {};
 
   // Ranked by money earned, not by clicks. Clicks are effort; this list is
   // about who is actually working. An unpaid adjustment row an older version
@@ -551,10 +658,16 @@ export async function getTopAffiliates(
   });
   if (earned.length === 0) return [];
 
-  const byAffiliate = new Map<string, { total: number; earned: CurrencyTotal[] }>();
+  const byAffiliate = new Map<
+    string,
+    { total: number; earned: CurrencyTotal[] }
+  >();
   for (const row of earned) {
     const amount = row._sum.amount ?? new Prisma.Decimal(0);
-    const existing = byAffiliate.get(row.affiliateId) ?? { total: 0, earned: [] };
+    const existing = byAffiliate.get(row.affiliateId) ?? {
+      total: 0,
+      earned: [],
+    };
     existing.total += amount.toNumber();
     existing.earned.push({ currency: row.currency, total: amount.toFixed(2) });
     byAffiliate.set(row.affiliateId, existing);
@@ -602,7 +715,9 @@ export async function getTopAffiliates(
       name: affiliate.name,
       email: affiliate.email,
       clicks: clicksById.get(id) ?? 0,
-      earned: totals.earned.sort((a, b) => a.currency.localeCompare(b.currency)),
+      earned: totals.earned.sort((a, b) =>
+        a.currency.localeCompare(b.currency),
+      ),
       sales: salesById.get(id) ?? 0,
     };
   });
@@ -643,7 +758,7 @@ export type PayableGroup = {
 export async function getPayableGroups(
   ownerId: string,
   merchantId: string,
-  capPerGroup: number = MAX_SHOWN
+  capPerGroup: number = MAX_SHOWN,
 ): Promise<PayableGroup[]> {
   await assertOwns(ownerId, merchantId);
 
@@ -662,7 +777,9 @@ export async function getPayableGroups(
       id: true,
       amount: true,
       currency: true,
-      affiliate: { select: { id: true, name: true, email: true, payoutDetails: true } },
+      affiliate: {
+        select: { id: true, name: true, email: true, payoutDetails: true },
+      },
     },
     orderBy: [{ payableAt: "asc" }, { id: "asc" }],
   });
@@ -733,13 +850,18 @@ export type PayoutRow = {
 export async function listPayouts(
   ownerId: string,
   merchantId: string,
-  { page, pageSize }: { page: number; pageSize: number }
+  { page, pageSize }: { page: number; pageSize: number },
 ): Promise<{ rows: PayoutRow[]; total: number }> {
   await assertOwns(ownerId, merchantId);
 
   const groups = await db.commission.groupBy({
     by: ["affiliateId", "currency", "paidAt"],
-    where: { status: "PAID", paidAt: { not: null }, adjustsCommissionId: null, affiliate: { merchantId } },
+    where: {
+      status: "PAID",
+      paidAt: { not: null },
+      adjustsCommissionId: null,
+      affiliate: { merchantId },
+    },
     _sum: { amount: true },
     _count: { _all: true },
     orderBy: [{ paidAt: "desc" }, { affiliateId: "asc" }, { currency: "asc" }],
@@ -773,7 +895,7 @@ export async function listPayouts(
  */
 export async function getOwedTotals(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<{ owed: CurrencyTotal[]; payableNow: CurrencyTotal[] }> {
   await assertOwns(ownerId, merchantId);
   const [owed, payableNow] = await Promise.all([
@@ -791,13 +913,15 @@ export type WebhookHealth = {
 
 export async function getWebhookHealth(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<WebhookHealth> {
   await assertOwns(ownerId, merchantId);
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [last24h, recent] = await Promise.all([
-    db.webhookEvent.count({ where: { merchantId, createdAt: { gte: dayAgo } } }),
+    db.webhookEvent.count({
+      where: { merchantId, createdAt: { gte: dayAgo } },
+    }),
     db.webhookEvent.findMany({
       where: { merchantId },
       select: { id: true, payload: true, status: true, createdAt: true },
@@ -814,7 +938,8 @@ export async function getWebhookHealth(
       // The stored payload is the Stripe event itself. Falls back rather than
       // throwing, since a malformed payload is a debugging aid, not a crash.
       type:
-        (event.payload as { type?: unknown } | null)?.type?.toString() ?? "unknown event",
+        (event.payload as { type?: unknown } | null)?.type?.toString() ??
+        "unknown event",
       status: event.status,
       at: event.createdAt,
     })),
@@ -850,17 +975,29 @@ export type AffiliateMetrics = {
  */
 export async function getAffiliateMetrics(
   affiliateId: string,
-  range: ChartRange | number = DEFAULT_RANGE
+  range: ChartRange | number = DEFAULT_RANGE,
 ): Promise<AffiliateMetrics> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: { createdAt: true },
   });
-  const window = resolveRange(range, new Date(), affiliate?.createdAt ?? new Date());
+  const window = resolveRange(
+    range,
+    new Date(),
+    affiliate?.createdAt ?? new Date(),
+  );
   const since = window.since;
   const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, statusRows, paidRows, unpaid, payable, previous] = await Promise.all([
+  const [
+    clickRows,
+    commissionRows,
+    statusRows,
+    paidRows,
+    unpaid,
+    payable,
+    previous,
+  ] = await Promise.all([
     db.click.findMany({
       where: { affiliateId, createdAt: { gte: since, lte: window.until } },
       select: { createdAt: true },
@@ -880,7 +1017,11 @@ export async function getAffiliateMetrics(
     // the migration only leaves them behind on statuses this never reads.
     db.commission.groupBy({
       by: ["currency", "status"],
-      where: { affiliateId, adjustsCommissionId: null, status: { in: ["PENDING", "FLAGGED"] } },
+      where: {
+        affiliateId,
+        adjustsCommissionId: null,
+        status: { in: ["PENDING", "FLAGGED"] },
+      },
       _sum: { amount: true },
     }),
     // Paid is history: a paid adjustment row a refund or lost chargeback wrote
@@ -919,7 +1060,10 @@ export async function getAffiliateMetrics(
     for (const row of statusRows) {
       if (!statuses.includes(row.status)) continue;
       const amount = row._sum.amount ?? new Prisma.Decimal(0);
-      byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(amount));
+      byCurrency.set(
+        row.currency,
+        (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(amount),
+      );
     }
     return [...byCurrency.entries()].map(([currency, amount]) => ({
       currency,
@@ -933,7 +1077,8 @@ export async function getAffiliateMetrics(
   return {
     clicks,
     conversions,
-    conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
+    conversionRate:
+      clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
     // FLAGGED sits with PENDING, matching toDisplayStatus: an Affiliate is
     // never shown a fraud check the Merchant has not finished reviewing.
     pending: totalsByCurrency(rowsFor(["PENDING", "FLAGGED"])),

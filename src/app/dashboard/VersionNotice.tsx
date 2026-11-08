@@ -50,16 +50,20 @@ export function UpdateDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {update.security ? `${update.version} fixes a security issue` : `Supaffi ${update.version} is out`}
+            {update.security
+              ? `${update.version} fixes a security issue`
+              : `Supaffi ${update.version} is out`}
           </DialogTitle>
           <DialogDescription>
-            You are on {installed}. {update.security ? "Update soon." : "Nothing breaks if you wait."}
+            You are on {installed}.{" "}
+            {update.security ? "Update soon." : "Nothing breaks if you wait."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Run this on your server. It backs up your database first and stops if that fails.
+            Run this on your server. It backs up your database first and stops
+            if that fails.
           </p>
           <pre className="overflow-x-auto rounded-(--radius) border border-border/70 bg-muted/50 px-3 py-2.5 font-mono text-xs leading-relaxed">
             <code>{command}</code>

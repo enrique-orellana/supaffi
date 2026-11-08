@@ -7,12 +7,20 @@ import { Field, FormCard } from "@/components/Field";
 import { createProductAction } from "./productAction";
 
 export function ProductForm() {
-  const [state, action, pending] = useActionState(createProductAction, { error: "" });
+  const [state, action, pending] = useActionState(createProductAction, {
+    error: "",
+  });
   return (
     <form action={action} className="flex flex-col gap-6">
       <FormCard>
         <Field label="Name" htmlFor="product-name">
-          <Input id="product-name" name="name" required autoFocus placeholder="Your product" />
+          <Input
+            id="product-name"
+            name="name"
+            required
+            autoFocus
+            placeholder="Your product"
+          />
         </Field>
         <Field label="Website" htmlFor="product-website">
           <Input
@@ -32,7 +40,12 @@ export function ProductForm() {
         </p>
       )}
       <div>
-        <Button type="submit" size="lg" className="cursor-pointer" disabled={pending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="cursor-pointer"
+          disabled={pending}
+        >
           {pending ? "Creating" : "Continue"}
         </Button>
       </div>

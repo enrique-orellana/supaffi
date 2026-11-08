@@ -19,7 +19,11 @@ const perAddressHour = windowLimit({
  * missing or private address means the proxy in front did not report the
  * visitor, and counting it would put every visitor in one shared budget.
  */
-export function reserveAffiliateSignup(merchantId: string, address: string | null, now: number = Date.now()): boolean {
+export function reserveAffiliateSignup(
+  merchantId: string,
+  address: string | null,
+  now: number = Date.now(),
+): boolean {
   if (address === null || isPrivateAddress(address)) return true;
   return takeFromEach([[perAddressHour, `${merchantId}\n${address}`]], now);
 }

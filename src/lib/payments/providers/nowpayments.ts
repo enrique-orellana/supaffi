@@ -23,7 +23,7 @@ function sortForSignature(value: unknown): unknown {
     return Object.fromEntries(
       Object.keys(object)
         .sort()
-        .map((key) => [key, sortForSignature(object[key])])
+        .map((key) => [key, sortForSignature(object[key])]),
     );
   }
   return value;
@@ -44,7 +44,10 @@ function skipWhitespace(body: string, start: number): number {
 }
 
 /** Read one JSON string token and return its decoded value and next offset. */
-function readJsonString(body: string, start: number): { value: string; next: number } {
+function readJsonString(
+  body: string,
+  start: number,
+): { value: string; next: number } {
   if (body[start] !== '"') throw new Error("Invalid JSON string");
   let index = start + 1;
   while (index < body.length) {
@@ -125,7 +128,10 @@ function topLevelRawValues(body: string): Map<string, string> {
 }
 
 /** Parse raw JSON while retaining every numeric token as decimal text. */
-function parseLosslessValue(body: string, start: number): { value: unknown; next: number } {
+function parseLosslessValue(
+  body: string,
+  start: number,
+): { value: unknown; next: number } {
   let index = skipWhitespace(body, start);
   const current = body[index];
   if (current === '"') {
@@ -144,7 +150,8 @@ function parseLosslessValue(body: string, start: number): { value: unknown; next
       const parsed = parseLosslessValue(body, index + 1);
       entries.push([key.value, parsed.value]);
       index = skipWhitespace(body, parsed.next);
-      if (body[index] === "}") return { value: Object.fromEntries(entries), next: index + 1 };
+      if (body[index] === "}")
+        return { value: Object.fromEntries(entries), next: index + 1 };
       if (body[index] !== ",") throw new Error("Invalid JSON object");
       index = skipWhitespace(body, index + 1);
     }
@@ -179,7 +186,10 @@ function parseLosslessValue(body: string, start: number): { value: unknown; next
 
 function losslessPayload(body: string): JsonObject {
   const parsed = parseLosslessValue(body, 0);
-  if (skipWhitespace(body, parsed.next) !== body.length || !isObject(parsed.value)) {
+  if (
+    skipWhitespace(body, parsed.next) !== body.length ||
+    !isObject(parsed.value)
+  ) {
     throw new Error("Invalid JSON object");
   }
   return parsed.value;
@@ -210,9 +220,10 @@ function decimalText(value: string): string | null {
   if (expanded.length > 256) return null;
   const [expandedWhole, expandedFraction] = expanded.split(".");
   const normalizedWhole = expandedWhole.replace(/^0+(?=\d)/, "");
-  const normalized = expandedFraction === undefined
-    ? normalizedWhole
-    : `${normalizedWhole}.${expandedFraction}`;
+  const normalized =
+    expandedFraction === undefined
+      ? normalizedWhole
+      : `${normalizedWhole}.${expandedFraction}`;
   if (/^0(?:\.0*)?$/.test(normalized)) return "0";
   return negative ? `-${normalized}` : normalized;
 }
@@ -220,7 +231,7 @@ function decimalText(value: string): string | null {
 function exactDecimalField(
   rawValues: Map<string, string>,
   payload: JsonObject,
-  key: string
+  key: string,
 ): string | null {
   const raw = rawValues.get(key);
   if (!raw) return null;
@@ -234,13 +245,21 @@ function exactDecimalField(
   const source = typeof value === "string" ? value : raw;
   // Ensure the field was a JSON number when JSON.parse produced a Number. The
   // raw token, not the rounded Number, is the value passed to decimalText.
-  if (typeof value === "number" && !/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) return null;
+  if (
+    typeof value === "number" &&
+    !/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)
+  )
+    return null;
   if (typeof payload[key] !== typeof value) return null;
   const result = decimalText(source);
   return result && !result.startsWith("-") ? result : null;
 }
 
-function stringId(value: unknown, rawValues: Map<string, string>, key: string): string | null {
+function stringId(
+  value: unknown,
+  rawValues: Map<string, string>,
+  key: string,
+): string | null {
   if (typeof value === "string") return value.trim() ? value : null;
   const raw = rawValues.get(key);
   if (typeof value === "number" && raw && /^\d+$/.test(raw)) return raw;
@@ -248,7 +267,9 @@ function stringId(value: unknown, rawValues: Map<string, string>, key: string): 
 }
 
 function currencyCode(value: unknown, pattern: RegExp): string | null {
-  return typeof value === "string" && pattern.test(value) ? value.toLowerCase() : null;
+  return typeof value === "string" && pattern.test(value)
+    ? value.toLowerCase()
+    : null;
 }
 
 function occurredAt(payload: JsonObject): Date {
@@ -297,7 +318,11 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
       .update(canonicalPayload(payload), "utf8")
       .digest();
     const received = Buffer.from(signature, "hex");
-    if (received.length !== expected.length || !timingSafeEqual(received, expected)) return null;
+    if (
+      received.length !== expected.length ||
+      !timingSafeEqual(received, expected)
+    )
+      return null;
 
     const paymentStatus = payload.payment_status;
     if (
@@ -311,14 +336,13 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
     const invoiceId = stringId(payload.invoice_id, rawValues, "invoice_id");
     const priceAmount = exactDecimalField(rawValues, payload, "price_amount");
     const priceCurrency = currencyCode(payload.price_currency, /^[a-z]{3}$/i);
-    const cryptoCurrency = currencyCode(payload.pay_currency, /^[a-z0-9_-]{2,20}$/i);
+    const cryptoCurrency = currencyCode(
+      payload.pay_currency,
+      /^[a-z0-9_-]{2,20}$/i,
+    );
     const cryptoAmount = exactDecimalField(rawValues, payload, "actually_paid");
 
-    if (
-      !paymentId ||
-      !priceAmount ||
-      !priceCurrency
-    ) {
+    if (!paymentId || !priceAmount || !priceCurrency) {
       return null;
     }
 

@@ -4,11 +4,7 @@ import { registrableCandidates } from "@/lib/checks/dns";
 import { isPaymentProviderReady } from "@/lib/payments/types";
 
 export type StepId =
-  | "product"
-  | "subdomain"
-  | "payments"
-  | "terms"
-  | "tracking";
+  "product" | "subdomain" | "payments" | "terms" | "tracking";
 
 /**
  * "waiting" is not "unfinished": the row is reached, its section was re-run
@@ -23,13 +19,7 @@ export type Step = {
   state: StepState;
 };
 
-const ALL: StepId[] = [
-  "product",
-  "subdomain",
-  "payments",
-  "terms",
-  "tracking",
-];
+const ALL: StepId[] = ["product", "subdomain", "payments", "terms", "tracking"];
 
 const LABELS: Record<StepId, string> = {
   product: "Product",
@@ -99,7 +89,11 @@ export function normalizeStepId(value: string): string {
  * Whether the step's stored data exists. This is what lets the user move on;
  * it says nothing about whether the outside world has caught up.
  */
-function stored(id: StepId, setup: ProductSetup, _onboardingCompletedAt: Date | null): boolean {
+function stored(
+  id: StepId,
+  setup: ProductSetup,
+  _onboardingCompletedAt: Date | null,
+): boolean {
   switch (id) {
     case "product":
       return true;
@@ -126,16 +120,27 @@ function stored(id: StepId, setup: ProductSetup, _onboardingCompletedAt: Date | 
 }
 
 /** Whether the outside world agrees. Steps with no check are verified once stored. */
-function verified(id: StepId, checks: ProductChecks, setup: ProductSetup, onboardingCompletedAt: Date | null): boolean {
+function verified(
+  id: StepId,
+  checks: ProductChecks,
+  setup: ProductSetup,
+  onboardingCompletedAt: Date | null,
+): boolean {
   switch (id) {
     case "subdomain":
-      return checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
+      return (
+        checks.dns.resolves.ok &&
+        checks.dns.https.ok &&
+        checks.dns.certificate.ok
+      );
     case "payments":
       return setup.connectedPaymentProviders.some((provider) =>
-        isPaymentProviderReady(provider, true, checks)
+        isPaymentProviderReady(provider, true, checks),
       );
     case "tracking":
-      return checks.tracking.script.ok || setup.trackingStatus !== "not-started";
+      return (
+        checks.tracking.script.ok || setup.trackingStatus !== "not-started"
+      );
     default:
       return stored(id, setup, onboardingCompletedAt);
   }
@@ -157,7 +162,8 @@ export function stepStates(input: {
   const currentIndex = ids.indexOf(input.current);
   return ids.map((id, index) => {
     const behind = index < currentIndex;
-    const reached = stored(id, input.setup, input.onboardingCompletedAt) || behind;
+    const reached =
+      stored(id, input.setup, input.onboardingCompletedAt) || behind;
     const isVerified =
       id === "subdomain" && input.dnsUnavailable
         ? true
@@ -214,7 +220,10 @@ export function suggestSubdomain(websiteUrl: string): string {
  * all, which is the case on a local instance and for anything set by hand
  * before this rule existed. Those are edited whole.
  */
-export function splitSubdomain(domain: string, websiteUrl: string): { prefix: string; suffix: string } | null {
+export function splitSubdomain(
+  domain: string,
+  websiteUrl: string,
+): { prefix: string; suffix: string } | null {
   const root = siteHost(websiteUrl).replace(/^www\./, "");
   if (!root || !domain.endsWith(`.${root}`)) return null;
   const prefix = domain.slice(0, -(root.length + 1));
@@ -224,13 +233,24 @@ export function splitSubdomain(domain: string, websiteUrl: string): { prefix: st
 // Second-level labels that are commonly used as a suffix under a two-letter
 // country code (co.uk, com.au, ...). Not a suffix list: just enough to keep
 // the affiliates.example.co.uk case out of registrableCandidates' two-label guess.
-const COMMON_SECOND_LEVEL_SUFFIXES = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
+const COMMON_SECOND_LEVEL_SUFFIXES = new Set([
+  "co",
+  "com",
+  "org",
+  "net",
+  "ac",
+  "gov",
+  "edu",
+]);
 
 /** The DNS zone a domain's records live in: mokkit.co for affiliates.dev.mokkit.co. */
 export function dnsZone(domain: string): string {
   const [twoLabel, threeLabel] = registrableCandidates(domain);
   const [first, second] = twoLabel.split(".");
-  const looksLikeCoUk = Boolean(second) && COMMON_SECOND_LEVEL_SUFFIXES.has(first) && /^[a-z]{2}$/i.test(second);
+  const looksLikeCoUk =
+    Boolean(second) &&
+    COMMON_SECOND_LEVEL_SUFFIXES.has(first) &&
+    /^[a-z]{2}$/i.test(second);
   return looksLikeCoUk ? threeLabel : twoLabel;
 }
 
@@ -254,7 +274,11 @@ export function dnsRecordName(domain: string): string {
  * label they chose, so the label is carried across onto the new root. Only
  * when there was no label to carry does this fall back to the default.
  */
-export function rehomeSubdomain(currentDomain: string, previousWebsiteUrl: string, nextWebsiteUrl: string): string {
+export function rehomeSubdomain(
+  currentDomain: string,
+  previousWebsiteUrl: string,
+  nextWebsiteUrl: string,
+): string {
   const suggestion = suggestSubdomain(nextWebsiteUrl);
   if (!suggestion) return currentDomain;
   const split = splitSubdomain(currentDomain, previousWebsiteUrl);
@@ -285,9 +309,11 @@ export function siteHost(websiteUrl: string): string {
  * the only place that can fix that.
  */
 export function backToDashboardHref(
-  others: { onboardingCompletedAt: Date | null }[]
+  others: { onboardingCompletedAt: Date | null }[],
 ): string | null {
-  return others.some((m) => m.onboardingCompletedAt !== null) ? "/dashboard" : null;
+  return others.some((m) => m.onboardingCompletedAt !== null)
+    ? "/dashboard"
+    : null;
 }
 
 /**
@@ -295,7 +321,10 @@ export function backToDashboardHref(
  * stored. Null once there is nothing left to set up, which is the caller's
  * cue to send them to the finished screen rather than back into the flow.
  */
-export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId | null {
+export function resumeStep(
+  setup: ProductSetup,
+  onboardingCompletedAt: Date | null,
+): StepId | null {
   const ids = stepIds().filter((id) => id !== "product");
   for (const id of ids) {
     if (!stored(id, setup, onboardingCompletedAt)) return id;

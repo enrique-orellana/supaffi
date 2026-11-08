@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 
-import { KEY_PERMISSIONS, keyName, restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
+import {
+  KEY_PERMISSIONS,
+  keyName,
+  restrictedKeyUrl,
+} from "@/lib/stripeRestrictedKey";
 
 /**
  * Stripe's key-creation form ignores an identifier it does not recognise: it
@@ -30,9 +34,6 @@ describe("restricted key link", () => {
     ]);
   });
 
-
-
-
   it("names the key after the product so several are tellable apart in Stripe", () => {
     expect(keyName("Mokkit")).toBe("Supaffi: Mokkit");
     expect(keyName("  Mokkit  ")).toBe("Supaffi: Mokkit");
@@ -41,7 +42,9 @@ describe("restricted key link", () => {
   });
 
   it("asks for write on exactly one row, the webhook endpoint it creates itself", () => {
-    const writes = KEY_PERMISSIONS.filter((permission) => permission.access === "Write");
+    const writes = KEY_PERMISSIONS.filter(
+      (permission) => permission.access === "Write",
+    );
     expect(writes).toHaveLength(1);
     expect(writes[0].row).toBe("Webhook Endpoints");
   });
@@ -57,20 +60,26 @@ describe("restricted key link", () => {
     expect(url.match(/permissions\[\]=/g)).toHaveLength(KEY_PERMISSIONS.length);
     expect(url).not.toContain("permissions%5B%5D");
     expect(new URL(url).searchParams.getAll("permissions[]")).toEqual(
-      KEY_PERMISSIONS.map((permission) => permission.token)
+      KEY_PERMISSIONS.map((permission) => permission.token),
     );
   });
 
   it("escapes a product name that would otherwise break the query string", () => {
     const url = restrictedKeyUrl("Mokkit & Co #1");
-    expect(new URL(url).searchParams.get("name")).toBe("Supaffi: Mokkit & Co #1");
+    expect(new URL(url).searchParams.get("name")).toBe(
+      "Supaffi: Mokkit & Co #1",
+    );
     // The `&` and `#` must not have split the query or started a fragment,
     // which would silently drop every permission after the name.
-    expect(new URL(url).searchParams.getAll("permissions[]")).toHaveLength(KEY_PERMISSIONS.length);
+    expect(new URL(url).searchParams.getAll("permissions[]")).toHaveLength(
+      KEY_PERMISSIONS.length,
+    );
   });
 
   it("pins no account id, so Stripe's own picker chooses which account", () => {
     expect(restrictedKeyUrl("Mokkit")).not.toMatch(/acct_/);
-    expect(restrictedKeyUrl("Mokkit")).toMatch(/^https:\/\/dashboard\.stripe\.com\/apikeys\/create\?/);
+    expect(restrictedKeyUrl("Mokkit")).toMatch(
+      /^https:\/\/dashboard\.stripe\.com\/apikeys\/create\?/,
+    );
   });
 });

@@ -16,12 +16,27 @@ import {
   latestChargeFor,
   paymentIntentForInvoice,
 } from "../paymentState";
-import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
+import {
+  exclusionSourcesOf,
+  retrieveInvoiceForEarning,
+} from "../referredRevenue";
 import { referredEarningOn, storableReferredShare } from "../referredEarning";
-import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
+import {
+  checkPaymentMethodOverlap,
+  checkSelfReferralEmail,
+  resolveInvoiceFingerprint,
+} from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
-import { commissionDurationForClick, referralStillEarns } from "../referralDuration";
+import {
+  claimFirstPayment,
+  findReferredSubscription,
+  idOf,
+  subscriptionIdOf,
+} from "../referredSubscription";
+import {
+  commissionDurationForClick,
+  referralStillEarns,
+} from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 // A renewal or a plan change is revenue of the subscription the referral
@@ -30,9 +45,15 @@ import { createCommissionUnlessSelfReferral } from "../recordCommission";
 // upcoming is a preview, subscription is a reason Stripe retired, and
 // subscription_threshold usage billing is left out by the owner's rule.
 // subscription_create belongs to checkout.session.completed.
-const EARNING_BILLING_REASONS: ReadonlySet<string> = new Set(["subscription_cycle", "subscription_update"]);
+const EARNING_BILLING_REASONS: ReadonlySet<string> = new Set([
+  "subscription_cycle",
+  "subscription_update",
+]);
 
-export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
+export async function handleInvoicePaid(
+  merchant: Merchant,
+  invoice: Stripe.Invoice,
+): Promise<void> {
   const stripeCustomerId = idOf(invoice.customer);
   if (!stripeCustomerId) return;
 
@@ -42,7 +63,11 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // the first paid invoice comes later as subscription_cycle. Checked before
   // the first payment is claimed, so a manual invoice on a trial cannot use up
   // a one-time commission.
-  if (!invoice.billing_reason || !EARNING_BILLING_REASONS.has(invoice.billing_reason)) return;
+  if (
+    !invoice.billing_reason ||
+    !EARNING_BILLING_REASONS.has(invoice.billing_reason)
+  )
+    return;
 
   // A $0 invoice (a trial, or one fully covered by credit) moved no money, so
   // it must not be claimed as the first payment and use up a one-time
@@ -59,7 +84,11 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // Merchant whose webhook this is. Matching the customer instead paid the
   // wrong affiliate when products share a Stripe account, and paid on
   // subscriptions nobody referred.
-  const referred = await findReferredSubscription(merchant, subscriptionId, stripeCustomerId);
+  const referred = await findReferredSubscription(
+    merchant,
+    subscriptionId,
+    stripeCustomerId,
+  );
   if (!referred) return;
 
   const click = referred.click;
@@ -79,15 +108,18 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // payment instead of starting the program over. Measured after the claim
   // above, so this subscription's own first payment is part of that history.
   const program = click.affiliate.program;
-  if (!(await referralStillEarns(
-    merchant.id,
-    click.id,
-    program,
-    payment,
-    [],
-    db,
-    commissionDurationForClick(program, click)
-  ))) return;
+  if (
+    !(await referralStillEarns(
+      merchant.id,
+      click.id,
+      program,
+      payment,
+      [],
+      db,
+      commissionDurationForClick(program, click),
+    ))
+  )
+    return;
 
   const stripe = await stripeClientFor(merchant);
 
@@ -100,7 +132,10 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // Ereignissen gesendet werden, sind immer in ihrer Minimalform" (Stripe
   // docs, expand.md). So it has to be read back here, never trusted from
   // `invoice`. A failed read throws, so the event is retried.
-  const invoiceRead = await retrieveInvoiceForEarningOrThrow(stripe, invoice.id);
+  const invoiceRead = await retrieveInvoiceForEarningOrThrow(
+    stripe,
+    invoice.id,
+  );
 
   // The same read carries the subscription and the customer, so their flags
   // cost no further call. The subscription is never taken from the payload:
@@ -111,14 +146,21 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // subscription or customer Stripe did not expand is read by id, and a read
   // that fails throws, so the event is retried rather than earning on a sale
   // the merchant may have excluded.
-  if (await isExcluded(stripe, exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId), invoice.id)) return;
+  if (
+    await isExcluded(
+      stripe,
+      exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId),
+      invoice.id,
+    )
+  )
+    return;
   if (typeof invoiceRead.amount_paid_off_stripe !== "number") {
     // Stripe answered without the field even when it was asked for, which
     // this pinned API version is not documented to do. Earning on an
     // unscaled amount_paid risks paying on money moved outside Stripe, so
     // this invoice earns nothing instead.
     console.error(
-      `[worker] invoice ${invoice.id} did not answer amount_paid_off_stripe when read with expand, so no commission was recorded for it`
+      `[worker] invoice ${invoice.id} did not answer amount_paid_off_stripe when read with expand, so no commission was recorded for it`,
     );
     return;
   }
@@ -135,7 +177,13 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // Earned only on this subscription's own lines for the products its referral
   // bought, before tax and scaled to what was paid through Stripe, by the same
   // rule as its first payment, see referredEarning.ts.
-  const earned = await referredEarningOn(stripe, invoice.id, invoiceForBase, subscriptionId, referred);
+  const earned = await referredEarningOn(
+    stripe,
+    invoice.id,
+    invoiceForBase,
+    subscriptionId,
+    referred,
+  );
   if (!earned) return;
   const baseMinor = earned.baseMinor;
 
@@ -151,19 +199,28 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   let flagReason = checkSelfReferralEmail(affiliate, invoice.customer_email);
   if (!flagReason) {
     const fingerprint = await resolveInvoiceFingerprint(stripe, invoice.id);
-    flagReason = await checkPaymentMethodOverlap(stripe, affiliate, fingerprint, stripeCustomerId);
+    flagReason = await checkPaymentMethodOverlap(
+      stripe,
+      affiliate,
+      fingerprint,
+      stripeCustomerId,
+    );
   }
 
   // A refund or a dispute made before this event was processed is read back
   // from the charge now and folded into the row, see paymentState.ts.
   const chargeIntentId = await paymentIntentForInvoice(stripe, invoice.id);
-  const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
+  const charge = chargeIntentId
+    ? await latestChargeFor(stripe, chargeIntentId)
+    : null;
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   // Never more than the charge itself: a rounding or shipping difference can
   // still separate the invoice's own total from what the charge actually
   // moved, even though referredInvoiceBase already rounds its own figure down.
-  const cappedReferredChargeMinor = charge ? Math.min(earned.referredChargeMinor, charge.amount) : earned.referredChargeMinor;
+  const cappedReferredChargeMinor = charge
+    ? Math.min(earned.referredChargeMinor, charge.amount)
+    : earned.referredChargeMinor;
 
   try {
     // Checked against a self referral confirmed since the check above.
@@ -175,20 +232,33 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         stripePaymentRef: invoice.id,
         currency: invoice.currency,
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
-        payableAt: computePayableAt(program, undefined, click.holdingPeriodDaysSnapshot ?? undefined),
+        payableAt: computePayableAt(
+          program,
+          undefined,
+          click.holdingPeriodDaysSnapshot ?? undefined,
+        ),
         flagReason,
         referredChargeMinor: storableReferredShare(cappedReferredChargeMinor),
         // amount, grossAmount (the figure a later refund prorates against),
         // status, voidedAt, voidReason and disputeOpenedAt.
-        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute, referredChargeMinor: cappedReferredChargeMinor }),
+        ...commissionFieldsAtCreation({
+          amount,
+          flagReason,
+          charge,
+          dispute,
+          referredChargeMinor: cappedReferredChargeMinor,
+        }),
       },
     });
     if (written && dispute === "unknown") {
       // The write only reports whether it happened, not the row: looked up by
       // its unique payment reference so the log still names the commission.
-      const commission = await db.commission.findFirst({ where: { stripePaymentRef: invoice.id }, select: { id: true } });
+      const commission = await db.commission.findFirst({
+        where: { stripePaymentRef: invoice.id },
+        select: { id: true },
+      });
       console.warn(
-        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
+        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`,
       );
     }
   } catch (err) {
@@ -209,11 +279,16 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
  * only the message in WebhookEvent.lastError, the same pattern
  * retrieveSessionForEarning in checkoutSessionCompleted.ts uses.
  */
-async function retrieveInvoiceForEarningOrThrow(stripe: Stripe, invoiceId: string): Promise<Stripe.Invoice> {
+async function retrieveInvoiceForEarningOrThrow(
+  stripe: Stripe,
+  invoiceId: string,
+): Promise<Stripe.Invoice> {
   try {
     return await retrieveInvoiceForEarning(stripe, invoiceId);
   } catch (err) {
     const { type, code } = err as { type?: string; code?: string };
-    throw new Error(`[worker] could not read invoice ${invoiceId} for earning (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`);
+    throw new Error(
+      `[worker] could not read invoice ${invoiceId} for earning (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`,
+    );
   }
 }

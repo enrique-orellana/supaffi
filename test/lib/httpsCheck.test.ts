@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { httpsReachable } from "@/lib/checks/dns";
-import { certificatePending, dnsCheckRows } from "@/components/onboarding/checkRows";
+import {
+  certificatePending,
+  dnsCheckRows,
+} from "@/components/onboarding/checkRows";
 
 // The failure this exists for: inside the app container, fetching the
 // product's own public address routes out to the host's own IP and back,
@@ -8,25 +11,37 @@ import { certificatePending, dnsCheckRows } from "@/components/onboarding/checkR
 // internet and the container alone cannot reach it.
 const resolves = async () => ["146.59.195.140"];
 const neverFetch: typeof fetch = async () => {
-  throw new Error("the round trip must not be attempted when our own proxy answered");
+  throw new Error(
+    "the round trip must not be attempted when our own proxy answered",
+  );
 };
 
 describe("httpsReachable", () => {
   it("passes on our proxy's own certificate, without any round trip", async () => {
-    const result = await httpsReachable("affiliates.example.com", neverFetch, resolves, async () => ({
-      kind: "valid",
-      issuer: "Let's Encrypt",
-    }));
+    const result = await httpsReachable(
+      "affiliates.example.com",
+      neverFetch,
+      resolves,
+      async () => ({
+        kind: "valid",
+        issuer: "Let's Encrypt",
+      }),
+    );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
     expect(result.certificate.detail).toBe("Issued by Let's Encrypt");
   });
 
   it("reads a certificate that is not trusted yet as still being set up, not as unreachable", async () => {
-    const result = await httpsReachable("affiliates.example.com", neverFetch, resolves, async () => ({
-      kind: "untrusted",
-      reason: "self signed",
-    }));
+    const result = await httpsReachable(
+      "affiliates.example.com",
+      neverFetch,
+      resolves,
+      async () => ({
+        kind: "untrusted",
+        reason: "self signed",
+      }),
+    );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(false);
     expect(result.certificate.detail).toBe("Being set up");
@@ -39,10 +54,15 @@ describe("httpsReachable", () => {
       return { status: 200 } as Response;
     }) as unknown as typeof fetch;
 
-    const result = await httpsReachable("affiliates.example.com", fetchFn, resolves, async () => ({
-      kind: "no-proxy",
-      reason: "ENOTFOUND",
-    }));
+    const result = await httpsReachable(
+      "affiliates.example.com",
+      fetchFn,
+      resolves,
+      async () => ({
+        kind: "no-proxy",
+        reason: "ENOTFOUND",
+      }),
+    );
     expect(asked).toBe("https://affiliates.example.com/track.js");
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
@@ -57,7 +77,7 @@ describe("httpsReachable", () => {
       },
       async () => {
         throw new Error("the probe must not run without a record");
-      }
+      },
     );
     expect(result.reachable.detail).toBe("No record found yet");
   });
@@ -71,13 +91,23 @@ describe("the certificate row", () => {
     expect(certificatePending("Being set up")).toBe(true);
     expect(certificatePending("Nothing answered")).toBe(true);
 
-    const rows = dnsCheckRows({ resolves: ok, https: ok, certificate: no("Being set up") });
+    const rows = dnsCheckRows({
+      resolves: ok,
+      https: ok,
+      certificate: no("Being set up"),
+    });
     expect(rows.find((r) => r.id === "cert")?.state).toBe("pending");
   });
 
   it("carries the one line explaining that it happens on its own", () => {
-    const rows = dnsCheckRows({ resolves: ok, https: ok, certificate: no("Being set up") });
-    expect(rows.find((r) => r.id === "cert")?.info).toContain("nothing for you to do");
+    const rows = dnsCheckRows({
+      resolves: ok,
+      https: ok,
+      certificate: no("Being set up"),
+    });
+    expect(rows.find((r) => r.id === "cert")?.info).toContain(
+      "nothing for you to do",
+    );
   });
 
   it("passes once the certificate is there", () => {

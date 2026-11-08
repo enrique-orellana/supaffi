@@ -27,7 +27,7 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/lib/affiliatePassword.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/affiliatePassword.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -43,8 +43,14 @@ async function clearAll() {
   await db.owner.deleteMany();
 }
 
-async function seedProduct(ownerEmail: string, domain: string, affiliateEmail: string) {
-  const owner = await db.owner.create({ data: { email: ownerEmail, passwordHash: "x" } });
+async function seedProduct(
+  ownerEmail: string,
+  domain: string,
+  affiliateEmail: string,
+) {
+  const owner = await db.owner.create({
+    data: { email: ownerEmail, passwordHash: "x" },
+  });
   const merchant = await db.merchant.create({
     data: {
       slug: crypto.randomUUID(),
@@ -82,7 +88,11 @@ async function seedProduct(ownerEmail: string, domain: string, affiliateEmail: s
       links: { create: { code: crypto.randomUUID(), isPrimary: true } },
     },
   });
-  return { ownerId: owner.id, merchantId: merchant.id, affiliateId: affiliate.id };
+  return {
+    ownerId: owner.id,
+    merchantId: merchant.id,
+    affiliateId: affiliate.id,
+  };
 }
 
 describe.skipIf(!hasDatabase)("affiliatePassword", () => {
@@ -91,8 +101,16 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
 
   beforeEach(async () => {
     await clearAll();
-    mine = await seedProduct("affpw-owner@example.com", "affpw-mine.example.com", "sarah@example.com");
-    other = await seedProduct("affpw-other@example.com", "affpw-other.example.com", "tom@example.com");
+    mine = await seedProduct(
+      "affpw-owner@example.com",
+      "affpw-mine.example.com",
+      "sarah@example.com",
+    );
+    other = await seedProduct(
+      "affpw-other@example.com",
+      "affpw-other.example.com",
+      "tom@example.com",
+    );
   });
 
   afterAll(async () => {
@@ -102,24 +120,52 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
 
   describe("createAffiliateResetLink", () => {
     it("refuses an Affiliate that belongs to another Owner", async () => {
-      expect(await createAffiliateResetLink(mine.ownerId, other.merchantId, other.affiliateId)).toBeNull();
+      expect(
+        await createAffiliateResetLink(
+          mine.ownerId,
+          other.merchantId,
+          other.affiliateId,
+        ),
+      ).toBeNull();
       expect(await db.affiliateLoginToken.count()).toBe(0);
     });
 
     it("refuses an Affiliate from another product of the same Owner", async () => {
-      expect(await createAffiliateResetLink(mine.ownerId, mine.merchantId, other.affiliateId)).toBeNull();
+      expect(
+        await createAffiliateResetLink(
+          mine.ownerId,
+          mine.merchantId,
+          other.affiliateId,
+        ),
+      ).toBeNull();
       expect(await db.affiliateLoginToken.count()).toBe(0);
     });
 
     it("voids the earlier link, so only the newest copy works", async () => {
-      const first = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
-      const second = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const first = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
+      const second = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
       expect(first).toBeTruthy();
       expect(second).toBeTruthy();
-      expect(await db.affiliateLoginToken.count({ where: { affiliateId: mine.affiliateId } })).toBe(1);
+      expect(
+        await db.affiliateLoginToken.count({
+          where: { affiliateId: mine.affiliateId },
+        }),
+      ).toBe(1);
 
-      expect(await redeemAffiliateResetLink(first!, mine.merchantId, PASSWORD)).toBeNull();
-      expect(await redeemAffiliateResetLink(second!, mine.merchantId, PASSWORD)).toEqual({
+      expect(
+        await redeemAffiliateResetLink(first!, mine.merchantId, PASSWORD),
+      ).toBeNull();
+      expect(
+        await redeemAffiliateResetLink(second!, mine.merchantId, PASSWORD),
+      ).toEqual({
         email: "sarah@example.com",
       });
     });
@@ -127,47 +173,99 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
 
   describe("redeemAffiliateResetLink", () => {
     it("sets the password once and refuses the same link afterwards", async () => {
-      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
 
-      expect(await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD)).toEqual({
+      expect(
+        await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD),
+      ).toEqual({
         email: "sarah@example.com",
       });
-      const affiliate = await findAffiliateForLogin(mine.merchantId, "sarah@example.com");
+      const affiliate = await findAffiliateForLogin(
+        mine.merchantId,
+        "sarah@example.com",
+      );
       expect(await checkAffiliatePassword(affiliate, PASSWORD)).toEqual({
         id: mine.affiliateId,
         email: "sarah@example.com",
       });
 
-      expect(await redeemAffiliateResetLink(link!, mine.merchantId, "another password here")).toBeNull();
-      const after = await findAffiliateForLogin(mine.merchantId, "sarah@example.com");
+      expect(
+        await redeemAffiliateResetLink(
+          link!,
+          mine.merchantId,
+          "another password here",
+        ),
+      ).toBeNull();
+      const after = await findAffiliateForLogin(
+        mine.merchantId,
+        "sarah@example.com",
+      );
       expect(after?.passwordHash).toBe(affiliate?.passwordHash);
     });
 
     it("refuses an expired link", async () => {
-      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
-      await db.affiliateLoginToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+      const link = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
+      await db.affiliateLoginToken.updateMany({
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
 
-      expect(await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD)).toBeNull();
-      expect((await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))?.passwordHash).toBeNull();
+      expect(
+        await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD),
+      ).toBeNull();
+      expect(
+        (await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))
+          ?.passwordHash,
+      ).toBeNull();
     });
 
     it("refuses a link opened on another product", async () => {
-      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
 
-      expect(await redeemAffiliateResetLink(link!, other.merchantId, PASSWORD)).toBeNull();
-      expect((await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))?.passwordHash).toBeNull();
+      expect(
+        await redeemAffiliateResetLink(link!, other.merchantId, PASSWORD),
+      ).toBeNull();
+      expect(
+        (await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))
+          ?.passwordHash,
+      ).toBeNull();
     });
 
     it("refuses an unknown link", async () => {
-      expect(await redeemAffiliateResetLink("not-a-real-token", mine.merchantId, PASSWORD)).toBeNull();
+      expect(
+        await redeemAffiliateResetLink(
+          "not-a-real-token",
+          mine.merchantId,
+          PASSWORD,
+        ),
+      ).toBeNull();
     });
 
     it("lets only one of two concurrent submits of the same link through", async () => {
-      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(
+        mine.ownerId,
+        mine.merchantId,
+        mine.affiliateId,
+      );
 
       const results = await Promise.all([
         redeemAffiliateResetLink(link!, mine.merchantId, "first password here"),
-        redeemAffiliateResetLink(link!, mine.merchantId, "second password here"),
+        redeemAffiliateResetLink(
+          link!,
+          mine.merchantId,
+          "second password here",
+        ),
       ]);
       expect(results.filter((r) => r !== null)).toHaveLength(1);
     });
@@ -179,17 +277,25 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
         where: { id: mine.affiliateId },
         data: { passwordHash: await hashPassword(PASSWORD) },
       });
-      const affiliate = await findAffiliateForLogin(mine.merchantId, "Sarah@Example.com");
+      const affiliate = await findAffiliateForLogin(
+        mine.merchantId,
+        "Sarah@Example.com",
+      );
 
       expect(await checkAffiliatePassword(affiliate, PASSWORD)).toEqual({
         id: mine.affiliateId,
         email: "sarah@example.com",
       });
-      expect(await checkAffiliatePassword(affiliate, "wrong password here")).toBeNull();
+      expect(
+        await checkAffiliatePassword(affiliate, "wrong password here"),
+      ).toBeNull();
     });
 
     it("refuses an Affiliate with no password yet", async () => {
-      const affiliate = await findAffiliateForLogin(mine.merchantId, "sarah@example.com");
+      const affiliate = await findAffiliateForLogin(
+        mine.merchantId,
+        "sarah@example.com",
+      );
       expect(affiliate?.passwordHash).toBeNull();
       expect(await checkAffiliatePassword(affiliate, PASSWORD)).toBeNull();
     });
@@ -205,7 +311,11 @@ describe.skipIf(!hasDatabase)("affiliateSessionIsCurrent", () => {
 
   beforeEach(async () => {
     await clearAll();
-    mine = await seedProduct("affsess-owner@example.com", "affsess-mine.example.com", "sarah@example.com");
+    mine = await seedProduct(
+      "affsess-owner@example.com",
+      "affsess-mine.example.com",
+      "sarah@example.com",
+    );
   });
 
   afterAll(async () => {
@@ -217,37 +327,67 @@ describe.skipIf(!hasDatabase)("affiliateSessionIsCurrent", () => {
 
   it("accepts any session when the password has never been replaced", async () => {
     expect(
-      await affiliateSessionIsCurrent(mine.affiliateId, seconds(new Date(Date.now() - 86_400_000)))
+      await affiliateSessionIsCurrent(
+        mine.affiliateId,
+        seconds(new Date(Date.now() - 86_400_000)),
+      ),
     ).toBe(true);
   });
 
   it("stamps the replacement, and refuses a session from before it while keeping one from after", async () => {
     const issuedBefore = seconds(new Date(Date.now() - 60_000));
-    const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+    const link = await createAffiliateResetLink(
+      mine.ownerId,
+      mine.merchantId,
+      mine.affiliateId,
+    );
     await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD);
 
-    const stamped = (await db.affiliate.findUnique({ where: { id: mine.affiliateId } }))?.passwordChangedAt;
+    const stamped = (
+      await db.affiliate.findUnique({ where: { id: mine.affiliateId } })
+    )?.passwordChangedAt;
     expect(stamped).toBeInstanceOf(Date);
     expect(Date.now() - stamped!.getTime()).toBeLessThan(60_000);
 
-    expect(await affiliateSessionIsCurrent(mine.affiliateId, issuedBefore)).toBe(false);
-    expect(await affiliateSessionIsCurrent(mine.affiliateId, seconds(new Date(Date.now() + 1000)))).toBe(true);
+    expect(
+      await affiliateSessionIsCurrent(mine.affiliateId, issuedBefore),
+    ).toBe(false);
+    expect(
+      await affiliateSessionIsCurrent(
+        mine.affiliateId,
+        seconds(new Date(Date.now() + 1000)),
+      ),
+    ).toBe(true);
   });
 
   it("keeps the session a password link starts, which is issued within the second of the change", async () => {
     const changedAt = new Date("2026-10-25T10:00:00.900Z");
-    await db.affiliate.update({ where: { id: mine.affiliateId }, data: { passwordChangedAt: changedAt } });
+    await db.affiliate.update({
+      where: { id: mine.affiliateId },
+      data: { passwordChangedAt: changedAt },
+    });
 
-    expect(await affiliateSessionIsCurrent(mine.affiliateId, seconds(changedAt))).toBe(true);
-    expect(await affiliateSessionIsCurrent(mine.affiliateId, seconds(changedAt) - 1)).toBe(false);
+    expect(
+      await affiliateSessionIsCurrent(mine.affiliateId, seconds(changedAt)),
+    ).toBe(true);
+    expect(
+      await affiliateSessionIsCurrent(mine.affiliateId, seconds(changedAt) - 1),
+    ).toBe(false);
   });
 
   it("refuses a token with no issued-at once the password has been replaced", async () => {
-    await db.affiliate.update({ where: { id: mine.affiliateId }, data: { passwordChangedAt: new Date() } });
-    expect(await affiliateSessionIsCurrent(mine.affiliateId, undefined)).toBe(false);
+    await db.affiliate.update({
+      where: { id: mine.affiliateId },
+      data: { passwordChangedAt: new Date() },
+    });
+    expect(await affiliateSessionIsCurrent(mine.affiliateId, undefined)).toBe(
+      false,
+    );
   });
 
   it("refuses a session for an Affiliate that no longer exists", async () => {
-    expect(await affiliateSessionIsCurrent("no-such-affiliate", seconds(new Date()))).toBe(false);
+    expect(
+      await affiliateSessionIsCurrent("no-such-affiliate", seconds(new Date())),
+    ).toBe(false);
   });
 });

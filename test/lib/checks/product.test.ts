@@ -22,21 +22,28 @@ if (process.env.DATABASE_URL) {
 
 if (!hasDatabase) {
   console.warn(
-    "Skipping test/lib/checks/product.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/checks/product.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
 const ok = { ok: true, detail: "ok" };
 const no = { ok: false, detail: "no" };
 
-const ALL_SECTIONS = new Set(["dns", PaymentProvider.STRIPE.id, "tracking"] as const);
+const ALL_SECTIONS = new Set([
+  "dns",
+  PaymentProvider.STRIPE.id,
+  "tracking",
+] as const);
 
 async function clearTestMerchant() {
   const merchant = await db.merchant.findUnique({
     where: { domain: "affiliates.c.test" },
     select: { id: true },
   });
-  if (merchant) await db.paymentConnection.deleteMany({ where: { merchantId: merchant.id } });
+  if (merchant)
+    await db.paymentConnection.deleteMany({
+      where: { merchantId: merchant.id },
+    });
   await db.merchant.deleteMany({ where: { domain: "affiliates.c.test" } });
 }
 
@@ -61,7 +68,9 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
   });
 
   it("reports every light from injected checks and skips credentials that are not on file", async () => {
-    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const owner = await db.owner.create({
+      data: { email: "c@example.com", passwordHash: "x" },
+    });
     const merchant = await createMerchant(owner.id, {
       name: "C",
       domain: "affiliates.c.test",
@@ -92,7 +101,10 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     // The webhook check is owner-scoped, so it has to be handed the owner.
     expect(webhookArgs).toEqual([[owner.id, merchant.id]]);
 
-    await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
+    await connectStripe(owner.id, merchant.id, {
+      secretKey: "rk_test_1",
+      webhookSecret: "whsec_1",
+    });
     // Credentials that were not there a moment ago, so every section is asked
     // for fresh rather than served from the run above.
     const after = await runProductChecks(owner.id, merchant.id, {
@@ -110,13 +122,18 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
   });
 
   it("runs every section on a cold cache and only the named ones on a warm one", async () => {
-    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const owner = await db.owner.create({
+      data: { email: "c@example.com", passwordHash: "x" },
+    });
     const merchant = await createMerchant(owner.id, {
       name: "C",
       domain: "affiliates.c.test",
       websiteUrl: "https://c.test",
     });
-    await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
+    await connectStripe(owner.id, merchant.id, {
+      secretKey: "rk_test_1",
+      webhookSecret: "whsec_1",
+    });
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
     const calls: string[] = [];
@@ -144,7 +161,10 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     };
 
     // Cold: this product has never been checked in this process.
-    await runProductChecks(owner.id, merchant.id, { fresh: new Set(["tracking"] as const), overrides });
+    await runProductChecks(owner.id, merchant.id, {
+      fresh: new Set(["tracking"] as const),
+      overrides,
+    });
     expect(calls.sort()).toEqual([
       "httpsReachable",
       "resolvesTo",
@@ -178,13 +198,18 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
   });
 
   it("expires each section on its own clock, so polling one does not keep the rest alive", async () => {
-    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const owner = await db.owner.create({
+      data: { email: "c@example.com", passwordHash: "x" },
+    });
     const merchant = await createMerchant(owner.id, {
       name: "C",
       domain: "affiliates.c.test",
       websiteUrl: "https://c.test",
     });
-    await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
+    await connectStripe(owner.id, merchant.id, {
+      secretKey: "rk_test_1",
+      webhookSecret: "whsec_1",
+    });
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
     const calls: string[] = [];
@@ -216,12 +241,20 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     const now = () => clock;
 
     // Warms every section.
-    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
+    await runProductChecks(owner.id, merchant.id, {
+      fresh: tracking,
+      overrides,
+      now,
+    });
 
     // Still inside the minute: only the tracking section runs.
     calls.length = 0;
     clock += 30_000;
-    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
+    await runProductChecks(owner.id, merchant.id, {
+      fresh: tracking,
+      overrides,
+      now,
+    });
     expect(calls).toEqual(["scriptFound"]);
 
     // Sixty-one seconds after the first run. The tracking section has been
@@ -230,7 +263,11 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     // tracking poll.
     calls.length = 0;
     clock += 31_000;
-    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
+    await runProductChecks(owner.id, merchant.id, {
+      fresh: tracking,
+      overrides,
+      now,
+    });
     expect(calls.sort()).toEqual([
       "httpsReachable",
       "resolvesTo",
@@ -241,7 +278,9 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
   });
 
   it("degrades one failing check to its own failed result instead of losing every light", async () => {
-    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const owner = await db.owner.create({
+      data: { email: "c@example.com", passwordHash: "x" },
+    });
     const merchant = await createMerchant(owner.id, {
       name: "C",
       domain: "affiliates.c.test",
@@ -292,6 +331,8 @@ describe("background runs", () => {
   });
 
   it("reads its placeholder as a wait, never as a failure", () => {
-    expect(checkState({ ok: false, detail: NOT_LOOKED_YET }, () => false)).toBe("pending");
+    expect(checkState({ ok: false, detail: NOT_LOOKED_YET }, () => false)).toBe(
+      "pending",
+    );
   });
 });

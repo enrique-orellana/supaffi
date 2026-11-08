@@ -11,7 +11,12 @@ export function useCopy(timeoutMs = 1800): [boolean, (value: string) => void] {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   const copy = useCallback(
     (value: string) => {
@@ -20,7 +25,7 @@ export function useCopy(timeoutMs = 1800): [boolean, (value: string) => void] {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), timeoutMs);
     },
-    [timeoutMs]
+    [timeoutMs],
   );
 
   return [copied, copy];

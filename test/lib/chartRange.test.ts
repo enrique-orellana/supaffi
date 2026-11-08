@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { bucketKey, currenciesByUse, isChartRange, pickCurrency, rangeLabel, resolveRange } from "@/lib/analytics";
+import {
+  bucketKey,
+  currenciesByUse,
+  isChartRange,
+  pickCurrency,
+  rangeLabel,
+  resolveRange,
+} from "@/lib/analytics";
 
 // Pure, no database: the windows the range picker offers, in UTC.
 const NOW = new Date("2026-09-12T14:35:00Z"); // a Saturday
@@ -27,8 +34,12 @@ describe("resolveRange", () => {
   });
 
   it("seven and thirty days include today", () => {
-    expect(resolveRange("7d", NOW, STARTED).since.toISOString()).toBe("2026-09-06T00:00:00.000Z");
-    expect(resolveRange("30d", NOW, STARTED).since.toISOString()).toBe("2026-08-14T00:00:00.000Z");
+    expect(resolveRange("7d", NOW, STARTED).since.toISOString()).toBe(
+      "2026-09-06T00:00:00.000Z",
+    );
+    expect(resolveRange("30d", NOW, STARTED).since.toISOString()).toBe(
+      "2026-08-14T00:00:00.000Z",
+    );
   });
 
   it("twelve months are months, from the first of the month eleven back", () => {
@@ -77,7 +88,12 @@ describe("range names", () => {
 });
 
 describe("currency choice", () => {
-  const day = (amounts: Record<string, { gross: number; commission: number; sales: number }>) => ({
+  const day = (
+    amounts: Record<
+      string,
+      { gross: number; commission: number; sales: number }
+    >,
+  ) => ({
     date: "2026-09-01",
     clicks: 0,
     conversions: 0,

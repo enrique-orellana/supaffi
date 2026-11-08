@@ -22,14 +22,20 @@ export type AttentionItem = {
  * two coloured badges beside two numbers would split the eye three ways.
  * Only a genuine problem, a flagged commission, is allowed a colour.
  */
-export function Attention({ items, className }: { items: AttentionItem[]; className?: string }) {
+export function Attention({
+  items,
+  className,
+}: {
+  items: AttentionItem[];
+  className?: string;
+}) {
   if (items.length === 0) return null;
 
   return (
     <section
       className={cn(
         "shrink-0 rounded-(--radius) border border-border bg-elevated",
-        className
+        className,
       )}
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-3">
@@ -38,7 +44,12 @@ export function Attention({ items, className }: { items: AttentionItem[]; classN
         </span>
         <h2 className="text-sm font-medium">Needs your attention</h2>
       </div>
-      <ul className={cn("grid gap-px bg-neutral-200/70", items.length > 1 ? "xl:grid-cols-2" : "")}>
+      <ul
+        className={cn(
+          "grid gap-px bg-neutral-200/70",
+          items.length > 1 ? "xl:grid-cols-2" : "",
+        )}
+      >
         {items.map((item) => (
           <li key={item.href} className="bg-elevated">
             <Link
@@ -50,16 +61,23 @@ export function Attention({ items, className }: { items: AttentionItem[]; classN
                   "flex size-10 shrink-0 items-center justify-center rounded-(--radius) border",
                   item.urgent
                     ? "border-status-danger/20 bg-status-danger-bg text-status-danger"
-                    : "border-border bg-neutral-50 text-neutral-700"
+                    : "border-border bg-neutral-50 text-neutral-700",
                 )}
               >
                 <item.icon className="size-[18px]" />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cn("truncate text-sm font-medium", item.urgent && "text-status-danger")}>
+                <span
+                  className={cn(
+                    "truncate text-sm font-medium",
+                    item.urgent && "text-status-danger",
+                  )}
+                >
                   {item.title}
                 </span>
-                <span className="truncate text-[12.5px] text-muted-foreground">{item.detail}</span>
+                <span className="truncate text-[12.5px] text-muted-foreground">
+                  {item.detail}
+                </span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-neutral-400 transition-transform duration-150 ease-(--ease-out) group-hover:translate-x-0.5" />
             </Link>

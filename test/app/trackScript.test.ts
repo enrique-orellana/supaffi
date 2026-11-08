@@ -6,7 +6,10 @@ import vm from "node:vm";
 
 import { db } from "@/lib/db";
 import { GET } from "@/app/track.js/route";
-import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE } from "@/lib/referral";
+import {
+  REFERRAL_CLIENT_REFERENCE_PREFIX,
+  REFERRAL_COOKIE,
+} from "@/lib/referral";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -27,7 +30,10 @@ async function clear() {
 
 async function seedMerchant(domain = DOMAIN) {
   const owner = await db.owner.create({
-    data: { email: `track-script-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `track-script-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
   return db.merchant.create({
     data: {
@@ -41,7 +47,11 @@ async function seedMerchant(domain = DOMAIN) {
 }
 
 function serve(host: string, headers: Record<string, string> = {}) {
-  return GET(new NextRequest("http://c0ffee1234ab:3000/track.js", { headers: { host, ...headers } }));
+  return GET(
+    new NextRequest("http://c0ffee1234ab:3000/track.js", {
+      headers: { host, ...headers },
+    }),
+  );
 }
 
 async function script(): Promise<string> {
@@ -57,7 +67,10 @@ class FakeEl {
   children: FakeEl[] = [];
   attrs = new Map<string, string>();
   shadowRoot: object | null = null;
-  constructor(public tagName: string, attrs: Record<string, string> = {}) {
+  constructor(
+    public tagName: string,
+    attrs: Record<string, string> = {},
+  ) {
     for (const [k, v] of Object.entries(attrs)) this.attrs.set(k, v);
   }
   get firstChild() {
@@ -96,7 +109,8 @@ class FakeEl {
       if (!m) throw new Error(`unsupported selector: ${part}`);
       const [, tag, attr, value] = m;
       return (el: FakeEl) =>
-        el.tagName.toLowerCase() === tag && (!attr || (el.attrs.get(attr) ?? "").includes(value));
+        el.tagName.toLowerCase() === tag &&
+        (!attr || (el.attrs.get(attr) ?? "").includes(value));
     });
     const out: FakeEl[] = [];
     const walk = (el: FakeEl) => {
@@ -134,7 +148,10 @@ async function runOn(
   rootEl = new FakeEl("html");
   const body = rootEl.appendChild(new FakeEl("body"));
   opts.build?.(body);
-  const listeners: Array<{ type: string; fn: (e: { target: FakeEl }) => void }> = [];
+  const listeners: Array<{
+    type: string;
+    fn: (e: { target: FakeEl }) => void;
+  }> = [];
   // A blocked write (a consent tool wrapping document.cookie) is dropped by the
   // setter; the test's own changes go through `jar` directly.
   let jar = opts.cookie ?? "";
@@ -146,7 +163,8 @@ async function runOn(
     set cookie(v: string) {
       if (!opts.blockCookieWrites) jar = v;
     },
-    addEventListener: (type: string, fn: (e: { target: FakeEl }) => void) => listeners.push({ type, fn }),
+    addEventListener: (type: string, fn: (e: { target: FakeEl }) => void) =>
+      listeners.push({ type, fn }),
   };
   const sandbox: Record<string, unknown> = {
     document,
@@ -158,7 +176,9 @@ async function runOn(
       }
       observe() {}
     },
-    fetch: opts.fetchImpl ?? (async () => jsonResponse({ referralToken: "fresh_token" })),
+    fetch:
+      opts.fetchImpl ??
+      (async () => jsonResponse({ referralToken: "fresh_token" })),
     console: opts.consoleImpl ?? console,
     setTimeout,
     clearTimeout,
@@ -166,7 +186,11 @@ async function runOn(
     TextEncoder,
     Uint8Array,
   };
-  sandbox.location = { search: opts.search ?? "", protocol: "https:", origin: "https://acme.test" };
+  sandbox.location = {
+    search: opts.search ?? "",
+    protocol: "https:",
+    origin: "https://acme.test",
+  };
   // In a browser, window.fetch and the global fetch binding are the same
   // function. Use one object in the VM so a wrapper behaves the same way.
   sandbox.window = sandbox;
@@ -187,7 +211,10 @@ async function runOn(
     setCookie: (cookie: string) => {
       jar = cookie;
     },
-    fetch: sandbox.fetch as (input: string | URL, init?: RequestInit) => Promise<unknown>,
+    fetch: sandbox.fetch as (
+      input: string | URL,
+      init?: RequestInit,
+    ) => Promise<unknown>,
   };
 }
 
@@ -202,19 +229,25 @@ type FakeResponse = {
 
 function jsonResponse(
   value: unknown,
-  sourceHeaders: Record<string, string> = { "content-type": "application/json" },
-  status = 200
+  sourceHeaders: Record<string, string> = {
+    "content-type": "application/json",
+  },
+  status = 200,
 ): FakeResponse {
   const responseHeaders = Object.fromEntries(
-    Object.entries(sourceHeaders).map(([name, headerValue]) => [name.toLowerCase(), headerValue])
+    Object.entries(sourceHeaders).map(([name, headerValue]) => [
+      name.toLowerCase(),
+      headerValue,
+    ]),
   );
   const bodyText = JSON.stringify(value);
-  const makeBody = () => new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new TextEncoder().encode(bodyText));
-      controller.close();
-    },
-  });
+  const makeBody = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(bodyText));
+        controller.close();
+      },
+    });
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -227,11 +260,16 @@ function jsonResponse(
 
 function streamedResponse(
   makeBody: () => ReadableStream<Uint8Array>,
-  sourceHeaders: Record<string, string> = { "content-type": "application/json" },
-  status = 200
+  sourceHeaders: Record<string, string> = {
+    "content-type": "application/json",
+  },
+  status = 200,
 ): FakeResponse {
   const responseHeaders = Object.fromEntries(
-    Object.entries(sourceHeaders).map(([name, headerValue]) => [name.toLowerCase(), headerValue])
+    Object.entries(sourceHeaders).map(([name, headerValue]) => [
+      name.toLowerCase(),
+      headerValue,
+    ]),
   );
   return {
     ok: status >= 200 && status < 300,
@@ -239,13 +277,16 @@ function streamedResponse(
     headers: { get: (name) => responseHeaders[name.toLowerCase()] ?? null },
     body: makeBody(),
     clone: () => streamedResponse(makeBody, sourceHeaders, status),
-    json: async () => { throw new Error("streamed fixture body should not be parsed via json()"); },
+    json: async () => {
+      throw new Error("streamed fixture body should not be parsed via json()");
+    },
   };
 }
 
 const HELD = `${REFERRAL_COOKIE}=held_token`;
 const REF = REFERRAL_CLIENT_REFERENCE_PREFIX;
-const stripeLink = (href = "https://buy.stripe.com/test_abc") => new FakeEl("a", { href });
+const stripeLink = (href = "https://buy.stripe.com/test_abc") =>
+  new FakeEl("a", { href });
 
 describe.skipIf(!hasDatabase)("track.js", () => {
   beforeEach(clear);
@@ -273,7 +314,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     // tracking would fail in a way nobody can see. The script decides on the
     // page it actually runs on, not on the scheme this route was served over.
     const code = await script();
-    expect(code).toContain('window.location.protocol === "https:" ? "; Secure" : ""');
+    expect(code).toContain(
+      'window.location.protocol === "https:" ? "; Secure" : ""',
+    );
   });
 
   it("bakes in the Merchant's stored domain, not the address this process answers on", async () => {
@@ -287,7 +330,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
   it("ignores X-Forwarded-Proto, which a request can set to anything", async () => {
     await seedMerchant();
-    const code = await (await serve(DOMAIN, { "x-forwarded-proto": 'x";alert(1);//' })).text();
+    const code = await (
+      await serve(DOMAIN, { "x-forwarded-proto": 'x";alert(1);//' })
+    ).text();
     expect(code).not.toContain("alert");
     expect(code).toContain('"https://affiliates.acme.test/api/track?"');
   });
@@ -313,19 +358,33 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
   it("tags a Payment Link with the referral", async () => {
     const link = stripeLink();
-    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
   });
 
   it("keeps a client_reference_id the Merchant already set", async () => {
-    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=user_42");
-    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("user_42");
+    const link = stripeLink(
+      "https://buy.stripe.com/test_abc?client_reference_id=user_42",
+    );
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      "user_42",
+    );
   });
 
   it("leaves links to anywhere else alone", async () => {
     const other = new FakeEl("a", { href: "https://example.com/pay" });
-    const lookalike = new FakeEl("a", { href: "https://example.com/?u=buy.stripe.com" });
+    const lookalike = new FakeEl("a", {
+      href: "https://example.com/?u=buy.stripe.com",
+    });
     await runOn(await script(), {
       cookie: HELD,
       build: (b) => {
@@ -334,13 +393,17 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
     expect(other.getAttribute("href")).toBe("https://example.com/pay");
-    expect(lookalike.getAttribute("href")).toBe("https://example.com/?u=buy.stripe.com");
+    expect(lookalike.getAttribute("href")).toBe(
+      "https://example.com/?u=buy.stripe.com",
+    );
   });
 
   it("tags the buy button and the pricing table, and keeps one the Merchant set", async () => {
     const button = new FakeEl("stripe-buy-button");
     const table = new FakeEl("stripe-pricing-table");
-    const own = new FakeEl("stripe-buy-button", { "client-reference-id": "user_42" });
+    const own = new FakeEl("stripe-buy-button", {
+      "client-reference-id": "user_42",
+    });
     await runOn(await script(), {
       cookie: HELD,
       build: (b) => [button, table, own].forEach((el) => b.appendChild(el)),
@@ -353,16 +416,23 @@ describe.skipIf(!hasDatabase)("track.js", () => {
   it("sets the attribute on an embed that had already rendered, without replacing it", async () => {
     const rendered = new FakeEl("stripe-buy-button");
     rendered.shadowRoot = {};
-    const { body } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(rendered) });
+    const { body } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(rendered),
+    });
     expect(body.children[0]).toBe(rendered);
-    expect(rendered.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(rendered.getAttribute("client-reference-id")).toBe(
+      `${REF}held_token`,
+    );
   });
 
   it("looks up exactly the anchors and the two Stripe components", async () => {
     // The fake DOM only understands this selector, so a typo in the script's
     // selector fails the other tests; this pins what it is meant to match.
     const code = await script();
-    expect(code).toContain(`'a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table'`);
+    expect(code).toContain(
+      `'a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table'`,
+    );
   });
 
   it("tags elements added after the script ran", async () => {
@@ -373,28 +443,46 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     wrapper.appendChild(button);
     body.appendChild(link);
     body.appendChild(wrapper);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
     expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
   });
 
   it("tags a link whose href changed after load when it is clicked", async () => {
     const link = stripeLink();
-    const { click } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    const { click } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
     link.href = "https://buy.stripe.com/test_other";
     click(link);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
   });
 
   it("tags on a page without ?via= from the held cookie", async () => {
     const link = stripeLink();
-    await runOn(await script(), { cookie: `a=1; ${HELD}`, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    await runOn(await script(), {
+      cookie: `a=1; ${HELD}`,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
   });
 
   it("uses the fresh token from ?via= rather than the held one", async () => {
     const link = stripeLink();
-    await runOn(await script(), { search: "?via=sarah", cookie: HELD, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}fresh_token`,
+    );
   });
 
   it("tags nothing when no token is known", async () => {
@@ -411,26 +499,47 @@ describe.skipIf(!hasDatabase)("track.js", () => {
   });
 
   it("replaces an older affiliate's token in a link, including at click time", async () => {
-    const link = stripeLink(`https://buy.stripe.com/test_abc?client_reference_id=${REF}old_token`);
-    const { click, setCookie } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    const link = stripeLink(
+      `https://buy.stripe.com/test_abc?client_reference_id=${REF}old_token`,
+    );
+    const { click, setCookie } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
     setCookie(`${REFERRAL_COOKIE}=newer_token`);
     click(link);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}newer_token`,
+    );
   });
 
   it("keeps every other query parameter when it swaps the token", async () => {
-    const link = stripeLink(`https://buy.stripe.com/test_abc?prefilled_email=a%40b.co&client_reference_id=${REF}old_token`);
-    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    const link = stripeLink(
+      `https://buy.stripe.com/test_abc?prefilled_email=a%40b.co&client_reference_id=${REF}old_token`,
+    );
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
     const params = new URL(link.href).searchParams;
     expect(params.get("prefilled_email")).toBe("a@b.co");
     expect(params.get("client_reference_id")).toBe(`${REF}held_token`);
   });
 
   it("replaces an older affiliate's token on the embeds", async () => {
-    const button = new FakeEl("stripe-buy-button", { "client-reference-id": `${REF}old_token` });
-    const table = new FakeEl("stripe-pricing-table", { "client-reference-id": `${REF}old_token` });
-    await runOn(await script(), { cookie: HELD, build: (b) => [button, table].forEach((el) => b.appendChild(el)) });
+    const button = new FakeEl("stripe-buy-button", {
+      "client-reference-id": `${REF}old_token`,
+    });
+    const table = new FakeEl("stripe-pricing-table", {
+      "client-reference-id": `${REF}old_token`,
+    });
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [button, table].forEach((el) => b.appendChild(el)),
+    });
     expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
     expect(table.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
   });
@@ -443,13 +552,21 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       build: (b) => [link, button].forEach((el) => b.appendChild(el)),
     });
     returnWith(`${REFERRAL_COOKIE}=newer_token`);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
-    expect(button.getAttribute("client-reference-id")).toBe(`${REF}newer_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}newer_token`,
+    );
+    expect(button.getAttribute("client-reference-id")).toBe(
+      `${REF}newer_token`,
+    );
   });
 
   it("does not touch a Merchant's own value when the visitor comes back", async () => {
-    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=user_42");
-    const own = new FakeEl("stripe-pricing-table", { "client-reference-id": "user_42" });
+    const link = stripeLink(
+      "https://buy.stripe.com/test_abc?client_reference_id=user_42",
+    );
+    const own = new FakeEl("stripe-pricing-table", {
+      "client-reference-id": "user_42",
+    });
     const { returnWith, click, setCookie } = await runOn(await script(), {
       cookie: HELD,
       build: (b) => [link, own].forEach((el) => b.appendChild(el)),
@@ -457,7 +574,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     returnWith(`${REFERRAL_COOKIE}=newer_token`);
     setCookie(`${REFERRAL_COOKIE}=newest_token`);
     click(link);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("user_42");
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      "user_42",
+    );
     expect(own.getAttribute("client-reference-id")).toBe("user_42");
   });
 
@@ -472,11 +591,17 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       blockCookieWrites: true,
       build: (b) => [link, button].forEach((el) => b.appendChild(el)),
     });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}fresh_token`,
+    );
     click(link);
     returnWith(HELD);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
-    expect(button.getAttribute("client-reference-id")).toBe(`${REF}fresh_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}fresh_token`,
+    );
+    expect(button.getAttribute("client-reference-id")).toBe(
+      `${REF}fresh_token`,
+    );
   });
 
   it("still follows a genuinely newer cookie after a ?via= click", async () => {
@@ -489,12 +614,18 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     });
     setCookie(`${REFERRAL_COOKIE}=newer_token`);
     click(link);
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}newer_token`,
+    );
   });
 
   it("writes nothing when the token is already current", async () => {
-    const link = stripeLink(`https://buy.stripe.com/test_abc?client_reference_id=${REF}held_token`);
-    const button = new FakeEl("stripe-buy-button", { "client-reference-id": `${REF}held_token` });
+    const link = stripeLink(
+      `https://buy.stripe.com/test_abc?client_reference_id=${REF}held_token`,
+    );
+    const button = new FakeEl("stripe-buy-button", {
+      "client-reference-id": `${REF}held_token`,
+    });
     let writes = 0;
     button.setAttribute = () => {
       writes++;
@@ -526,13 +657,16 @@ describe.skipIf(!hasDatabase)("track.js", () => {
         const url = new URL(String(input), "https://acme.test");
         calls.push({ url: url.href, init });
         if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
-        if (url.pathname === "/api/track/checkout-attribution") return registrationPending;
+        if (url.pathname === "/api/track/checkout-attribution")
+          return registrationPending;
         throw new Error(`unexpected fetch ${url.href}`);
       },
     });
 
     let checkoutResolved = false;
-    const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" }).then((response) => {
+    const checkoutPromise = pageFetch("/api/commerce/checkouts", {
+      method: "POST",
+    }).then((response) => {
       checkoutResolved = true;
       return response;
     });
@@ -540,8 +674,14 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
     expect(checkoutResolved).toBe(false);
     expect(calls).toHaveLength(2);
-    expect(calls[1].url).toBe("https://affiliates.acme.test/api/track/checkout-attribution");
-    expect(calls[1].init).toMatchObject({ method: "POST", credentials: "omit", keepalive: true });
+    expect(calls[1].url).toBe(
+      "https://affiliates.acme.test/api/track/checkout-attribution",
+    );
+    expect(calls[1].init).toMatchObject({
+      method: "POST",
+      credentials: "omit",
+      keepalive: true,
+    });
     expect(JSON.parse(String(calls[1].init?.body))).toEqual({
       provider: "nowpayments",
       checkoutReference: "4522625843",
@@ -549,9 +689,12 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     });
 
     releaseRegistration(jsonResponse({}));
-    const returned = await checkoutPromise as FakeResponse;
+    const returned = (await checkoutPromise) as FakeResponse;
     expect(returned).toBe(checkoutResponse);
-    expect(await returned.json()).toMatchObject({ checkout_id: "chk_1", status: "pending" });
+    expect(await returned.json()).toMatchObject({
+      checkout_id: "chk_1",
+      status: "pending",
+    });
   });
 
   it("fails open when checkout attribution registration fails", async () => {
@@ -568,11 +711,15 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      checkoutResponse,
+    );
   });
 
   it("does not inspect checkout responses without a referral cookie", async () => {
-    const checkoutResponse = jsonResponse({ checkout_url: "https://nowpayments.io/payment/?iid=4522625843" });
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+    });
     let calls = 0;
     const { fetch: pageFetch } = await runOn(await script(), {
       fetchImpl: async () => {
@@ -581,7 +728,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      checkoutResponse,
+    );
     expect(calls).toBe(1);
   });
 
@@ -598,7 +747,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      checkoutResponse,
+    );
     expect(calls).toBe(1);
   });
 
@@ -615,7 +766,11 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("https://affiliates.acme.test/api/track?via=sarah", { method: "POST" })).toBe(trackingResponse);
+    expect(
+      await pageFetch("https://affiliates.acme.test/api/track?via=sarah", {
+        method: "POST",
+      }),
+    ).toBe(trackingResponse);
     expect(calls).toBe(1);
   });
 
@@ -632,16 +787,22 @@ describe.skipIf(!hasDatabase)("track.js", () => {
         const url = new URL(String(input), "https://acme.test");
         calls.push({ url: url.href, init });
         if (url.origin === "https://api.acme.test") return checkoutResponse;
-        if (url.pathname === "/api/track/checkout-attribution") return jsonResponse({});
+        if (url.pathname === "/api/track/checkout-attribution")
+          return jsonResponse({});
         throw new Error(`unexpected fetch ${url.href}`);
       },
     });
 
-    const returned = await pageFetch("https://api.acme.test/commerce/checkouts", { method: "POST" });
+    const returned = await pageFetch(
+      "https://api.acme.test/commerce/checkouts",
+      { method: "POST" },
+    );
 
     expect(returned).toBe(checkoutResponse);
     expect(calls).toHaveLength(2);
-    expect(calls[1].url).toBe("https://affiliates.acme.test/api/track/checkout-attribution");
+    expect(calls[1].url).toBe(
+      "https://affiliates.acme.test/api/track/checkout-attribution",
+    );
     expect(JSON.parse(String(calls[1].init?.body))).toEqual({
       provider: "nowpayments",
       checkoutReference: "4522625843",
@@ -660,14 +821,16 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("https://api.example.test/create", { method: "POST" })).toBe(checkoutResponse);
+    expect(
+      await pageFetch("https://api.example.test/create", { method: "POST" }),
+    ).toBe(checkoutResponse);
     expect(calls).toBe(1);
   });
 
   it("passes non-JSON responses through without cloning them", async () => {
     const response = jsonResponse(
       { checkout_url: "https://nowpayments.io/payment/?iid=4522625843" },
-      { "content-type": "text/html; charset=utf-8" }
+      { "content-type": "text/html; charset=utf-8" },
     );
     const clone = vi.spyOn(response, "clone");
     let calls = 0;
@@ -679,7 +842,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      response,
+    );
     expect(calls).toBe(1);
     expect(clone).not.toHaveBeenCalled();
   });
@@ -687,7 +852,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
   it("passes declared responses larger than 64 KiB through without cloning them", async () => {
     const response = jsonResponse(
       { checkout_url: "https://nowpayments.io/payment/?iid=4522625843" },
-      { "content-type": "application/json", "content-length": "65537" }
+      { "content-type": "application/json", "content-length": "65537" },
     );
     const clone = vi.spyOn(response, "clone");
     let calls = 0;
@@ -699,75 +864,96 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      response,
+    );
     expect(calls).toBe(1);
     expect(clone).not.toHaveBeenCalled();
   });
 
   it("stops reading an oversized JSON body even when Content-Length is absent", async () => {
     let cancelCalls = 0;
-    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array(64 * 1024 + 1));
-      },
-      cancel() {
-        cancelCalls++;
-      },
-    }));
+    const response = streamedResponse(
+      () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(64 * 1024 + 1));
+          },
+          cancel() {
+            cancelCalls++;
+          },
+        }),
+    );
     let calls = 0;
     const { fetch: pageFetch } = await runOn(await script(), {
       cookie: HELD,
       fetchImpl: async (input) => {
         calls++;
-        return new URL(String(input), "https://acme.test").pathname === "/api/commerce/checkouts"
+        return new URL(String(input), "https://acme.test").pathname ===
+          "/api/commerce/checkouts"
           ? response
           : jsonResponse({});
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(response);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      response,
+    );
     expect(calls).toBe(1);
     expect(cancelCalls).toBe(1);
   });
 
   it("reports response-reader cancellation errors and still passes checkout through", async () => {
     const warn = vi.fn();
-    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array(64 * 1024 + 1));
-      },
-      cancel() {
-        return Promise.reject(new Error("reader cancellation failed"));
-      },
-    }));
+    const response = streamedResponse(
+      () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(64 * 1024 + 1));
+          },
+          cancel() {
+            return Promise.reject(new Error("reader cancellation failed"));
+          },
+        }),
+    );
     const { fetch: pageFetch } = await runOn(await script(), {
       cookie: HELD,
       consoleImpl: { warn },
       fetchImpl: async () => response,
     });
 
-    await expect(pageFetch("/api/checkout", { method: "POST" })).resolves.toBe(response);
+    await expect(pageFetch("/api/checkout", { method: "POST" })).resolves.toBe(
+      response,
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("could not cancel a cloned checkout response reader"));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "could not cancel a cloned checkout response reader",
+      ),
+    );
   });
 
   it("returns the checkout response when response inspection stalls past the total deadline", async () => {
     let cancelCalls = 0;
-    const response = streamedResponse(() => new ReadableStream<Uint8Array>({
-      pull() {
-        return new Promise(() => {});
-      },
-      cancel() {
-        cancelCalls++;
-      },
-    }));
+    const response = streamedResponse(
+      () =>
+        new ReadableStream<Uint8Array>({
+          pull() {
+            return new Promise(() => {});
+          },
+          cancel() {
+            cancelCalls++;
+          },
+        }),
+    );
     let calls = 0;
     const { fetch: pageFetch } = await runOn(await script(), {
       cookie: HELD,
       fetchImpl: async (input) => {
         calls++;
-        return new URL(String(input), "https://acme.test").pathname === "/api/commerce/checkouts"
+        return new URL(String(input), "https://acme.test").pathname ===
+          "/api/commerce/checkouts"
           ? response
           : jsonResponse({});
       },
@@ -775,7 +961,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
     vi.useFakeTimers();
     try {
-      const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" });
+      const checkoutPromise = pageFetch("/api/commerce/checkouts", {
+        method: "POST",
+      });
       await vi.advanceTimersByTimeAsync(1000);
       expect(await checkoutPromise).toBe(response);
       expect(calls).toBe(1);
@@ -786,7 +974,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
   });
 
   it("retries 429 and 5xx attribution responses within the checkout deadline", async () => {
-    const checkoutResponse = jsonResponse({ checkout_url: "https://nowpayments.io/payment/?iid=4522625843" });
+    const checkoutResponse = jsonResponse({
+      checkout_url: "https://nowpayments.io/payment/?iid=4522625843",
+    });
     const calls: string[] = [];
     const registrationStatuses = [429, 503, 200];
     const { fetch: pageFetch } = await runOn(await script(), {
@@ -800,7 +990,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       },
     });
 
-    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(checkoutResponse);
+    expect(await pageFetch("/api/commerce/checkouts", { method: "POST" })).toBe(
+      checkoutResponse,
+    );
     expect(calls).toEqual([
       "/api/commerce/checkouts",
       "/api/track/checkout-attribution",
@@ -824,7 +1016,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
     vi.useFakeTimers();
     try {
-      const checkoutPromise = pageFetch("/api/commerce/checkouts", { method: "POST" });
+      const checkoutPromise = pageFetch("/api/commerce/checkouts", {
+        method: "POST",
+      });
       await vi.advanceTimersByTimeAsync(1000);
       expect(await checkoutPromise).toBe(checkoutResponse);
     } finally {
@@ -833,24 +1027,47 @@ describe.skipIf(!hasDatabase)("track.js", () => {
   });
 
   it("treats an empty client_reference_id as absent and tags the link", async () => {
-    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=");
-    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    const link = stripeLink(
+      "https://buy.stripe.com/test_abc?client_reference_id=",
+    );
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => b.appendChild(link),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      `${REF}held_token`,
+    );
   });
 
   it("treats an empty client-reference-id on an embed as absent and tags it", async () => {
-    const button = new FakeEl("stripe-buy-button", { "client-reference-id": "" });
-    const table = new FakeEl("stripe-pricing-table", { "client-reference-id": "" });
-    await runOn(await script(), { cookie: HELD, build: (b) => [button, table].forEach((el) => b.appendChild(el)) });
+    const button = new FakeEl("stripe-buy-button", {
+      "client-reference-id": "",
+    });
+    const table = new FakeEl("stripe-pricing-table", {
+      "client-reference-id": "",
+    });
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [button, table].forEach((el) => b.appendChild(el)),
+    });
     expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
     expect(table.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
   });
 
   it("keeps a non-empty value that only resembles ours", async () => {
-    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=xsupaffi_abc");
-    const own = new FakeEl("stripe-buy-button", { "client-reference-id": "SUPAFFI_abc" });
-    await runOn(await script(), { cookie: HELD, build: (b) => [link, own].forEach((el) => b.appendChild(el)) });
-    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("xsupaffi_abc");
+    const link = stripeLink(
+      "https://buy.stripe.com/test_abc?client_reference_id=xsupaffi_abc",
+    );
+    const own = new FakeEl("stripe-buy-button", {
+      "client-reference-id": "SUPAFFI_abc",
+    });
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [link, own].forEach((el) => b.appendChild(el)),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(
+      "xsupaffi_abc",
+    );
     expect(own.getAttribute("client-reference-id")).toBe("SUPAFFI_abc");
   });
 });

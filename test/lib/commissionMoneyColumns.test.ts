@@ -5,7 +5,9 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 
 async function clearAll() {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -23,7 +25,10 @@ describe("Commission money columns", () => {
   beforeEach(async () => {
     await clearAll();
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     const merchant = await db.merchant.create({
       data: {
@@ -44,11 +49,20 @@ describe("Commission money columns", () => {
       },
     });
     const affiliate = await db.affiliate.create({
-      data: { merchantId: merchant.id, programId: program.id, email: `aff-${crypto.randomUUID()}@example.com` },
+      data: {
+        merchantId: merchant.id,
+        programId: program.id,
+        email: `aff-${crypto.randomUUID()}@example.com`,
+      },
     });
     affiliateId = affiliate.id;
     const click = await db.click.create({
-      data: { merchantId: merchant.id, affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 60_000) },
+      data: {
+        merchantId: merchant.id,
+        affiliateId,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
     });
     clickId = click.id;
   });
@@ -76,7 +90,9 @@ describe("Commission money columns", () => {
       },
     });
 
-    const read = await db.commission.findUniqueOrThrow({ where: { id: created.id } });
+    const read = await db.commission.findUniqueOrThrow({
+      where: { id: created.id },
+    });
     expect(read.saleAmount?.toString()).toBe("250000000000");
     expect(read.amount.toString()).toBe("50000000000");
     expect(read.grossAmount?.toString()).toBe("50000000000");

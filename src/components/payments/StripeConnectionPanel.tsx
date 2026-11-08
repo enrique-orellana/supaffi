@@ -2,18 +2,26 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CheckList } from "@/components/onboarding/CheckList";
-import { checkState, stripeKeyPending } from "@/components/onboarding/checkRows";
+import {
+  checkState,
+  stripeKeyPending,
+} from "@/components/onboarding/checkRows";
 import type { CheckRow } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { PasteField } from "@/components/PasteField";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import type { PaymentProviderPanelProps } from "@/lib/payments/setupRegistry";
-import { saveStripeKeyAction, saveWebhookSecretAction } from "@/app/onboarding/[product]/paymentActions";
+import {
+  saveStripeKeyAction,
+  saveWebhookSecretAction,
+} from "@/app/onboarding/[product]/paymentActions";
 
 type StripeStatusDetails = { keyStored: boolean; webhookStored: boolean };
 
-function stripeDetails(status: PaymentProviderPanelProps["status"]): StripeStatusDetails {
+function stripeDetails(
+  status: PaymentProviderPanelProps["status"],
+): StripeStatusDetails {
   return status.details && "keyStored" in status.details
     ? status.details
     : { keyStored: false, webhookStored: false };
@@ -45,7 +53,11 @@ export function StripeConnectionPanel({
     const rows: CheckRow[] = [
       {
         id: "stripe-key",
-        state: !details.keyStored ? "pending" : checks.stripe.key.ok ? "ok" : "failed",
+        state: !details.keyStored
+          ? "pending"
+          : checks.stripe.key.ok
+            ? "ok"
+            : "failed",
         pending: "No Stripe key yet",
         passed: "Connected to Stripe",
         failed: "Stripe rejected the key",
@@ -54,8 +66,14 @@ export function StripeConnectionPanel({
       },
       {
         id: "stripe-webhook",
-        state: !details.webhookStored ? "pending" : checks.stripe.webhook.ok ? "ok" : "pending",
-        pending: details.webhookStored ? "Waiting for the first event from Stripe" : "No webhook yet",
+        state: !details.webhookStored
+          ? "pending"
+          : checks.stripe.webhook.ok
+            ? "ok"
+            : "pending",
+        pending: details.webhookStored
+          ? "Waiting for the first event from Stripe"
+          : "No webhook yet",
         passed: "Receiving events from Stripe",
         action: replaceLink("stripe-webhook"),
       },
@@ -67,7 +85,9 @@ export function StripeConnectionPanel({
           <div className="flex flex-col gap-0.5">
             <span className="text-sm">{label}</span>
             <span className="text-xs text-muted-foreground">
-              {stripeKeyKind ? `${stripeKeyKind === "restricted" ? "Restricted key" : "Full account key"}` : "Not connected"}
+              {stripeKeyKind
+                ? `${stripeKeyKind === "restricted" ? "Restricted key" : "Full account key"}`
+                : "Not connected"}
             </span>
           </div>
         </div>
@@ -94,7 +114,9 @@ export function StripeConnectionPanel({
   return (
     <TaskCard>
       <div className="flex min-h-11 items-center justify-between gap-3 bg-neutral-100 px-4 py-1.5">
-        <span className="text-[13px] font-medium text-neutral-700">{label}</span>
+        <span className="text-[13px] font-medium text-neutral-700">
+          {label}
+        </span>
         <span className="text-xs text-muted-foreground">
           {status.connected ? "Connected" : "Not connected"}
         </span>
@@ -103,9 +125,21 @@ export function StripeConnectionPanel({
         <Button
           variant="secondary"
           size="lg"
-          render={<a href={restrictedKeyUrl(product.name)} target="_blank" rel="noreferrer" />}
+          render={
+            <a
+              href={restrictedKeyUrl(product.name)}
+              target="_blank"
+              rel="noreferrer"
+            />
+          }
         >
-          <Image src="/logos/stripe.svg" alt="" width={16} height={16} className="mr-1 size-4" />
+          <Image
+            src="/logos/stripe.svg"
+            alt=""
+            width={16}
+            height={16}
+            className="mr-1 size-4"
+          />
           Create the key in Stripe
         </Button>
       </TaskCardSection>
@@ -120,7 +154,9 @@ export function StripeConnectionPanel({
                 pending: "Checking the key",
                 passed: "Supaffi can read your Stripe payments",
                 failed: "Stripe rejected that key",
-                hint: checks.stripe.key.detail || "Create a new one and paste it again.",
+                hint:
+                  checks.stripe.key.detail ||
+                  "Create a new one and paste it again.",
               },
             ]}
           />
@@ -146,7 +182,11 @@ export function StripeConnectionPanel({
           </TaskCardSection>
           <TaskCardSection className="p-4">
             <PasteField
-              label={details.webhookStored ? "Replace the signing secret it prints" : "Paste the signing secret it prints"}
+              label={
+                details.webhookStored
+                  ? "Replace the signing secret it prints"
+                  : "Paste the signing secret it prints"
+              }
               placeholder="whsec_..."
               action={saveWebhookSecretAction.bind(null, productRef)}
               submitLabel="Save"

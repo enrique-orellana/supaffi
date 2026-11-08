@@ -19,7 +19,11 @@ export default async function EditProgramPage({
   const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
-  const program = await getProgramForMerchant(session.user.id, merchant.id, programSlug);
+  const program = await getProgramForMerchant(
+    session.user.id,
+    merchant.id,
+    programSlug,
+  );
   if (!program) notFound();
 
   redirect(`/dashboard/products/${merchant.slug}/programs?edit=${program.id}`);

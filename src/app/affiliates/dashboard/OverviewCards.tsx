@@ -1,7 +1,16 @@
 import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
 import { cn } from "@/lib/utils";
-import { change, earnedTrend, rangeLabel, type Bucket, type ChartRange, type CurrencyTotal, type DayPoint, type Period } from "@/lib/analytics";
+import {
+  change,
+  earnedTrend,
+  rangeLabel,
+  type Bucket,
+  type ChartRange,
+  type CurrencyTotal,
+  type DayPoint,
+  type Period,
+} from "@/lib/analytics";
 import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -10,7 +19,11 @@ import { RangePicker } from "@/components/charts/RangePicker";
 import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
 import { CopyField } from "@/components/onboarding/CodeBlock";
 import { Badge } from "@/components/ui/badge";
-import { STATUS_LABELS, STATUS_STYLES, toLedgerRow } from "./commissions/CommissionLedger";
+import {
+  STATUS_LABELS,
+  STATUS_STYLES,
+  toLedgerRow,
+} from "./commissions/CommissionLedger";
 
 /**
  * The affiliate's own dashboard: the link they came for, what they have
@@ -72,7 +85,9 @@ function Referrals({ total, active }: { total: number; active: number }) {
             {active}
           </span>
           {total > 0 && (
-            <span className="text-[15px] text-muted-foreground tabular-nums">of {total}</span>
+            <span className="text-[15px] text-muted-foreground tabular-nums">
+              of {total}
+            </span>
           )}
         </span>
         <span className="text-[13px] text-muted-foreground">still paying</span>
@@ -110,26 +125,37 @@ export function OverviewScreen({
   // Through the ledger's own mapping, so a date and an amount read the same on
   // this card as they do on the ledger the card links to.
   const recentRows = recent.map(toLedgerRow);
-  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^today$/, "yesterday").replace(/^yesterday$/, "the day before");
+  const against =
+    range === "all"
+      ? ""
+      : rangeLabel(range)
+          .toLowerCase()
+          .replace(/^last /, "previous ")
+          .replace(/^this /, "previous ")
+          .replace(/^today$/, "yesterday")
+          .replace(/^yesterday$/, "the day before");
   const delta = (now: number, before: number | null | undefined) =>
-    range === "all" ? undefined : { percent: change(now, before ?? 0), against };
+    range === "all"
+      ? undefined
+      : { percent: change(now, before ?? 0), against };
   const earnedNow = currency ? (current.amounts[currency]?.gross ?? 0) : 0;
   const earnedBefore = currency ? previous?.amounts[currency]?.gross : null;
 
   return (
     <Page>
-      <PageTitle
-        title="Overview"
-        actions={<RangePicker value={range} />}
-      />
+      <PageTitle title="Overview" actions={<RangePicker value={range} />} />
 
       {/* The thing they came for, at the top and on the copy treatment every
           value in the product is copied from. Not a row in a table. */}
       {referralUrl && (
         <div className="flex shrink-0 flex-col gap-1.5">
           <div className="flex items-baseline justify-between gap-4">
-            <span className="text-[13px] font-medium text-neutral-700">Your link</span>
-            <span className="text-[13px] text-muted-foreground tabular-nums">{terms}</span>
+            <span className="text-[13px] font-medium text-neutral-700">
+              Your link
+            </span>
+            <span className="text-[13px] text-muted-foreground tabular-nums">
+              {terms}
+            </span>
           </div>
           <CopyField value={referralUrl} />
         </div>
@@ -154,7 +180,12 @@ export function OverviewScreen({
         <StatTile
           label="Payable"
           value={money(payable)}
-          hint={moneyHint(payable) ?? (pending.length > 0 ? `${money(pending)} still on hold` : "Nothing on hold")}
+          hint={
+            moneyHint(payable) ??
+            (pending.length > 0
+              ? `${money(pending)} still on hold`
+              : "Nothing on hold")
+          }
           tone={payable.length > 0 ? "accent" : "neutral"}
           href="/affiliates/dashboard/payouts"
         />
@@ -176,7 +207,9 @@ export function OverviewScreen({
             is a stacked column with no height to give, so it gets a floor. */}
         <Section
           title="Clicks and earnings"
-          actions={<CurrencyPicker value={currency ?? ""} options={currencies} />}
+          actions={
+            <CurrencyPicker value={currency ?? ""} options={currencies} />
+          }
           className="min-h-[300px] lg:min-h-0"
           fill
         >
@@ -194,7 +227,7 @@ export function OverviewScreen({
         <div
           className={cn(
             "grid gap-4 lg:min-h-0",
-            recurring ? "lg:grid-rows-[auto_1fr]" : "lg:grid-rows-1"
+            recurring ? "lg:grid-rows-[auto_1fr]" : "lg:grid-rows-1",
           )}
         >
           {recurring && (
@@ -237,15 +270,20 @@ export function OverviewScreen({
                       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                         {row.dateLabel}
                       </span>
-                      <Badge className={cn("max-w-full", STATUS_STYLES[row.status])}>
+                      <Badge
+                        className={cn("max-w-full", STATUS_STYLES[row.status])}
+                      >
                         {STATUS_LABELS[row.status]}
                       </Badge>
                     </div>
                     <span
                       className={cn(
                         "ml-auto shrink-0 text-right text-[13px] font-medium tabular-nums",
-                        row.isAdjustment ? "text-destructive" : "text-neutral-900",
-                        row.status === "VOIDED" && "font-normal text-muted-foreground"
+                        row.isAdjustment
+                          ? "text-destructive"
+                          : "text-neutral-900",
+                        row.status === "VOIDED" &&
+                          "font-normal text-muted-foreground",
                       )}
                     >
                       {row.amount}

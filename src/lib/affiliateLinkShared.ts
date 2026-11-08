@@ -24,17 +24,23 @@ export function validateLinkInput(input: LinkInput): ValidatedLink {
   // traffic somewhere else entirely. A backslash is included because browsers
   // normalize it to a slash, so "/\evil.com" resolves as "//evil.com" too.
   if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
-    return { error: "A destination starts with / and points at a page on the site." };
+    return {
+      error: "A destination starts with / and points at a page on the site.",
+    };
   }
   if (raw.includes("://") || /\s/.test(raw)) {
-    return { error: "A destination cannot contain spaces or a full web address." };
+    return {
+      error: "A destination cannot contain spaces or a full web address.",
+    };
   }
   // The referral code is appended as its own query parameter. A query string
   // here would double up into "?a=1?via=code", and a fragment would keep the
   // browser from ever sending it to the server, so the link would silently
   // stop earning.
   if (raw.includes("?") || raw.includes("#")) {
-    return { error: "A destination cannot contain a question mark or a hash symbol." };
+    return {
+      error: "A destination cannot contain a question mark or a hash symbol.",
+    };
   }
   if (raw.length > 200) {
     return { error: "That destination is too long." };
@@ -46,7 +52,7 @@ export function validateLinkInput(input: LinkInput): ValidatedLink {
 /** The URL an Affiliate actually shares. */
 export function linkUrl(
   websiteUrl: string,
-  link: { code: string; destinationPath: string | null }
+  link: { code: string; destinationPath: string | null },
 ): string {
   const base = websiteUrl.replace(/\/+$/, "");
   const path = link.destinationPath ?? "";

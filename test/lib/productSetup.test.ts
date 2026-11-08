@@ -1,6 +1,9 @@
 // Destructive: clears Program / Merchant / Owner. Runs against the scratch
 // DATABASE_URL, never the dev one.
-import { PaymentProvider, type PaymentProviderDatabaseValue } from "@/lib/payments/types";
+import {
+  PaymentProvider,
+  type PaymentProviderDatabaseValue,
+} from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 
 import { db } from "@/lib/db";
@@ -8,9 +11,14 @@ import { getProductSetup } from "@/lib/productSetup";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
-async function seedMerchant(connectedProviders: PaymentProviderDatabaseValue[] = []) {
+async function seedMerchant(
+  connectedProviders: PaymentProviderDatabaseValue[] = [],
+) {
   const owner = await db.owner.create({
-    data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `owner-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
   const merchant = await db.merchant.create({
     data: {
@@ -55,19 +63,27 @@ describe.skipIf(!hasDatabase)("product setup", () => {
   beforeEach(clearAll);
 
   it("counts the integrations step done once Stripe is connected", async () => {
-    const { owner, merchant } = await seedMerchant([PaymentProvider.STRIPE.database]);
+    const { owner, merchant } = await seedMerchant([
+      PaymentProvider.STRIPE.database,
+    ]);
 
     const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.connectedPaymentProviders).toEqual([PaymentProvider.STRIPE.id]);
+    expect(setup.connectedPaymentProviders).toEqual([
+      PaymentProvider.STRIPE.id,
+    ]);
     expect(setup.integrationsConnected).toBe(true);
     expect(setup.doneCount).toBe(1);
   });
 
   it("counts NOWPayments as a connected payment provider", async () => {
-    const { owner, merchant } = await seedMerchant([PaymentProvider.NOWPAYMENTS.database]);
+    const { owner, merchant } = await seedMerchant([
+      PaymentProvider.NOWPAYMENTS.database,
+    ]);
 
     const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.connectedPaymentProviders).toEqual([PaymentProvider.NOWPAYMENTS.id]);
+    expect(setup.connectedPaymentProviders).toEqual([
+      PaymentProvider.NOWPAYMENTS.id,
+    ]);
     expect(setup.integrationsConnected).toBe(true);
     expect(setup.stripeKeyStored).toBe(false);
     expect(setup.stripeWebhookStored).toBe(false);
@@ -102,7 +118,9 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     // Recruiting an affiliate is using the product, not setting it up. Counting
     // it kept a working product reading "3 of 4" forever, and kept the step rail
     // on screens that had stopped being onboarding.
-    const { owner, merchant } = await seedMerchant([PaymentProvider.STRIPE.database]);
+    const { owner, merchant } = await seedMerchant([
+      PaymentProvider.STRIPE.database,
+    ]);
     await db.program.create({
       data: {
         merchantId: merchant.id,
@@ -131,7 +149,9 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     // snippet is firing and there is nothing further the Owner can do; only a
     // paying customer arriving through a link can move it to verified, and
     // waiting on that kept a finished product showing the step rail forever.
-    const { owner, merchant } = await seedMerchant([PaymentProvider.STRIPE.database]);
+    const { owner, merchant } = await seedMerchant([
+      PaymentProvider.STRIPE.database,
+    ]);
     const program = await db.program.create({
       data: {
         merchantId: merchant.id,

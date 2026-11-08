@@ -12,7 +12,10 @@ import { affiliateSessionIsCurrent } from "@/lib/affiliateSession";
 // record to delete when the password changes; without this a stolen cookie
 // would keep working for its full 30 days. The lookups are Prisma, so they
 // live outside auth.config.ts, which Edge Middleware imports.
-export async function dropSessionIfStale(session: Session, token: JWT): Promise<Session> {
+export async function dropSessionIfStale(
+  session: Session,
+  token: JWT,
+): Promise<Session> {
   if (!token?.sub) return session;
   const current =
     token.role === "owner"

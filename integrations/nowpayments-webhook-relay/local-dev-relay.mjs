@@ -16,7 +16,8 @@ function localDestination(value) {
       url.username ||
       url.password ||
       url.hash
-    ) return null;
+    )
+      return null;
     return url.href;
   } catch {
     return null;
@@ -57,7 +58,10 @@ async function readBoundedBody(request) {
   return { body: Buffer.concat(chunks, size) };
 }
 
-export function createLocalRelayServer({ env = process.env, fetchFn = fetch } = {}) {
+export function createLocalRelayServer({
+  env = process.env,
+  fetchFn = fetch,
+} = {}) {
   return createServer(async (request, response) => {
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
     if (path !== "/ipn") return reply(response, 404);
@@ -67,7 +71,10 @@ export function createLocalRelayServer({ env = process.env, fetchFn = fetch } = 
     }
 
     const contentType = request.headers["content-type"];
-    if (typeof contentType !== "string" || contentType.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+    if (
+      typeof contentType !== "string" ||
+      contentType.split(";", 1)[0].trim().toLowerCase() !== "application/json"
+    ) {
       return reply(response, 415);
     }
     const signature = request.headers["x-nowpayments-sig"];
@@ -91,20 +98,33 @@ export function createLocalRelayServer({ env = process.env, fetchFn = fetch } = 
       redirect: "manual",
       signal: AbortSignal.timeout(DOWNSTREAM_TIMEOUT_MS),
     };
-    const results = await Promise.allSettled(targets.map((url) => fetchFn(url, {
-      ...options,
-      body: Buffer.from(body),
-    })));
-    if (results.some((result) => result.status !== "fulfilled" || !result.value.ok)) {
+    const results = await Promise.allSettled(
+      targets.map((url) =>
+        fetchFn(url, {
+          ...options,
+          body: Buffer.from(body),
+        }),
+      ),
+    );
+    if (
+      results.some(
+        (result) => result.status !== "fulfilled" || !result.value.ok,
+      )
+    ) {
       return reply(response, 502);
     }
     return reply(response, 200);
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
   const server = createLocalRelayServer();
   server.listen(PORT, "127.0.0.1", () => {
-    process.stdout.write(`Local IPN relay listening on 127.0.0.1:${PORT}/ipn\n`);
+    process.stdout.write(
+      `Local IPN relay listening on 127.0.0.1:${PORT}/ipn\n`,
+    );
   });
 }

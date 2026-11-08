@@ -5,7 +5,8 @@ export const PaymentProvider = {
     id: "stripe",
     database: "STRIPE",
     label: "Stripe",
-    isReady: (connected: boolean, checks: ProductChecks) => connected && checks.stripe.key.ok,
+    isReady: (connected: boolean, checks: ProductChecks) =>
+      connected && checks.stripe.key.ok,
   },
   NOWPAYMENTS: {
     id: "nowpayments",
@@ -15,16 +16,19 @@ export const PaymentProvider = {
   },
 } as const;
 
-export type PaymentProviderId = (typeof PaymentProvider)[keyof typeof PaymentProvider]["id"];
+export type PaymentProviderId =
+  (typeof PaymentProvider)[keyof typeof PaymentProvider]["id"];
 export type PaymentProviderDatabaseValue =
   (typeof PaymentProvider)[keyof typeof PaymentProvider]["database"];
 
 export function isPaymentProviderReady(
   providerId: PaymentProviderId,
   connected: boolean,
-  checks: ProductChecks
+  checks: ProductChecks,
 ): boolean {
-  const provider = Object.values(PaymentProvider).find(({ id }) => id === providerId);
+  const provider = Object.values(PaymentProvider).find(
+    ({ id }) => id === providerId,
+  );
   return provider?.isReady(connected, checks) ?? false;
 }
 

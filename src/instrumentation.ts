@@ -1,4 +1,6 @@
-const globalForWorker = globalThis as unknown as { supaffiWorkerStarted?: boolean };
+const globalForWorker = globalThis as unknown as {
+  supaffiWorkerStarted?: boolean;
+};
 
 // Next.js's official startup hook — called once when a server instance is
 // initiated. Starts the background worker that drains WebhookEvent and
@@ -53,7 +55,7 @@ async function announceSetupTokenIfNeeded(): Promise<void> {
     // restarts.
     console.error(
       "[setup] could not check whether an Owner exists, so no setup token was issued. Setup stays closed until this is resolved and the container restarts.",
-      err
+      err,
     );
     return;
   }
@@ -83,6 +85,6 @@ async function announceSetupTokenIfNeeded(): Promise<void> {
       "  Valid until an Owner is created. Restarting issues a new one.",
       "────────────────────────────────────────────────────────────────────────",
       "",
-    ].join("\n")
+    ].join("\n"),
   );
 }

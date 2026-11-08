@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
-type Action = (prevState: { error: string }, formData: FormData) => Promise<{ error: string }>;
+type Action = (
+  prevState: { error: string },
+  formData: FormData,
+) => Promise<{ error: string }>;
 
 export function SetPasswordForm({ action }: { action: Action }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });

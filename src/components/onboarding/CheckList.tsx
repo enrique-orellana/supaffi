@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { CheckRow, CheckState } from "./checkRows";
 
@@ -26,10 +30,13 @@ function useJustPassed(rows: CheckRow[]): Set<string> {
   // Adjusted during render rather than in an effect, so the animation starts
   // on the same paint as the row change instead of one render later.
   if (rows !== previous) {
-    const before = new Map<string, CheckState>(previous.map((r) => [r.id, r.state]));
+    const before = new Map<string, CheckState>(
+      previous.map((r) => [r.id, r.state]),
+    );
     const changed = new Set<string>();
     for (const row of rows) {
-      if (row.state === "ok" && before.get(row.id) === "pending") changed.add(row.id);
+      if (row.state === "ok" && before.get(row.id) === "pending")
+        changed.add(row.id);
     }
     setPrevious(rows);
     if (changed.size > 0) setFlipped(changed);
@@ -46,7 +53,13 @@ function useJustPassed(rows: CheckRow[]): Set<string> {
  * the only obvious move was to reload, which is exactly the habit not to
  * teach.
  */
-export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (formData: FormData) => void | Promise<void> }) {
+export function CheckList({
+  rows,
+  onRecheck,
+}: {
+  rows: CheckRow[];
+  onRecheck?: (formData: FormData) => void | Promise<void>;
+}) {
   const justPassed = useJustPassed(rows);
   // Pending or failed, either way the list is not done: the owner still has
   // a reason to reach for "check now" rather than reload, whether they are
@@ -59,10 +72,17 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
         {rows.map((row, i) => (
           <li
             key={row.id}
-            className={cn("flex items-start gap-3 px-4 py-3", justPassed.has(row.id) && "supaffi-flash")}
+            className={cn(
+              "flex items-start gap-3 px-4 py-3",
+              justPassed.has(row.id) && "supaffi-flash",
+            )}
             // Staggered so several rows flipping at once read as a sequence
             // rather than as one simultaneous blink.
-            style={justPassed.has(row.id) ? { animationDelay: `${i * 60}ms` } : undefined}
+            style={
+              justPassed.has(row.id)
+                ? { animationDelay: `${i * 60}ms` }
+                : undefined
+            }
           >
             <Marker state={row.state} />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -72,16 +92,22 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
                   row.state === "pending" && "text-muted-foreground",
                   // A failure carries the same weight as a pass: the row that
                   // needs reading should not be the quietest one on the list.
-                  row.state !== "pending" && "font-medium text-neutral-900"
+                  row.state !== "pending" && "font-medium text-neutral-900",
                 )}
               >
-                {row.state === "ok" ? row.passed : row.state === "failed" ? (row.failed ?? row.pending) : row.pending}
+                {row.state === "ok"
+                  ? row.passed
+                  : row.state === "failed"
+                    ? (row.failed ?? row.pending)
+                    : row.pending}
                 {row.info && row.state !== "ok" && <InfoTip text={row.info} />}
               </span>
               {/* The hint is an instruction, not a second error: the red cross and the
                   failed line have already said something is wrong. */}
               {row.state === "failed" && row.hint && (
-                <span className="text-[13px] text-muted-foreground">{row.hint}</span>
+                <span className="text-[13px] text-muted-foreground">
+                  {row.hint}
+                </span>
               )}
             </div>
             {row.action && <div className="-my-1 shrink-0">{row.action}</div>}
@@ -93,7 +119,9 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
           action={onRecheck}
           className="flex items-center justify-between gap-3 border-t border-neutral-200 px-4 py-2"
         >
-          <Recheck signature={rows.map((row) => `${row.id}:${row.state}`).join("|")} />
+          <Recheck
+            signature={rows.map((row) => `${row.id}:${row.state}`).join("|")}
+          />
         </form>
       )}
     </div>
@@ -135,7 +163,11 @@ function Recheck({ signature }: { signature: string }) {
   return (
     <>
       <span className="text-[13px] text-muted-foreground">
-        {pending ? "Looking now" : unchanged ? "Nothing has changed yet" : "Checking every 5 seconds"}
+        {pending
+          ? "Looking now"
+          : unchanged
+            ? "Nothing has changed yet"
+            : "Checking every 5 seconds"}
       </span>
       <Button type="submit" variant="secondary" size="sm" disabled={pending}>
         {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
@@ -186,7 +218,12 @@ function Marker({ state }: { state: CheckState }) {
     return (
       <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-(--radius) bg-status-danger">
         <svg viewBox="0 0 16 16" className="size-3" fill="none" aria-hidden>
-          <path d="M5 5l6 6M11 5l-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" />
+          <path
+            d="M5 5l6 6M11 5l-6 6"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
         </svg>
       </span>
     );

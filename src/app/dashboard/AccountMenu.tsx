@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpCircle, ChevronsUpDown, LogOut, ShieldAlert, UserRound } from "lucide-react";
+import {
+  ArrowUpCircle,
+  ChevronsUpDown,
+  LogOut,
+  ShieldAlert,
+  UserRound,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -46,47 +52,73 @@ export function AccountMenu({
             </Avatar>
             {update && (
               <span
-                aria-label={update.security ? "Security update available" : "Update available"}
+                aria-label={
+                  update.security
+                    ? "Security update available"
+                    : "Update available"
+                }
                 className={cn(
                   "absolute -top-0.5 -right-0.5 size-2.5 rounded-[1px] ring-2 ring-(--canvas)",
-                  update.security ? "bg-status-danger" : "bg-accent-600"
+                  update.security ? "bg-status-danger" : "bg-accent-600",
                 )}
               />
             )}
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm text-neutral-700">{email}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-neutral-700">
+            {email}
+          </span>
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
 
         {/* Opens upwards, out of the footer, as wide as the row it came from. */}
         <DropdownMenuContent side="top" align="start" sideOffset={6}>
-          <DropdownMenuItem className="h-9 gap-2.5" render={<Link href="/dashboard/account" />}>
+          <DropdownMenuItem
+            className="h-9 gap-2.5"
+            render={<Link href="/dashboard/account" />}
+          >
             <UserRound />
             Account
           </DropdownMenuItem>
           {update && (
             <DropdownMenuItem
-              className={cn("h-9 gap-2.5", update.security && "text-status-danger")}
+              className={cn(
+                "h-9 gap-2.5",
+                update.security && "text-status-danger",
+              )}
               onClick={() => setUpdateOpen(true)}
             >
               {update.security ? <ShieldAlert /> : <ArrowUpCircle />}
-              <span className="flex-1">{update.security ? "Security update" : "Update available"}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">{update.version}</span>
+              <span className="flex-1">
+                {update.security ? "Security update" : "Update available"}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {update.version}
+              </span>
             </DropdownMenuItem>
           )}
           <form action={signOutAction}>
-            <DropdownMenuItem className="h-9 w-full gap-2.5" render={<button type="submit" />}>
+            <DropdownMenuItem
+              className="h-9 w-full gap-2.5"
+              render={<button type="submit" />}
+            >
               <LogOut />
               Log out
             </DropdownMenuItem>
           </form>
           <DropdownMenuSeparator />
-          <p className="px-2 pt-1 pb-1.5 text-[11px] text-muted-foreground tabular-nums">Supaffi {version}</p>
+          <p className="px-2 pt-1 pb-1.5 text-[11px] text-muted-foreground tabular-nums">
+            Supaffi {version}
+          </p>
         </DropdownMenuContent>
       </DropdownMenu>
 
       {update && (
-        <UpdateDialog installed={version} update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
+        <UpdateDialog
+          installed={version}
+          update={update}
+          open={updateOpen}
+          onOpenChange={setUpdateOpen}
+        />
       )}
     </>
   );

@@ -22,7 +22,7 @@ import { db } from "@/lib/db";
  */
 export async function affiliateSessionIsCurrent(
   affiliateId: string,
-  issuedAtSeconds: number | undefined
+  issuedAtSeconds: number | undefined,
 ): Promise<boolean> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
@@ -33,5 +33,7 @@ export async function affiliateSessionIsCurrent(
   // A token with no issued-at cannot be placed against the change, so it is
   // treated as older than it.
   if (issuedAtSeconds === undefined) return false;
-  return issuedAtSeconds >= Math.floor(affiliate.passwordChangedAt.getTime() / 1000);
+  return (
+    issuedAtSeconds >= Math.floor(affiliate.passwordChangedAt.getTime() / 1000)
+  );
 }

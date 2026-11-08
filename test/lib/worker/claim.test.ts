@@ -9,7 +9,9 @@ import { backoffMs, claimBatch, markFailed } from "@/lib/worker/claim";
 
 async function clearAll() {
   await db.webhookEvent.deleteMany();
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -23,7 +25,11 @@ async function clearAll() {
 describe("claimBatch", () => {
   let merchant: Merchant;
 
-  function event(data: { status: "PENDING" | "PROCESSING"; nextAttemptAt: Date; attempts?: number }) {
+  function event(data: {
+    status: "PENDING" | "PROCESSING";
+    nextAttemptAt: Date;
+    attempts?: number;
+  }) {
     return db.webhookEvent.create({
       data: {
         merchantId: merchant.id,
@@ -38,7 +44,10 @@ describe("claimBatch", () => {
   beforeEach(async () => {
     await clearAll();
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -57,36 +66,64 @@ describe("claimBatch", () => {
   });
 
   it("picks an event left PROCESSING by a crash once its lease has run out", async () => {
-    const stale = await event({ status: "PROCESSING", nextAttemptAt: new Date(Date.now() - 1000), attempts: 1 });
-    const live = await event({ status: "PROCESSING", nextAttemptAt: new Date(Date.now() + 60_000), attempts: 1 });
+    const stale = await event({
+      status: "PROCESSING",
+      nextAttemptAt: new Date(Date.now() - 1000),
+      attempts: 1,
+    });
+    const live = await event({
+      status: "PROCESSING",
+      nextAttemptAt: new Date(Date.now() + 60_000),
+      attempts: 1,
+    });
 
     const claimed = await claimBatch();
     expect(claimed.map((row) => row.id)).toEqual([stale.id]);
     expect(claimed[0].attempts).toBe(2);
     // The reclaim takes a fresh lease, so the next tick leaves it alone.
     expect(claimed[0].nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
-    expect((await db.webhookEvent.findUniqueOrThrow({ where: { id: live.id } })).attempts).toBe(1);
+    expect(
+      (await db.webhookEvent.findUniqueOrThrow({ where: { id: live.id } }))
+        .attempts,
+    ).toBe(1);
     expect(await claimBatch()).toEqual([]);
   });
 
   it("fails an event that keeps taking the worker down instead of reclaiming it forever", async () => {
-    const poison = await event({ status: "PROCESSING", nextAttemptAt: new Date(Date.now() - 1000), attempts: 20 });
+    const poison = await event({
+      status: "PROCESSING",
+      nextAttemptAt: new Date(Date.now() - 1000),
+      attempts: 20,
+    });
 
     expect(await claimBatch()).toEqual([]);
-    expect((await db.webhookEvent.findUniqueOrThrow({ where: { id: poison.id } })).status).toBe("FAILED");
+    expect(
+      (await db.webhookEvent.findUniqueOrThrow({ where: { id: poison.id } }))
+        .status,
+    ).toBe("FAILED");
   });
 
   it("keeps retrying for about two days before giving up", async () => {
-    const row = await event({ status: "PROCESSING", nextAttemptAt: new Date() });
+    const row = await event({
+      status: "PROCESSING",
+      nextAttemptAt: new Date(),
+    });
 
     let total = 0;
-    for (let attempts = 1; attempts < 20; attempts++) total += backoffMs(attempts);
+    for (let attempts = 1; attempts < 20; attempts++)
+      total += backoffMs(attempts);
     expect(total / 3_600_000).toBeGreaterThan(40);
     expect(total / 3_600_000).toBeLessThan(50);
 
     await markFailed(row.id, 19, new Error("Stripe is down"));
-    expect((await db.webhookEvent.findUniqueOrThrow({ where: { id: row.id } })).status).toBe("PENDING");
+    expect(
+      (await db.webhookEvent.findUniqueOrThrow({ where: { id: row.id } }))
+        .status,
+    ).toBe("PENDING");
     await markFailed(row.id, 20, new Error("Stripe is down"));
-    expect((await db.webhookEvent.findUniqueOrThrow({ where: { id: row.id } })).status).toBe("FAILED");
+    expect(
+      (await db.webhookEvent.findUniqueOrThrow({ where: { id: row.id } }))
+        .status,
+    ).toBe("FAILED");
   });
 });

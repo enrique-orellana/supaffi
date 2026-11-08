@@ -4,10 +4,23 @@ import { Wallet } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getOwedTotals, getPayableGroups, listPayouts } from "@/lib/analytics";
-import { formatCount, formatDate, formatMoney, money, moneyHint } from "@/lib/format";
+import {
+  formatCount,
+  formatDate,
+  formatMoney,
+  money,
+  moneyHint,
+} from "@/lib/format";
 import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -69,19 +82,35 @@ export default async function PayoutsPage({
 
   const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
-  const alreadyPaid = alreadyPaidNote(query.already, query.paidOn, query.recorded);
+  const alreadyPaid = alreadyPaidNote(
+    query.already,
+    query.paidOn,
+    query.recorded,
+  );
   const hint = moneyHint(payableNow);
 
   return (
     <Page>
       <PageTitle
         title="Payouts"
-        subtitle={groups.length > 0 ? `${money(payableNow)}${hint ? ` and ${hint}` : ""} ready to pay` : undefined}
+        subtitle={
+          groups.length > 0
+            ? `${money(payableNow)}${hint ? ` and ${hint}` : ""} ready to pay`
+            : undefined
+        }
       />
 
-      {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
-      {skipped && <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>}
-      {alreadyPaid && <p className="shrink-0 text-[13px] text-status-warning">{alreadyPaid}</p>}
+      {refusal && (
+        <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>
+      )}
+      {skipped && (
+        <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>
+      )}
+      {alreadyPaid && (
+        <p className="shrink-0 text-[13px] text-status-warning">
+          {alreadyPaid}
+        </p>
+      )}
 
       <Section title="Ready to pay" flush className="shrink-0 overflow-hidden">
         {groups.length === 0 ? (
@@ -95,14 +124,19 @@ export default async function PayoutsPage({
                 <TableRow className="border-neutral-200 hover:bg-transparent">
                   <TableHead className={HEAD}>Affiliate</TableHead>
                   <TableHead className={HEAD}>Pay to</TableHead>
-                  <TableHead className={`${HEAD} text-right`}>Commissions</TableHead>
+                  <TableHead className={`${HEAD} text-right`}>
+                    Commissions
+                  </TableHead>
                   <TableHead className={`${HEAD} text-right`}>Amount</TableHead>
                   <TableHead className={HEAD} />
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-neutral-200">
                 {groups.map((group) => (
-                  <TableRow key={`${group.affiliateId}:${group.currency}`} className="border-neutral-200 hover:bg-neutral-50">
+                  <TableRow
+                    key={`${group.affiliateId}:${group.currency}`}
+                    className="border-neutral-200 hover:bg-neutral-50"
+                  >
                     <TableCell className="max-w-56">
                       <Link
                         href={`${base}/affiliates?affiliate=${group.affiliateId}`}
@@ -111,14 +145,18 @@ export default async function PayoutsPage({
                         {group.affiliateName ?? group.affiliateEmail}
                       </Link>
                       {group.affiliateName && (
-                        <span className="block truncate text-xs text-muted-foreground">{group.affiliateEmail}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {group.affiliateEmail}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="max-w-72 text-sm">
                       {group.payoutDetails ? (
                         <CopyValue value={group.payoutDetails} />
                       ) : (
-                        <span className="text-status-warning">Not given yet</span>
+                        <span className="text-status-warning">
+                          Not given yet
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">
@@ -128,8 +166,20 @@ export default async function PayoutsPage({
                       {formatMoney(group.total, group.currency)}
                     </TableCell>
                     <TableCell className="w-px text-right">
-                      <form action={markPayoutPaidAction.bind(null, productRef, group.commissions, renderedAt)}>
-                        <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+                      <form
+                        action={markPayoutPaidAction.bind(
+                          null,
+                          productRef,
+                          group.commissions,
+                          renderedAt,
+                        )}
+                      >
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="secondary"
+                          className="cursor-pointer"
+                        >
                           Mark paid
                         </Button>
                       </form>
@@ -153,7 +203,9 @@ export default async function PayoutsPage({
               <TableRow className="border-neutral-200 hover:bg-transparent">
                 <TableHead className={HEAD}>Date</TableHead>
                 <TableHead className={HEAD}>Affiliate</TableHead>
-                <TableHead className={`${HEAD} text-right`}>Commissions</TableHead>
+                <TableHead className={`${HEAD} text-right`}>
+                  Commissions
+                </TableHead>
                 <TableHead className={`${HEAD} text-right`}>Amount</TableHead>
               </TableRow>
             </TableHeader>
@@ -167,7 +219,9 @@ export default async function PayoutsPage({
                     {formatDate(row.paidAt)}
                   </TableCell>
                   <TableCell className="max-w-56">
-                    <span className="block truncate">{row.affiliateName ?? row.affiliateEmail}</span>
+                    <span className="block truncate">
+                      {row.affiliateName ?? row.affiliateEmail}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground tabular-nums">
                     {formatCount(row.count)}

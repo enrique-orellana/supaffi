@@ -101,8 +101,14 @@ describe("payment provider setup registry", () => {
     expect(setup?.checkSections).toEqual([]);
     await expect(setup?.readStatus("owner-2", "merchant-2")).resolves.toEqual({
       connected: true,
-      details: { callbackUrl: "https://supaffi.example/api/webhooks/nowpayments/route-id" },
+      details: {
+        callbackUrl:
+          "https://supaffi.example/api/webhooks/nowpayments/route-id",
+      },
     });
-    expect(getNowPaymentsConnectionStatus).toHaveBeenCalledWith("owner-2", "merchant-2");
+    expect(getNowPaymentsConnectionStatus).toHaveBeenCalledWith(
+      "owner-2",
+      "merchant-2",
+    );
   });
 });

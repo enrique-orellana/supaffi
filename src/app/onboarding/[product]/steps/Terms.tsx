@@ -15,7 +15,9 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
         name: first.name,
         defaultCommissionRate: String(first.defaultCommissionRate),
         commissionDurationType: first.commissionDurationType,
-        commissionDurationMonths: first.commissionDurationMonths ? String(first.commissionDurationMonths) : "",
+        commissionDurationMonths: first.commissionDurationMonths
+          ? String(first.commissionDurationMonths)
+          : "",
         attributionWindowDays: String(first.attributionWindowDays),
         holdingPeriodDays: String(first.holdingPeriodDays),
       }
@@ -28,7 +30,10 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
       lede="Sensible defaults are already filled in. Change them now or later."
     >
       <TermsForm
-        action={saveTermsAction.bind(null, { id: merchant.id, slug: merchant.slug })}
+        action={saveTermsAction.bind(null, {
+          id: merchant.id,
+          slug: merchant.slug,
+        })}
         initial={initial}
         askName={false}
         submitLabel="Continue"

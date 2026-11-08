@@ -18,7 +18,9 @@ export function registrableCandidates(hostname: string): string[] {
 export type AuthoritativeDeps = {
   resolveNs: (h: string) => Promise<string[]>;
   resolve4: (h: string) => Promise<string[]>;
-  makeResolver: (servers: string[]) => { resolve4: (h: string) => Promise<string[]> };
+  makeResolver: (servers: string[]) => {
+    resolve4: (h: string) => Promise<string[]>;
+  };
 };
 
 const authoritativeDefaults: AuthoritativeDeps = {
@@ -55,7 +57,7 @@ const authoritativeDefaults: AuthoritativeDeps = {
  */
 export async function resolveAuthoritative(
   hostname: string,
-  deps: AuthoritativeDeps = authoritativeDefaults
+  deps: AuthoritativeDeps = authoritativeDefaults,
 ): Promise<string[]> {
   for (const zone of [...registrableCandidates(hostname)].reverse()) {
     let nameservers: string[];
@@ -98,7 +100,7 @@ export async function resolvesTo(
   hostname: string,
   expected: string,
   resolve: (h: string) => Promise<string[]> = resolveAuthoritative,
-  resolveExpected: (h: string) => Promise<string[]> = resolve4
+  resolveExpected: (h: string) => Promise<string[]> = resolve4,
 ): Promise<CheckResult> {
   let addresses: string[];
   try {
@@ -108,8 +110,12 @@ export async function resolvesTo(
   }
 
   if (IPV4.test(expected)) {
-    if (addresses.includes(expected)) return { ok: true, detail: `Points at ${expected}` };
-    return { ok: false, detail: `Points at ${addresses.join(", ")}, not this server` };
+    if (addresses.includes(expected))
+      return { ok: true, detail: `Points at ${expected}` };
+    return {
+      ok: false,
+      detail: `Points at ${addresses.join(", ")}, not this server`,
+    };
   }
 
   let expectedAddresses: string[];
@@ -119,11 +125,17 @@ export async function resolvesTo(
     expectedAddresses = [];
   }
   if (expectedAddresses.length === 0) {
-    return { ok: false, detail: `This server's address (${expected}) could not be resolved` };
+    return {
+      ok: false,
+      detail: `This server's address (${expected}) could not be resolved`,
+    };
   }
   const shared = addresses.find((a) => expectedAddresses.includes(a));
   if (shared) return { ok: true, detail: `Points at ${shared}` };
-  return { ok: false, detail: `Points at ${addresses.join(", ")}, not this server` };
+  return {
+    ok: false,
+    detail: `Points at ${addresses.join(", ")}, not this server`,
+  };
 }
 
 const CERT_CODES = new Set([
@@ -167,7 +179,10 @@ export type TlsProbe =
  * The handshake doubles as the trigger: Caddy issues on demand, on the first
  * TLS connection carrying the name as SNI.
  */
-export function tlsProbe(hostname: string, timeoutMs = 6000): Promise<TlsProbe> {
+export function tlsProbe(
+  hostname: string,
+  timeoutMs = 6000,
+): Promise<TlsProbe> {
   return new Promise((resolve) => {
     let settled = false;
     const done = (result: TlsProbe) => {
@@ -188,18 +203,28 @@ export function tlsProbe(hostname: string, timeoutMs = 6000): Promise<TlsProbe> 
     });
 
     socket.on("secureConnect", () => {
-      const cert = socket.getPeerCertificate() as PeerCertificate | Record<string, never>;
+      const cert = socket.getPeerCertificate() as
+        PeerCertificate | Record<string, never>;
       const org = (cert as PeerCertificate)?.issuer?.O;
       const issuer = (Array.isArray(org) ? org[0] : org) ?? "unknown";
       if (socket.authorized) return done({ kind: "valid", issuer });
-      done({ kind: "untrusted", reason: socket.authorizationError?.message ?? "not trusted yet" });
+      done({
+        kind: "untrusted",
+        reason: socket.authorizationError?.message ?? "not trusted yet",
+      });
     });
-    socket.on("timeout", () => done({ kind: "unreachable", reason: "timed out" }));
+    socket.on("timeout", () =>
+      done({ kind: "unreachable", reason: "timed out" }),
+    );
     socket.on("error", (err) => {
       const code = (err as { code?: string }).code ?? "";
       // No proxy of ours at that address: this instance sits behind one the
       // operator runs, so fall back to the round trip.
-      if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "EAI_AGAIN") {
+      if (
+        code === "ENOTFOUND" ||
+        code === "ECONNREFUSED" ||
+        code === "EAI_AGAIN"
+      ) {
         return done({ kind: "no-proxy", reason: code });
       }
       done({ kind: "unreachable", reason: err.message });
@@ -220,7 +245,7 @@ export async function httpsReachable(
   hostname: string,
   fetchFn: typeof fetch = fetch,
   resolve: (h: string) => Promise<string[]> = resolveAuthoritative,
-  probe: (h: string) => Promise<TlsProbe> = tlsProbe
+  probe: (h: string) => Promise<TlsProbe> = tlsProbe,
 ): Promise<{ reachable: CheckResult; certificate: CheckResult }> {
   try {
     const addresses = await resolve(hostname);
@@ -245,7 +270,9 @@ export async function httpsReachable(
     };
   }
   if (local.kind === "untrusted" || local.kind === "unreachable") {
-    console.warn(`[checks] tls ${hostname} via ${PROXY_HOST}: ${local.kind}, ${local.reason}`);
+    console.warn(
+      `[checks] tls ${hostname} via ${PROXY_HOST}: ${local.kind}, ${local.reason}`,
+    );
     return {
       reachable: { ok: true, detail: "Answers" },
       certificate: { ok: false, detail: "Being set up" },
@@ -260,14 +287,22 @@ export async function httpsReachable(
     });
     if (response.status >= 500) {
       return {
-        reachable: { ok: true, detail: "Reached, but the server returned an error" },
+        reachable: {
+          ok: true,
+          detail: "Reached, but the server returned an error",
+        },
         certificate: { ok: true, detail: "Valid" },
       };
     }
-    return { reachable: { ok: true, detail: "Answers" }, certificate: { ok: true, detail: "Valid" } };
+    return {
+      reachable: { ok: true, detail: "Answers" },
+      certificate: { ok: true, detail: "Valid" },
+    };
   } catch (err) {
     const code = (err as { cause?: { code?: string } })?.cause?.code ?? "";
-    console.warn(`[checks] https ${hostname}: ${code || (err as Error).message}`);
+    console.warn(
+      `[checks] https ${hostname}: ${code || (err as Error).message}`,
+    );
     if (CERT_CODES.has(code)) {
       return {
         reachable: { ok: true, detail: "Answers" },
@@ -291,7 +326,7 @@ const NS_TIMEOUT_MS = 3000;
  */
 export async function detectDnsProvider(
   hostname: string,
-  resolve: (h: string) => Promise<string[]> = resolveNs
+  resolve: (h: string) => Promise<string[]> = resolveNs,
 ): Promise<"cloudflare" | "unknown"> {
   // A resolver that never answers would otherwise hold the whole subdomain
   // step open: this runs during the render, and the answer only decides
@@ -302,7 +337,10 @@ export async function detectDnsProvider(
       return await Promise.race([
         resolve(h),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("Nameserver lookup timed out")), NS_TIMEOUT_MS);
+          timer = setTimeout(
+            () => reject(new Error("Nameserver lookup timed out")),
+            NS_TIMEOUT_MS,
+          );
         }),
       ]);
     } finally {
@@ -312,7 +350,8 @@ export async function detectDnsProvider(
   for (const candidate of registrableCandidates(hostname)) {
     try {
       const servers = await withTimeout(candidate);
-      if (servers.some((s) => s.toLowerCase().endsWith(".ns.cloudflare.com"))) return "cloudflare";
+      if (servers.some((s) => s.toLowerCase().endsWith(".ns.cloudflare.com")))
+        return "cloudflare";
     } catch {
       // try the next candidate
     }

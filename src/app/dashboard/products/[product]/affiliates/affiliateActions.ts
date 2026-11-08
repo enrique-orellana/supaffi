@@ -23,7 +23,7 @@ async function owner(): Promise<string> {
 export async function changeProgramAction(
   product: { id: string; slug: string },
   affiliateId: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<void> {
   const ownerId = await owner();
   const programId = String(formData.get("programId") ?? "").trim();
@@ -37,7 +37,7 @@ export async function changeProgramAction(
 export async function setCustomRateAction(
   product: { id: string; slug: string },
   affiliateId: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<void> {
   const ownerId = await owner();
 
@@ -45,7 +45,9 @@ export async function setCustomRateAction(
   // would never fire: the button and the input share a form, and the value
   // already typed into the input is the one FormData hands back.
   if (formData.get("intent") === "default") {
-    await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: null });
+    await updateAffiliate(ownerId, product.id, affiliateId, {
+      customCommissionRate: null,
+    });
     revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
     return;
   }
@@ -54,11 +56,14 @@ export async function setCustomRateAction(
   if (raw === "") return;
   const rate = Number(raw);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return;
-  await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: rate });
+  await updateAffiliate(ownerId, product.id, affiliateId, {
+    customCommissionRate: rate,
+  });
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
 }
 
-type LinkTerm = "commission" | "commissionDuration" | "timeToBuy" | "holdBeforePaying";
+type LinkTerm =
+  "commission" | "commissionDuration" | "timeToBuy" | "holdBeforePaying";
 
 /** Owner-only per-code terms. An explicit inherit action clears that override. */
 export async function setLinkTermAction(
@@ -66,14 +71,14 @@ export async function setLinkTermAction(
   affiliateId: string,
   linkId: string,
   term: LinkTerm,
-  formData: FormData
+  formData: FormData,
 ): Promise<void> {
   const ownerId = await owner();
   if (term === "commissionDuration") {
     const inheritDuration = formData.get("intent") === "inherit";
     const parsed = parseCommissionDurationOverride(
       formData.get("durationType"),
-      formData.get("durationMonths")
+      formData.get("durationMonths"),
     );
     if (!inheritDuration && parsed === null) return;
 
@@ -85,7 +90,10 @@ export async function setLinkTermAction(
         affiliate: { merchant: { ownerId } },
       },
       data: inheritDuration
-        ? { commissionDurationTypeOverride: null, commissionDurationMonthsOverride: null }
+        ? {
+            commissionDurationTypeOverride: null,
+            commissionDurationMonthsOverride: null,
+          }
         : {
             commissionDurationTypeOverride: parsed!.type,
             commissionDurationMonthsOverride: parsed!.months,
@@ -97,7 +105,12 @@ export async function setLinkTermAction(
     return;
   }
 
-  if (!(["commission", "timeToBuy", "holdBeforePaying"] as string[]).includes(term)) return;
+  if (
+    !(["commission", "timeToBuy", "holdBeforePaying"] as string[]).includes(
+      term,
+    )
+  )
+    return;
 
   const inherit = formData.get("intent") === "inherit";
   let value: number | null = null;
@@ -108,17 +121,19 @@ export async function setLinkTermAction(
     if (!Number.isFinite(value)) return;
 
     if (term === "commission") {
-      if (value <= 0 || value > 100 || Math.round(value * 100) !== value * 100) return;
+      if (value <= 0 || value > 100 || Math.round(value * 100) !== value * 100)
+        return;
     } else if (value <= 0 || !Number.isInteger(value)) {
       return;
     }
   }
 
-  const data = term === "commission"
-    ? { commissionRateOverride: value }
-    : term === "timeToBuy"
-      ? { attributionWindowDaysOverride: value }
-      : { holdingPeriodDaysOverride: value };
+  const data =
+    term === "commission"
+      ? { commissionRateOverride: value }
+      : term === "timeToBuy"
+        ? { attributionWindowDaysOverride: value }
+        : { holdingPeriodDaysOverride: value };
   const updated = await db.affiliateLink.updateMany({
     where: {
       id: linkId,
@@ -140,9 +155,13 @@ export async function setLinkTermAction(
  */
 export async function createPasswordLinkAction(
   product: { id: string },
-  affiliateId: string
+  affiliateId: string,
 ): Promise<{ token: string } | { error: string }> {
   const ownerId = await owner();
-  const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
+  const token = await createAffiliateResetLink(
+    ownerId,
+    product.id,
+    affiliateId,
+  );
   return token ? { token } : { error: "Affiliate not found" };
 }

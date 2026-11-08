@@ -30,7 +30,7 @@ export async function createLinkAction(input: {
 
 export async function updateLinkAction(
   linkId: string,
-  input: { code: string; destinationPath: string }
+  input: { code: string; destinationPath: string },
 ): Promise<{ error: string } | { ok: true }> {
   const { affiliateId } = await requireAffiliate();
   const result = await updateLink(affiliateId, linkId, input);
@@ -40,7 +40,7 @@ export async function updateLinkAction(
 }
 
 export async function deleteLinkAction(
-  linkId: string
+  linkId: string,
 ): Promise<{ error: string } | { ok: true }> {
   const { affiliateId } = await requireAffiliate();
   const result = await deleteLink(affiliateId, linkId);

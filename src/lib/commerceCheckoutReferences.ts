@@ -10,10 +10,15 @@ type CheckoutReferenceRow = {
   alternateCheckoutRef: string | null;
 };
 
-const UNRESOLVED_REFERENCE_MESSAGE = "Multiple provider invoice references require reconciliation";
-const PENDING_REFERENCE_MESSAGE = "Provider invoice reference received before checkout creation settled";
+const UNRESOLVED_REFERENCE_MESSAGE =
+  "Multiple provider invoice references require reconciliation";
+const PENDING_REFERENCE_MESSAGE =
+  "Provider invoice reference received before checkout creation settled";
 
-export async function holdUnpaidCheckoutCommissions(tx: Prisma.TransactionClient, checkoutId: string): Promise<void> {
+export async function holdUnpaidCheckoutCommissions(
+  tx: Prisma.TransactionClient,
+  checkoutId: string,
+): Promise<void> {
   await tx.$executeRaw(Prisma.sql`
     UPDATE ${SqlSchema.tables.Commission.name} AS commission
     SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = COALESCE(commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt}, now()),
@@ -32,7 +37,6 @@ export async function holdUnpaidCheckoutCommissions(tx: Prisma.TransactionClient
   `);
 }
 
-
 export async function releaseCheckoutConflictHold(
   tx: Prisma.TransactionClient,
   checkoutId: string,
@@ -49,7 +53,7 @@ export async function releaseCheckoutConflictHold(
     cryptoAmount: string | null;
     cryptoCurrency: string | null;
     cryptoNetwork: string | null;
-  }
+  },
 ): Promise<void> {
   const now = new Date();
   const checkout = await tx.commerceCheckout.findUnique({
@@ -57,10 +61,20 @@ export async function releaseCheckoutConflictHold(
     select: { refundReconciliationPendingAt: true },
   });
   if (!checkout) return;
-  if (checkout.refundReconciliationPendingAt && appliedTerminalStatus !== "refunded") return;
+  if (
+    checkout.refundReconciliationPendingAt &&
+    appliedTerminalStatus !== "refunded"
+  )
+    return;
 
   const payment = await tx.paymentRecord.findUnique({
-    where: { merchantId_provider_sourceOrderId: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database, sourceOrderId } },
+    where: {
+      merchantId_provider_sourceOrderId: {
+        merchantId,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+        sourceOrderId,
+      },
+    },
     select: {
       id: true,
       paymentRef: true,
@@ -77,22 +91,25 @@ export async function releaseCheckoutConflictHold(
   const paymentMatchesSelectedInvoice = Boolean(
     payment &&
     payment.checkoutId === checkoutId &&
-    payment.checkoutRef === selectedRef
+    payment.checkoutRef === selectedRef,
   );
   const paymentMatchesSelectedPayment = Boolean(
     paymentMatchesSelectedInvoice &&
-    payment?.paymentRef === terminalSnapshot.paymentRef
+    payment?.paymentRef === terminalSnapshot.paymentRef,
   );
   if (!payment || !paymentMatchesSelectedPayment) return;
   if (
     !["finished", "refunded"].includes(terminalSnapshot.status) ||
     terminalSnapshot.status !== appliedTerminalStatus ||
-    (terminalSnapshot.invoiceRef !== null && terminalSnapshot.invoiceRef !== selectedRef)
-  ) return;
+    (terminalSnapshot.invoiceRef !== null &&
+      terminalSnapshot.invoiceRef !== selectedRef)
+  )
+    return;
   const storedPaymentStatus = payment.status.toLowerCase();
   if (!["finished", "refunded"].includes(storedPaymentStatus)) return;
   const finalStatus = appliedTerminalStatus;
-  if (appliedTerminalStatus && storedPaymentStatus !== appliedTerminalStatus) return;
+  if (appliedTerminalStatus && storedPaymentStatus !== appliedTerminalStatus)
+    return;
   const selectedPaymentRef = payment.paymentRef;
   if (appliedTerminalStatus === "refunded") {
     await tx.commerceCheckout.updateMany({
@@ -141,7 +158,6 @@ export async function releaseCheckoutConflictHold(
       `);
     }
   }
-
 }
 
 /** Record a provider invoice reference without discarding any existing reference. */
@@ -149,7 +165,7 @@ export async function recordCommerceCheckoutReference(
   tx: Prisma.TransactionClient,
   checkoutId: string,
   providerRef: string,
-  forceUncertain = false
+  forceUncertain = false,
 ): Promise<{ matchesPrimary: boolean; hasConflict: boolean }> {
   const rows = await tx.$queryRaw<CheckoutReferenceRow[]>(Prisma.sql`
     SELECT
@@ -165,23 +181,29 @@ export async function recordCommerceCheckoutReference(
   const row = rows[0];
   if (!row) return { matchesPrimary: false, hasConflict: true };
 
-  const { hostedCheckoutRef: primaryRef, alternateCheckoutRef: alternateRef } = row;
-  const hasConflict = Boolean(alternateRef || (primaryRef && primaryRef !== providerRef));
+  const { hostedCheckoutRef: primaryRef, alternateCheckoutRef: alternateRef } =
+    row;
+  const hasConflict = Boolean(
+    alternateRef || (primaryRef && primaryRef !== providerRef),
+  );
   const shouldBecomeUncertain = Boolean(
     hasConflict ||
     !primaryRef ||
     forceUncertain ||
-    ["CREATING", "UNCERTAIN", "RETRYABLE"].includes(row.status)
+    ["CREATING", "UNCERTAIN", "RETRYABLE"].includes(row.status),
   );
   const data: Prisma.CommerceCheckoutUpdateManyMutationInput = {};
 
   if (!primaryRef) data.hostedCheckoutRef = providerRef;
-  else if (primaryRef !== providerRef && !alternateRef) data.alternateCheckoutRef = providerRef;
+  else if (primaryRef !== providerRef && !alternateRef)
+    data.alternateCheckoutRef = providerRef;
 
   if (shouldBecomeUncertain) {
     data.status = "UNCERTAIN";
     data.hostedCheckoutUrl = null;
-    data.lastCreationError = hasConflict ? UNRESOLVED_REFERENCE_MESSAGE : PENDING_REFERENCE_MESSAGE;
+    data.lastCreationError = hasConflict
+      ? UNRESOLVED_REFERENCE_MESSAGE
+      : PENDING_REFERENCE_MESSAGE;
     data.nextAttemptAt = null;
   }
 
@@ -194,7 +216,8 @@ export async function recordCommerceCheckoutReference(
   }
 
   return {
-    matchesPrimary: (!primaryRef || primaryRef === providerRef) && !alternateRef,
+    matchesPrimary:
+      (!primaryRef || primaryRef === providerRef) && !alternateRef,
     hasConflict,
   };
 }

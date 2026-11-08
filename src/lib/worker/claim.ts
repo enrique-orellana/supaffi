@@ -82,7 +82,11 @@ export async function markProcessed(id: string): Promise<void> {
 // window. Two days covers a weekend's worth of nobody looking, and still
 // stops a genuinely broken event (a real handler bug, a malformed payload)
 // from retrying forever: that one needs a human to look at lastError.
-export async function markFailed(id: string, attempts: number, error: unknown): Promise<void> {
+export async function markFailed(
+  id: string,
+  attempts: number,
+  error: unknown,
+): Promise<void> {
   const message = loggableError(error);
   const terminal = attempts >= MAX_ATTEMPTS;
   await db.webhookEvent.update({
@@ -90,7 +94,9 @@ export async function markFailed(id: string, attempts: number, error: unknown): 
     data: {
       status: terminal ? "FAILED" : "PENDING",
       lastError: message.slice(0, 2000),
-      nextAttemptAt: terminal ? new Date() : new Date(Date.now() + backoffMs(attempts)),
+      nextAttemptAt: terminal
+        ? new Date()
+        : new Date(Date.now() + backoffMs(attempts)),
     },
   });
 }

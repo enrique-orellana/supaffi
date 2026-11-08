@@ -3,14 +3,23 @@
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Field, FormCard } from "@/components/Field";
 import { Term } from "@/components/Term";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { COMMISSION_DURATION_OPTIONS } from "@/lib/commissionDuration";
 
-type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
+type Action = (
+  prev: { error: string },
+  formData: FormData,
+) => Promise<{ error: string }>;
 
 export const TERMS_DEFAULTS: ProgramFormValues = {
   name: "",
@@ -24,7 +33,7 @@ export const TERMS_DEFAULTS: ProgramFormValues = {
 // Passed to the Select as `items` so the trigger shows the sentence rather
 // than the raw enum name it submits.
 const DURATIONS = Object.fromEntries(
-  COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [value, label])
+  COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [value, label]),
 );
 
 const NUMBER = "w-20 tabular-nums";
@@ -57,7 +66,13 @@ export function TermsForm({
       <FormCard>
         {askName && (
           <Field label="Program name" htmlFor="program-name">
-            <Input id="program-name" name="name" defaultValue={initial.name} placeholder="Partners" required />
+            <Input
+              id="program-name"
+              name="name"
+              defaultValue={initial.name}
+              placeholder="Partners"
+              required
+            />
           </Field>
         )}
 
@@ -85,12 +100,19 @@ export function TermsForm({
               value={duration}
               onValueChange={(value) => setDuration(String(value))}
             >
-              <SelectTrigger className="h-9 min-w-0 flex-1 cursor-pointer" aria-label="How long commission is paid">
+              <SelectTrigger
+                className="h-9 min-w-0 flex-1 cursor-pointer"
+                aria-label="How long commission is paid"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {COMMISSION_DURATION_OPTIONS.map(({ value, label }) => (
-                  <SelectItem key={value} value={value} className="cursor-pointer">
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    className="cursor-pointer"
+                  >
                     {label}
                   </SelectItem>
                 ))}
@@ -117,7 +139,11 @@ export function TermsForm({
             model's. What the number means sits behind the underline. */}
         <div className="grid grid-cols-2 gap-5">
           <Field
-            label={<Term tip="A sale counts for the affiliate if it happens within this many days of their click.">Time to buy</Term>}
+            label={
+              <Term tip="A sale counts for the affiliate if it happens within this many days of their click.">
+                Time to buy
+              </Term>
+            }
             htmlFor="program-window"
           >
             <div className="flex items-center gap-2">
@@ -136,7 +162,11 @@ export function TermsForm({
           </Field>
 
           <Field
-            label={<Term tip="A commission waits this long before it is yours to pay, so a refund can still cancel it.">Hold before paying</Term>}
+            label={
+              <Term tip="A commission waits this long before it is yours to pay, so a refund can still cancel it.">
+                Hold before paying
+              </Term>
+            }
             htmlFor="program-hold"
           >
             <div className="flex items-center gap-2">
@@ -157,7 +187,11 @@ export function TermsForm({
 
         {signupOpen !== undefined && (
           <label className="flex cursor-pointer items-center gap-2.5 text-sm">
-            <Checkbox name="signupOpen" defaultChecked={signupOpen} className="cursor-pointer" />
+            <Checkbox
+              name="signupOpen"
+              defaultChecked={signupOpen}
+              className="cursor-pointer"
+            />
             <Term tip="Anyone with the signup link can join. Turn it off for a tier you move affiliates into yourself.">
               Public signup
             </Term>
@@ -171,7 +205,12 @@ export function TermsForm({
         </p>
       )}
       <div>
-        <Button type="submit" size="lg" className="cursor-pointer" disabled={pending}>
+        <Button
+          type="submit"
+          size="lg"
+          className="cursor-pointer"
+          disabled={pending}
+        >
           {submitLabel}
         </Button>
       </div>

@@ -160,11 +160,12 @@ How Supaffi protects keys and data is in [Security](https://supaffi.com/docs/sec
 Next.js, Prisma, PostgreSQL. No Redis.
 
 ```sh
+corepack enable
 cp .env.example .env   # fill in the two generated secrets
 cp docker-compose.override.yml.example docker-compose.override.yml
 docker compose up -d db   # Postgres on 127.0.0.1:5432
-npm install && npx prisma migrate deploy
-npm run dev
+pnpm install && pnpm exec prisma migrate deploy
+pnpm run dev
 ```
 
 Stripe won't call `localhost`. Forward webhooks with its CLI and paste the `whsec_` it prints into the connect form:

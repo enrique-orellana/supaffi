@@ -16,41 +16,61 @@ import { getAffiliateMetrics } from "@/lib/analytics";
 // PaymentIntent ID, which is what Commission.stripePaymentRef holds for them.
 const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
-    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({
+      data: [],
+    })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  const actual =
+    await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
-import { handleChargeRefunded, prorateCommission } from "@/lib/worker/handlers/chargeRefunded";
+import {
+  handleChargeRefunded,
+  prorateCommission,
+} from "@/lib/worker/handlers/chargeRefunded";
 import { handleChargeDisputeClosed } from "@/lib/worker/handlers/chargeDisputeClosed";
 
 describe("prorateCommission", () => {
   it("voids when the whole sale came back", () => {
-    expect(prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 7800 })).toEqual({
+    expect(
+      prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 7800 }),
+    ).toEqual({
       void: true,
     });
   });
 
   it("takes the same fraction off the commission as came off the sale", () => {
     // Half the sale refunded, half the commission survives.
-    expect(prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 3900 })).toEqual({
+    expect(
+      prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 3900 }),
+    ).toEqual({
       void: false,
       amount: 7.8,
     });
   });
 
   it("prorates against the original, so a second partial refund does not compound", () => {
-    const first = prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 1950 });
-    const second = prorateCommission({ gross: 15.6, chargeTotal: 7800, refunded: 3900 });
+    const first = prorateCommission({
+      gross: 15.6,
+      chargeTotal: 7800,
+      refunded: 1950,
+    });
+    const second = prorateCommission({
+      gross: 15.6,
+      chargeTotal: 7800,
+      refunded: 3900,
+    });
     expect(first).toEqual({ void: false, amount: 11.7 });
     expect(second).toEqual({ void: false, amount: 7.8 });
   });
 
   it("voids rather than leaving a zero row when rounding wipes it out", () => {
-    expect(prorateCommission({ gross: 0.02, chargeTotal: 10000, refunded: 9999 })).toEqual({
+    expect(
+      prorateCommission({ gross: 0.02, chargeTotal: 10000, refunded: 9999 }),
+    ).toEqual({
       void: true,
     });
   });
@@ -59,7 +79,9 @@ describe("prorateCommission", () => {
     // 120.00 EUR charged, 20.00 of it VAT, commission 20.00 on the 100.00 base.
     // Refunding 60.00 returns half the goods and half the VAT, so half the
     // commission goes: the ratio is the same with or without the tax in it.
-    expect(prorateCommission({ gross: 20, chargeTotal: 12000, refunded: 6000 })).toEqual({
+    expect(
+      prorateCommission({ gross: 20, chargeTotal: 12000, refunded: 6000 }),
+    ).toEqual({
       void: false,
       amount: 10,
     });
@@ -70,19 +92,34 @@ describe("prorateCommission", () => {
   describe("when the row records the referred share of the charge", () => {
     it("voids on a refund of exactly the referred share, even though most of the charge remains", () => {
       expect(
-        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 10000, referredChargeMinor: 10000 })
+        prorateCommission({
+          gross: 30,
+          chargeTotal: 20000,
+          refunded: 10000,
+          referredChargeMinor: 10000,
+        }),
       ).toEqual({ void: true });
     });
 
     it("keeps half the commission when half the referred share is refunded", () => {
       expect(
-        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 5000, referredChargeMinor: 10000 })
+        prorateCommission({
+          gross: 30,
+          chargeTotal: 20000,
+          refunded: 5000,
+          referredChargeMinor: 10000,
+        }),
       ).toEqual({ void: false, amount: 15 });
     });
 
     it("takes the referred share out of the refund first, so refunding the whole charge still leaves nothing beyond the referred voiding", () => {
       expect(
-        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 20000, referredChargeMinor: 10000 })
+        prorateCommission({
+          gross: 30,
+          chargeTotal: 20000,
+          refunded: 20000,
+          referredChargeMinor: 10000,
+        }),
       ).toEqual({ void: true });
     });
 
@@ -90,7 +127,9 @@ describe("prorateCommission", () => {
       // Same charge and refund as the merchant-safe void case above, but
       // without referredChargeMinor: prorates against the whole charge, the
       // rule every row used before this existed.
-      expect(prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 10000 })).toEqual({
+      expect(
+        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 10000 }),
+      ).toEqual({
         void: false,
         amount: 15,
       });
@@ -103,7 +142,14 @@ describe("prorateCommission", () => {
       // stored 50 must still void the commission outright, not leave
       // gross/101 pending, which is what rounding the share up to 51 would
       // have left behind.
-      expect(prorateCommission({ gross: 10.1, chargeTotal: 101, refunded: 50, referredChargeMinor: 50 })).toEqual({
+      expect(
+        prorateCommission({
+          gross: 10.1,
+          chargeTotal: 101,
+          refunded: 50,
+          referredChargeMinor: 50,
+        }),
+      ).toEqual({
         void: true,
       });
     });
@@ -113,7 +159,9 @@ describe("prorateCommission", () => {
 const PAYMENT_INTENT_ID = "pi_refund_test";
 
 async function clearAll() {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -132,7 +180,10 @@ describe("handleChargeRefunded", () => {
 
   // A seventy eight dollar sale earning a fifteen sixty commission, so the
   // fractions in these cases land on exact cents.
-  function chargeFixture(refunded: number, extra: Record<string, unknown> = {}): Stripe.Charge {
+  function chargeFixture(
+    refunded: number,
+    extra: Record<string, unknown> = {},
+  ): Stripe.Charge {
     return {
       id: "ch_refund_test",
       amount: 7800,
@@ -146,11 +197,21 @@ describe("handleChargeRefunded", () => {
   /** Stripe links this invoice to the test PaymentIntent. */
   function invoiceLinked(invoiceId: string) {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({
-      data: [{ invoice: invoiceId, payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID } }],
+      data: [
+        {
+          invoice: invoiceId,
+          payment: {
+            type: "payment_intent",
+            payment_intent: PAYMENT_INTENT_ID,
+          },
+        },
+      ],
     }));
   }
 
-  async function givenCommission(overrides: Partial<Commission> = {}): Promise<Commission> {
+  async function givenCommission(
+    overrides: Partial<Commission> = {},
+  ): Promise<Commission> {
     return db.commission.create({
       data: {
         affiliateId,
@@ -177,10 +238,15 @@ describe("handleChargeRefunded", () => {
   beforeEach(async () => {
     await clearAll();
     stripeStub.invoicePayments.list.mockReset();
-    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [],
+    }));
 
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -189,7 +255,9 @@ describe("handleChargeRefunded", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     const program = await db.program.create({
@@ -233,7 +301,9 @@ describe("handleChargeRefunded", () => {
     const commission = await givenCommission();
     await handleChargeRefunded(merchant, chargeFixture(3900));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.amount.toString()).toBe("7.8");
     expect(updated.status).toBe("PENDING");
     expect(updated.voidReason).toBe("partial refund");
@@ -247,7 +317,9 @@ describe("handleChargeRefunded", () => {
     });
     await handleChargeRefunded(merchant, chargeFixture(3900));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("FLAGGED");
     expect(updated.flagReason).toBe("card");
     expect(updated.amount.toString()).toBe("7.8");
@@ -258,7 +330,9 @@ describe("handleChargeRefunded", () => {
     const commission = await givenCommission();
     await handleChargeRefunded(merchant, chargeFixture(7800));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("VOIDED");
     expect(updated.voidReason).toBe("refund");
     expect(updated.voidedAt).not.toBeNull();
@@ -266,7 +340,10 @@ describe("handleChargeRefunded", () => {
 
   it("leaves a paid commission, and what the affiliate earned and was paid, untouched by a later refund", async () => {
     // A paid commission is final: the merchant absorbs a refund after payout.
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    const commission = await givenCommission({
+      status: "PAID",
+      paidAt: new Date(),
+    });
     const before = await getAffiliateMetrics(affiliateId, 30);
 
     const log = vi.spyOn(console, "info").mockImplementation(() => {});
@@ -279,7 +356,9 @@ describe("handleChargeRefunded", () => {
       log.mockRestore();
     }
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("PAID");
     expect(updated.amount.toString()).toBe("15.6");
     expect(updated.voidReason).toBeNull();
@@ -299,7 +378,9 @@ describe("handleChargeRefunded", () => {
     const commission = await givenCommission({ referredChargeMinor: 3900n });
     await handleChargeRefunded(merchant, chargeFixture(3900));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("VOIDED");
     expect(updated.voidReason).toBe("refund");
   });
@@ -308,7 +389,9 @@ describe("handleChargeRefunded", () => {
     const commission = await givenCommission({ referredChargeMinor: 3900n });
     await handleChargeRefunded(merchant, chargeFixture(1950));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.amount.toString()).toBe("7.8");
     expect(updated.status).toBe("PENDING");
   });
@@ -336,7 +419,9 @@ describe("handleChargeRefunded", () => {
     });
     await handleChargeRefunded(merchant, largeChargeFixture(3_000_000_000));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("VOIDED");
     expect(updated.voidReason).toBe("refund");
   });
@@ -349,7 +434,9 @@ describe("handleChargeRefunded", () => {
     });
     await handleChargeRefunded(merchant, largeChargeFixture(1_500_000_000));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.amount.toString()).toBe("1000000");
     expect(updated.status).toBe("PENDING");
   });
@@ -358,7 +445,9 @@ describe("handleChargeRefunded", () => {
     await givenCommission({ stripePaymentRef: "pi_somebody_else" });
     await handleChargeRefunded(merchant, chargeFixture(7800));
 
-    const voided = await db.commission.findMany({ where: { status: "VOIDED" } });
+    const voided = await db.commission.findMany({
+      where: { status: "VOIDED" },
+    });
     expect(voided).toHaveLength(0);
   });
 
@@ -369,7 +458,9 @@ describe("handleChargeRefunded", () => {
     await handleChargeRefunded(merchant, chargeFixture(5850));
     await handleChargeRefunded(merchant, chargeFixture(1950));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.amount.toString()).toBe("3.9");
   });
 
@@ -382,22 +473,33 @@ describe("handleChargeRefunded", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     await handleChargeRefunded(other, chargeFixture(7800));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("PENDING");
   });
 
   it("changes nothing when the commission is paid out between the read and the write", async () => {
     const commission = await givenCommission();
     const realUpdateMany = db.commission.updateMany.bind(db.commission);
-    const spy = vi.spyOn(db.commission, "updateMany").mockImplementationOnce((async (args: Prisma.CommissionUpdateManyArgs) => {
-      await db.commission.update({ where: { id: commission.id }, data: { status: "PAID", paidAt: new Date() } });
-      return realUpdateMany(args);
-    }) as unknown as typeof db.commission.updateMany);
+    const spy = vi
+      .spyOn(db.commission, "updateMany")
+      .mockImplementationOnce((async (
+        args: Prisma.CommissionUpdateManyArgs,
+      ) => {
+        await db.commission.update({
+          where: { id: commission.id },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+        return realUpdateMany(args);
+      }) as unknown as typeof db.commission.updateMany);
     const log = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       await handleChargeRefunded(merchant, chargeFixture(7800));
@@ -407,7 +509,9 @@ describe("handleChargeRefunded", () => {
       log.mockRestore();
     }
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("PAID");
     expect(updated.amount.toString()).toBe("15.6");
     expect(updated.voidedAt).toBeNull();
@@ -427,13 +531,18 @@ describe("handleChargeRefunded", () => {
     const commission = await givenCommission();
     await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("VOIDED");
     expect(updated.voidReason).toBe("chargeback");
   });
 
   it("changes nothing on a paid commission when a chargeback is lost", async () => {
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    const commission = await givenCommission({
+      status: "PAID",
+      paidAt: new Date(),
+    });
     const log = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
@@ -442,7 +551,9 @@ describe("handleChargeRefunded", () => {
       log.mockRestore();
     }
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("PAID");
     expect(updated.amount.toString()).toBe("15.6");
     expect(updated.voidReason).toBeNull();
@@ -460,7 +571,9 @@ describe("handleChargeRefunded", () => {
         payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID },
         limit: 1,
       });
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.status).toBe("VOIDED");
       expect(updated.voidReason).toBe("refund");
     });
@@ -471,7 +584,9 @@ describe("handleChargeRefunded", () => {
 
       await handleChargeRefunded(merchant, chargeFixture(3900));
 
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.amount.toString()).toBe("7.8");
       expect(updated.voidReason).toBe("partial refund");
     });
@@ -479,10 +594,15 @@ describe("handleChargeRefunded", () => {
     it("refunds a row stored under its PaymentIntent when an older API version puts the invoice on the charge", async () => {
       const commission = await givenCommission();
 
-      await handleChargeRefunded(merchant, chargeFixture(3900, { invoice: "in_legacy_post" }));
+      await handleChargeRefunded(
+        merchant,
+        chargeFixture(3900, { invoice: "in_legacy_post" }),
+      );
 
       expect(stripeStub.invoicePayments.list).not.toHaveBeenCalled();
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.amount.toString()).toBe("7.8");
     });
 
@@ -494,7 +614,9 @@ describe("handleChargeRefunded", () => {
 
       await handleChargeRefunded(merchant, chargeFixture(3900));
 
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.status).toBe("VOIDED");
     });
 
@@ -504,7 +626,9 @@ describe("handleChargeRefunded", () => {
 
       await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
 
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.status).toBe("VOIDED");
       expect(updated.voidReason).toBe("chargeback");
     });
@@ -515,7 +639,9 @@ describe("handleChargeRefunded", () => {
 
       await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
 
-      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const updated = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(updated.status).toBe("VOIDED");
       expect(updated.voidReason).toBe("chargeback");
     });
@@ -523,11 +649,15 @@ describe("handleChargeRefunded", () => {
 
   it("still refunds a subscription payment stored under its invoice", async () => {
     invoiceLinked("in_subscription");
-    const commission = await givenCommission({ stripePaymentRef: "in_subscription" });
+    const commission = await givenCommission({
+      stripePaymentRef: "in_subscription",
+    });
 
     await handleChargeRefunded(merchant, chargeFixture(7800));
 
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
     expect(updated.status).toBe("VOIDED");
   });
 });

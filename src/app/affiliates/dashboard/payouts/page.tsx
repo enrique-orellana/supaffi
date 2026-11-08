@@ -1,6 +1,9 @@
 import { requireAffiliate } from "@/lib/affiliateAuth";
 import { getAffiliateMetrics } from "@/lib/analytics";
-import { getAffiliatePayoutDetails, listAffiliatePayments } from "@/lib/affiliate";
+import {
+  getAffiliatePayoutDetails,
+  listAffiliatePayments,
+} from "@/lib/affiliate";
 import { PayoutsScreen } from "./PayoutsScreen";
 
 /**

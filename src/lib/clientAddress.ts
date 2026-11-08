@@ -10,7 +10,10 @@
 export function clientAddress(headers: Headers): string | null {
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {
-    const entries = forwarded.split(",").map((e) => e.trim()).filter(Boolean);
+    const entries = forwarded
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
     const last = entries[entries.length - 1];
     if (last) return last;
   }

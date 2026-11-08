@@ -28,8 +28,14 @@ export function StepShell({
         <p className="text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase">
           Step {step.index} of {step.total}
         </p>
-        <h1 className="text-[27px] leading-[1.2] font-medium tracking-[-0.02em] text-balance">{title}</h1>
-        {lede && <p className="max-w-[52ch] text-sm text-muted-foreground text-pretty">{lede}</p>}
+        <h1 className="text-[27px] leading-[1.2] font-medium tracking-[-0.02em] text-balance">
+          {title}
+        </h1>
+        {lede && (
+          <p className="max-w-[52ch] text-sm text-muted-foreground text-pretty">
+            {lede}
+          </p>
+        )}
       </header>
       <div className="mt-8 flex flex-col gap-4">{children}</div>
       {action && <div className="mt-6 flex items-center gap-3">{action}</div>}
@@ -43,6 +49,21 @@ export function StepShell({
  * sentence, and setting one muted and the other bold made a single screen
  * look like it had two different voices.
  */
-export function StepLabel({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <p className={cn("max-w-[52ch] text-sm text-muted-foreground text-pretty", className)}>{children}</p>;
+export function StepLabel({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <p
+      className={cn(
+        "max-w-[52ch] text-sm text-muted-foreground text-pretty",
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
 }

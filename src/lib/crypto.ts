@@ -11,7 +11,7 @@ function getKey(): Buffer {
   const key = process.env.MASTER_ENCRYPTION_KEY;
   if (!key || key.length !== 64) {
     throw new Error(
-      "MASTER_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes)"
+      "MASTER_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes)",
     );
   }
   return Buffer.from(key, "hex");
@@ -20,7 +20,10 @@ function getKey(): Buffer {
 export function encrypt(plaintext: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", getKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
   return [iv, authTag, encrypted].map((b) => b.toString("hex")).join(":");
 }
@@ -36,9 +39,14 @@ export function decrypt(ciphertext: string): string {
   if (authTag.length !== AUTH_TAG_LENGTH) {
     throw new Error("Invalid ciphertext");
   }
-  const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"), {
-    authTagLength: AUTH_TAG_LENGTH,
-  });
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    getKey(),
+    Buffer.from(ivHex, "hex"),
+    {
+      authTagLength: AUTH_TAG_LENGTH,
+    },
+  );
   decipher.setAuthTag(authTag);
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(encryptedHex, "hex")),

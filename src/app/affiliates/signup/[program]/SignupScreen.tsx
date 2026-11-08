@@ -31,7 +31,10 @@ function plural(count: number, word: string): string {
 }
 
 /** How long commissions keep coming from a customer, in plain words. */
-export function durationTerm(terms: SignupTerms): { value: string; hint: string } {
+export function durationTerm(terms: SignupTerms): {
+  value: string;
+  hint: string;
+} {
   if (terms.durationType === "FOREVER") {
     return { value: "Every payment", hint: "as long as the customer pays" };
   }
@@ -41,21 +44,39 @@ export function durationTerm(terms: SignupTerms): { value: string; hint: string 
     // expected. Either way, a FIXED_MONTHS program must never fall through
     // to the one-time wording below, which reads as a weaker plan than it is.
     if (terms.durationMonths) {
-      return { value: plural(terms.durationMonths, "month"), hint: "of everything the customer pays" };
+      return {
+        value: plural(terms.durationMonths, "month"),
+        hint: "of everything the customer pays",
+      };
     }
-    return { value: "For a set period", hint: "of everything the customer pays" };
+    return {
+      value: "For a set period",
+      hint: "of everything the customer pays",
+    };
   }
   return { value: "First payment", hint: "one commission per customer" };
 }
 
-function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Tile({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
   return (
     <div className="flex flex-col gap-1 px-5 py-4">
-      <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">{label}</p>
+      <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+        {label}
+      </p>
       <p className="text-[22px] leading-7 font-medium tracking-[-0.02em] whitespace-nowrap text-neutral-900 tabular-nums">
         {value}
       </p>
-      <p className="text-xs leading-4 text-muted-foreground text-pretty">{hint}</p>
+      <p className="text-xs leading-4 text-muted-foreground text-pretty">
+        {hint}
+      </p>
     </div>
   );
 }
@@ -87,7 +108,11 @@ export function SignupScreen({
         </div>
 
         <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-          <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
+          <Tile
+            label="You earn"
+            value={formatRate(terms.rate)}
+            hint="of every sale"
+          />
           <Tile label="Earn on" value={duration.value} hint={duration.hint} />
         </div>
       </div>

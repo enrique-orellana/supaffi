@@ -8,7 +8,10 @@ import type { CommissionStatus } from "@/lib/commission";
 // Owner-scoping is done in the query, never inferred from the route guard.
 // An Affiliate reaches an Owner only through its Merchant, so both links get
 // checked: the Merchant is the Owner's, and the Affiliate is that Merchant's.
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
+async function assertMerchantOwnership(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { id: true },
@@ -40,14 +43,16 @@ function normalizeEmail(email: string): string {
 // Callers are expected to have already established that the Owner owns this
 // Merchant (the dashboard reaches this only via listMerchantsForOwner), so
 // this takes no ownerId and does no ownership check of its own.
-export async function countAffiliatesForMerchant(merchantId: string): Promise<number> {
+export async function countAffiliatesForMerchant(
+  merchantId: string,
+): Promise<number> {
   return db.affiliate.count({ where: { merchantId } });
 }
 
 export async function createAffiliate(
   merchantId: string,
   programId: string,
-  input: CreateAffiliateInput
+  input: CreateAffiliateInput,
 ): Promise<{ id: string; email: string; referralCode: string }> {
   const email = normalizeEmail(input.email);
   const code = input.code ?? (await generateLinkCode(input.name, merchantId));
@@ -85,11 +90,15 @@ export async function createAffiliate(
 
 export async function getAffiliateByEmail(
   merchantId: string,
-  email: string
+  email: string,
 ): Promise<{ id: string; email: string; referralCode: string } | null> {
   const affiliate = await db.affiliate.findUnique({
     where: { merchantId_email: { merchantId, email: normalizeEmail(email) } },
-    select: { id: true, email: true, links: { where: { isPrimary: true }, select: { code: true } } },
+    select: {
+      id: true,
+      email: true,
+      links: { where: { isPrimary: true }, select: { code: true } },
+    },
   });
   if (!affiliate) return null;
   return {
@@ -99,13 +108,18 @@ export async function getAffiliateByEmail(
   };
 }
 
-export async function getAffiliateSession(
-  affiliateId: string
-): Promise<{ referralCode: string; merchantWebsiteUrl: string; merchantId: string } | null> {
+export async function getAffiliateSession(affiliateId: string): Promise<{
+  referralCode: string;
+  merchantWebsiteUrl: string;
+  merchantId: string;
+} | null> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: {
-      links: { where: { isPrimary: true }, select: { code: true, destinationPath: true } },
+      links: {
+        where: { isPrimary: true },
+        select: { code: true, destinationPath: true },
+      },
       merchant: { select: { id: true, websiteUrl: true } },
     },
   });
@@ -117,7 +131,8 @@ export async function getAffiliateSession(
   };
 }
 
-export type AffiliateCommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED";
+export type AffiliateCommissionStatus =
+  "PENDING" | "PAYABLE" | "PAID" | "VOIDED";
 
 const AFFILIATE_VISIBLE_STATUSES: readonly AffiliateCommissionStatus[] = [
   "PENDING",
@@ -160,7 +175,9 @@ export type AffiliateCommissionRow = {
  * that says "6 pending" and the rows behind it would disagree the moment a
  * flag exists (`toDisplayStatus` folds the same way for display).
  */
-function affiliateStatusWhere(status: AffiliateCommissionStatus | null | undefined) {
+function affiliateStatusWhere(
+  status: AffiliateCommissionStatus | null | undefined,
+) {
   if (!status) return {};
   if (status === "PENDING") {
     return { status: { in: ["PENDING", "FLAGGED"] as CommissionStatus[] } };
@@ -176,7 +193,11 @@ export async function listAffiliateCommissions(
     page,
     pageSize,
     status,
-  }: { page: number; pageSize: number; status?: AffiliateCommissionStatus | null }
+  }: {
+    page: number;
+    pageSize: number;
+    status?: AffiliateCommissionStatus | null;
+  },
 ): Promise<{ rows: AffiliateCommissionRow[]; total: number }> {
   const where = { affiliateId, ...affiliateStatusWhere(status) };
   const [rows, total] = await Promise.all([
@@ -200,7 +221,10 @@ export async function listAffiliateCommissions(
       // same as the owner's ledger.
       orderBy:
         status === "PAYABLE"
-          ? [{ adjustsCommissionId: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }]
+          ? [
+              { adjustsCommissionId: { sort: "asc", nulls: "first" } },
+              { createdAt: "desc" },
+            ]
           : { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -242,7 +266,7 @@ export async function listAffiliateCommissions(
  * included.
  */
 export async function getAffiliateCommissionTotals(
-  affiliateId: string
+  affiliateId: string,
 ): Promise<{ status: AffiliateCommissionStatus; count: number }[]> {
   const grouped = await db.commission.groupBy({
     by: ["status"],
@@ -269,7 +293,7 @@ export const MAX_PAYOUT_DETAILS_LENGTH = 1000;
 
 export async function updateAffiliatePayoutDetails(
   affiliateId: string,
-  payoutDetails: string
+  payoutDetails: string,
 ): Promise<{ error: string } | null> {
   const trimmed = payoutDetails.trim();
   if (trimmed.length > MAX_PAYOUT_DETAILS_LENGTH) {
@@ -282,7 +306,9 @@ export async function updateAffiliatePayoutDetails(
   return null;
 }
 
-export async function getAffiliatePayoutDetails(affiliateId: string): Promise<string | null> {
+export async function getAffiliatePayoutDetails(
+  affiliateId: string,
+): Promise<string | null> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: { payoutDetails: true },
@@ -300,7 +326,7 @@ export async function updateAffiliate(
   ownerId: string,
   merchantId: string,
   affiliateId: string,
-  input: { programId?: string; customCommissionRate?: number | null }
+  input: { programId?: string; customCommissionRate?: number | null },
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -345,13 +371,18 @@ export type AffiliatePaymentGroup = {
  * separate within a group (CONTEXT.md: never convert); a real payout only ever
  * has one, but seeded demo rows can share a moment across currencies.
  */
-export async function listAffiliatePayments(affiliateId: string): Promise<AffiliatePaymentGroup[]> {
+export async function listAffiliatePayments(
+  affiliateId: string,
+): Promise<AffiliatePaymentGroup[]> {
   const rows = await db.commission.findMany({
     where: { affiliateId, status: "PAID", paidAt: { not: null } },
     select: { amount: true, currency: true, paidAt: true },
   });
 
-  const byPayout = new Map<number, { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }>();
+  const byPayout = new Map<
+    number,
+    { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }
+  >();
   for (const row of rows) {
     const paidAt = row.paidAt!;
     let bucket = byPayout.get(paidAt.getTime());
@@ -362,7 +393,9 @@ export async function listAffiliatePayments(affiliateId: string): Promise<Affili
     bucket.count += 1;
     bucket.totals.set(
       row.currency,
-      (bucket.totals.get(row.currency) ?? new Prisma.Decimal(0)).add(row.amount)
+      (bucket.totals.get(row.currency) ?? new Prisma.Decimal(0)).add(
+        row.amount,
+      ),
     );
   }
 
@@ -423,7 +456,7 @@ export async function listAffiliatesForMerchant(
   ownerId: string,
   merchantId: string,
   filters: AffiliateListFilters,
-  { page, pageSize }: { page: number; pageSize: number }
+  { page, pageSize }: { page: number; pageSize: number },
 ): Promise<{ rows: AffiliateListRow[]; total: number }> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -437,7 +470,13 @@ export async function listAffiliatesForMerchant(
           OR: [
             { name: { contains: query, mode: "insensitive" as const } },
             { email: { contains: query, mode: "insensitive" as const } },
-            { links: { some: { code: { contains: query, mode: "insensitive" as const } } } },
+            {
+              links: {
+                some: {
+                  code: { contains: query, mode: "insensitive" as const },
+                },
+              },
+            },
           ],
         }
       : {}),
@@ -451,11 +490,19 @@ export async function listAffiliatesForMerchant(
         id: true,
         name: true,
         email: true,
-        links: { where: { isPrimary: true }, select: { code: true, destinationPath: true } },
+        links: {
+          where: { isPrimary: true },
+          select: { code: true, destinationPath: true },
+        },
         customCommissionRate: true,
         createdAt: true,
         program: {
-          select: { id: true, name: true, slug: true, defaultCommissionRate: true },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            defaultCommissionRate: true,
+          },
         },
       },
       // Most sales first, so the people worth looking at lead the list. Money
@@ -498,9 +545,11 @@ export async function listAffiliatesForMerchant(
     }),
   ]);
 
-  const clicksById = new Map(clickCounts.map((c) => [c.affiliateId, c._count._all]));
+  const clicksById = new Map(
+    clickCounts.map((c) => [c.affiliateId, c._count._all]),
+  );
   const conversionsById = new Map(
-    conversionCounts.map((c) => [c.affiliateId, c._count._all])
+    conversionCounts.map((c) => [c.affiliateId, c._count._all]),
   );
   const earnedById = new Map<string, CurrencyTotal[]>();
   for (const row of earnedRows) {
@@ -523,12 +572,14 @@ export async function listAffiliatesForMerchant(
       programId: a.program.id,
       programName: a.program.name,
       programSlug: a.program.slug,
-      commissionRate: (a.customCommissionRate ?? a.program.defaultCommissionRate).toString(),
+      commissionRate: (
+        a.customCommissionRate ?? a.program.defaultCommissionRate
+      ).toString(),
       rateIsOverride: a.customCommissionRate !== null,
       clicks: clicksById.get(a.id) ?? 0,
       conversions: conversionsById.get(a.id) ?? 0,
       earned: (earnedById.get(a.id) ?? []).sort((x, y) =>
-        x.currency.localeCompare(y.currency)
+        x.currency.localeCompare(y.currency),
       ),
       createdAt: a.createdAt,
     })),
@@ -544,7 +595,7 @@ export type AffiliateSignals = {
 
 export async function getAffiliateSignals(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<AffiliateSignals> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -591,7 +642,7 @@ export async function getAffiliateDetails(
   ownerId: string,
   merchantId: string,
   affiliateIds: string[],
-  perAffiliate = 8
+  perAffiliate = 8,
 ): Promise<Record<string, AffiliateDetail>> {
   await assertMerchantOwnership(ownerId, merchantId);
   if (affiliateIds.length === 0) return {};
@@ -603,7 +654,13 @@ export async function getAffiliateDetails(
       payoutDetails: true,
       passwordHash: true,
       commissions: {
-        select: { id: true, amount: true, currency: true, status: true, createdAt: true },
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          status: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: "desc" },
         take: perAffiliate,
       },
@@ -624,7 +681,7 @@ export async function getAffiliateDetails(
           createdAt: c.createdAt,
         })),
       },
-    ])
+    ]),
   );
 }
 
@@ -634,11 +691,15 @@ export async function getAffiliateDetails(
  * counted as still paying.
  */
 export async function referralCounts(
-  affiliateId: string
+  affiliateId: string,
 ): Promise<{ total: number; active: number }> {
   const [total, active] = await Promise.all([
     db.click.count({
-      where: { affiliateId, commissions: { some: {} }, referredSubscriptions: { some: {} } },
+      where: {
+        affiliateId,
+        commissions: { some: {} },
+        referredSubscriptions: { some: {} },
+      },
     }),
     db.click.count({
       where: {

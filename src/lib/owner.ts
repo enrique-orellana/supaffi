@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
+import {
+  ConcurrencyLimitError,
+  hashPassword,
+  verifyAgainstNoAccount,
+  verifyPassword,
+} from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Lives in its own module so the startup hook can reach it without dragging
@@ -14,7 +19,7 @@ export { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 export async function createOwner(
   email: string,
-  password: string
+  password: string,
 ): Promise<{ id: string; email: string }> {
   const normalizedEmail = email.trim().toLowerCase();
   // Hashed before the transaction starts: Argon2 (~100ms) has no business
@@ -49,7 +54,9 @@ type OwnerForLogin = { id: string; email: string; passwordHash: string };
  * Split from the check so the login throttle can count an attempt on the real
  * Owner's email before the hash runs, and ignore every other email.
  */
-export async function findOwnerForLogin(email: string): Promise<OwnerForLogin | null> {
+export async function findOwnerForLogin(
+  email: string,
+): Promise<OwnerForLogin | null> {
   return db.owner.findUnique({
     where: { email: email.trim().toLowerCase() },
     select: { id: true, email: true, passwordHash: true },
@@ -70,7 +77,7 @@ export async function findOwnerForLogin(email: string): Promise<OwnerForLogin | 
  */
 export async function checkOwnerPassword(
   owner: OwnerForLogin | null,
-  password: string
+  password: string,
 ): Promise<{ id: string; email: string } | null> {
   try {
     if (!owner) {
@@ -88,14 +95,14 @@ export async function checkOwnerPassword(
 
 export async function verifyOwnerCredentials(
   email: string,
-  password: string
+  password: string,
 ): Promise<{ id: string; email: string } | null> {
   return checkOwnerPassword(await findOwnerForLogin(email), password);
 }
 
 async function ownerWithVerifiedPassword(
   ownerId: string,
-  currentPassword: string
+  currentPassword: string,
 ): Promise<{ id: string } | { error: string }> {
   const owner = await db.owner.findUnique({
     where: { id: ownerId },
@@ -110,10 +117,11 @@ async function ownerWithVerifiedPassword(
 export async function changeOwnerEmail(
   ownerId: string,
   currentPassword: string,
-  newEmail: string
+  newEmail: string,
 ): Promise<{ error: string } | null> {
   const email = newEmail.trim().toLowerCase();
-  if (!email.includes("@")) return { error: "That does not look like an email address" };
+  if (!email.includes("@"))
+    return { error: "That does not look like an email address" };
   const owner = await ownerWithVerifiedPassword(ownerId, currentPassword);
   if ("error" in owner) return owner;
   await db.owner.update({ where: { id: owner.id }, data: { email } });
@@ -123,7 +131,7 @@ export async function changeOwnerEmail(
 export async function changeOwnerPassword(
   ownerId: string,
   currentPassword: string,
-  newPassword: string
+  newPassword: string,
 ): Promise<{ error: string } | null> {
   if (newPassword.length < MIN_PASSWORD_LENGTH) {
     return { error: `Use at least ${MIN_PASSWORD_LENGTH} characters` };
@@ -134,7 +142,10 @@ export async function changeOwnerPassword(
     where: { id: owner.id },
     // The stamp goes down in the same update as the hash: every session
     // issued before this moment stops working (see ownerSessionIsCurrent).
-    data: { passwordHash: await hashPassword(newPassword), passwordChangedAt: new Date() },
+    data: {
+      passwordHash: await hashPassword(newPassword),
+      passwordChangedAt: new Date(),
+    },
   });
   return null;
 }

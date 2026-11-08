@@ -39,7 +39,7 @@ if (process.env.DATABASE_URL) {
 
 if (!hasDatabase) {
   console.warn(
-    "Skipping test/lib/merchant.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/merchant.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -64,7 +64,10 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
     ownerId = owner.id;
     const otherOwner = await db.owner.create({
-      data: { email: "merchant-test-other-owner@example.com", passwordHash: "x" },
+      data: {
+        email: "merchant-test-other-owner@example.com",
+        passwordHash: "x",
+      },
     });
     otherOwnerId = otherOwner.id;
   });
@@ -92,11 +95,20 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     const raw = await db.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
     expect(raw?.apiKeyEnc ?? null).toBeNull();
     expect(raw?.webhookSecretEnc ?? null).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({
+      stripe: false,
+      stripeKey: false,
+      stripeWebhook: false,
+    });
   });
 
   it("connectStripe encrypts both Stripe secrets at rest", async () => {
@@ -112,12 +124,21 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     const raw = await db.paymentConnection.findUniqueOrThrow({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
     expect(raw.apiKeyEnc).not.toBe("sk_test_abc123");
     expect(raw.apiKeyEnc).toContain(":"); // iv:authTag:ciphertext format
     expect(raw.webhookSecretEnc).not.toBe("whsec_abc123");
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({
+      stripe: true,
+      stripeKey: true,
+      stripeWebhook: true,
+    });
   });
 
   it("reports the two Stripe halves separately when only the key is on file", async () => {
@@ -144,7 +165,10 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     await expect(
-      connectStripe(ownerId, id, { secretKey: "sk_test_x", webhookSecret: "whsec_x" })
+      connectStripe(ownerId, id, {
+        secretKey: "sk_test_x",
+        webhookSecret: "whsec_x",
+      }),
     ).rejects.toThrow();
   });
 
@@ -187,7 +211,12 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       webhookSecret: "whsec_original",
     });
     const before = await db.paymentConnection.findUniqueOrThrow({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
 
     await updateMerchant(ownerId, id, {
@@ -197,9 +226,16 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     const after = await db.paymentConnection.findUniqueOrThrow({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
-    expect((await db.merchant.findUniqueOrThrow({ where: { id } })).name).toBe("Renamed");
+    expect((await db.merchant.findUniqueOrThrow({ where: { id } })).name).toBe(
+      "Renamed",
+    );
     expect(after.apiKeyEnc).toBe(before.apiKeyEnc);
     expect(after.webhookSecretEnc).toBe(before.webhookSecretEnc);
   });
@@ -215,13 +251,26 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       webhookSecret: "whsec_first",
     });
     const before = await db.paymentConnection.findUniqueOrThrow({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
 
-    await connectStripe(ownerId, id, { secretKey: "sk_test_second", webhookSecret: "" });
+    await connectStripe(ownerId, id, {
+      secretKey: "sk_test_second",
+      webhookSecret: "",
+    });
 
     const after = await db.paymentConnection.findUniqueOrThrow({
-      where: { merchantId_provider: { merchantId: id, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: id,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
     });
     expect(after.apiKeyEnc).not.toBe(before.apiKeyEnc);
     expect(after.webhookSecretEnc).toBe(before.webhookSecretEnc);
@@ -235,7 +284,11 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     await expect(
-      updateMerchant(ownerId, id, { name: "Hijacked", domain: "notmine3.example.com", websiteUrl: "https://example.com" })
+      updateMerchant(ownerId, id, {
+        name: "Hijacked",
+        domain: "notmine3.example.com",
+        websiteUrl: "https://example.com",
+      }),
     ).rejects.toThrow();
   });
 
@@ -273,7 +326,10 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-restricted.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id, { secretKey: "rk_live_abc", webhookSecret: "whsec_x" });
+    await connectStripe(ownerId, id, {
+      secretKey: "rk_live_abc",
+      webhookSecret: "whsec_x",
+    });
     expect(await getStripeKeyKind(ownerId, id)).toBe("restricted");
 
     const { id: id2 } = await createMerchant(ownerId, {
@@ -281,7 +337,10 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-secret.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id2, { secretKey: "sk_live_abc", webhookSecret: "whsec_x" });
+    await connectStripe(ownerId, id2, {
+      secretKey: "sk_live_abc",
+      webhookSecret: "whsec_x",
+    });
     expect(await getStripeKeyKind(ownerId, id2)).toBe("secret");
   });
 
@@ -298,7 +357,10 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-notmine.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
+    await connectStripe(otherOwnerId, theirId, {
+      secretKey: "rk_live_x",
+      webhookSecret: "whsec_x",
+    });
     expect(await getStripeKeyKind(ownerId, theirId)).toBeNull();
   });
 
@@ -309,16 +371,37 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://gone.test",
     });
     const program = await db.program.create({
-      data: { merchantId: merchant.id, name: "P", slug: "p", defaultCommissionRate: 10, commissionDurationType: "FOREVER" },
+      data: {
+        merchantId: merchant.id,
+        name: "P",
+        slug: "p",
+        defaultCommissionRate: 10,
+        commissionDurationType: "FOREVER",
+      },
     });
     const affiliate = await db.affiliate.create({
-      data: { merchantId: merchant.id, programId: program.id, email: "a@example.com" },
+      data: {
+        merchantId: merchant.id,
+        programId: program.id,
+        email: "a@example.com",
+      },
     });
     const link = await db.affiliateLink.create({
-      data: { merchantId: merchant.id, affiliateId: affiliate.id, code: "gone1", isPrimary: true },
+      data: {
+        merchantId: merchant.id,
+        affiliateId: affiliate.id,
+        code: "gone1",
+        isPrimary: true,
+      },
     });
     const click = await db.click.create({
-      data: { merchantId: merchant.id, affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
+      data: {
+        merchantId: merchant.id,
+        affiliateId: affiliate.id,
+        linkId: link.id,
+        referralToken: "tok1",
+        expiresAt: new Date(),
+      },
     });
     await db.checkoutAttribution.create({
       data: {
@@ -329,19 +412,42 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       },
     });
     await db.commission.create({
-      data: { affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
+      data: {
+        affiliateId: affiliate.id,
+        clickId: click.id,
+        amount: 1,
+        currency: "usd",
+        payableAt: new Date(),
+      },
     });
     await db.webhookEvent.create({
-      data: { merchantId: merchant.id, provider: PaymentProvider.STRIPE.database, providerEventId: "evt_1", payload: {} },
+      data: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.STRIPE.database,
+        providerEventId: "evt_1",
+        payload: {},
+      },
     });
 
     await deleteMerchant(ownerId, merchant.id);
 
-    expect(await db.merchant.findUnique({ where: { id: merchant.id } })).toBeNull();
-    expect(await db.affiliate.count({ where: { merchantId: merchant.id } })).toBe(0);
-    expect(await db.commission.count({ where: { affiliateId: affiliate.id } })).toBe(0);
-    expect(await db.webhookEvent.count({ where: { merchantId: merchant.id } })).toBe(0);
-    expect(await db.checkoutAttribution.count({ where: { merchantId: merchant.id } })).toBe(0);
+    expect(
+      await db.merchant.findUnique({ where: { id: merchant.id } }),
+    ).toBeNull();
+    expect(
+      await db.affiliate.count({ where: { merchantId: merchant.id } }),
+    ).toBe(0);
+    expect(
+      await db.commission.count({ where: { affiliateId: affiliate.id } }),
+    ).toBe(0);
+    expect(
+      await db.webhookEvent.count({ where: { merchantId: merchant.id } }),
+    ).toBe(0);
+    expect(
+      await db.checkoutAttribution.count({
+        where: { merchantId: merchant.id },
+      }),
+    ).toBe(0);
   });
 
   it("refuses to delete another owner's product", async () => {
@@ -351,7 +457,9 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://mine.test",
     });
     await expect(deleteMerchant(otherOwnerId, merchant.id)).rejects.toThrow();
-    expect(await db.merchant.findUnique({ where: { id: merchant.id } })).not.toBeNull();
+    expect(
+      await db.merchant.findUnique({ where: { id: merchant.id } }),
+    ).not.toBeNull();
   });
 
   it("remembers that onboarding finished and that the welcome was dismissed", async () => {
@@ -378,9 +486,11 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://twice.test",
     });
     await markOnboardingComplete(ownerId, merchant.id);
-    const first = (await getOnboardingState(ownerId, merchant.id)).onboardingCompletedAt;
+    const first = (await getOnboardingState(ownerId, merchant.id))
+      .onboardingCompletedAt;
     await markOnboardingComplete(ownerId, merchant.id);
-    const second = (await getOnboardingState(ownerId, merchant.id)).onboardingCompletedAt;
+    const second = (await getOnboardingState(ownerId, merchant.id))
+      .onboardingCompletedAt;
     expect(second?.getTime()).toBe(first?.getTime());
   });
 
@@ -392,7 +502,12 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(false);
     await db.webhookEvent.create({
-      data: { merchantId: merchant.id, provider: PaymentProvider.STRIPE.database, providerEventId: "evt_w", payload: {} },
+      data: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.STRIPE.database,
+        providerEventId: "evt_w",
+        payload: {},
+      },
     });
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(true);
   });
@@ -404,8 +519,15 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://w2.test",
     });
     await db.webhookEvent.create({
-      data: { merchantId: merchant.id, provider: PaymentProvider.STRIPE.database, providerEventId: "evt_w2", payload: {} },
+      data: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.STRIPE.database,
+        providerEventId: "evt_w2",
+        payload: {},
+      },
     });
-    expect((await webhookEventReceived(otherOwnerId, merchant.id)).ok).toBe(false);
+    expect((await webhookEventReceived(otherOwnerId, merchant.id)).ok).toBe(
+      false,
+    );
   });
 });

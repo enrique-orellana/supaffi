@@ -12,10 +12,10 @@ export async function Payments({ ctx }: { ctx: Ctx }) {
     listPaymentProviderSetups().map(async (setup) => ({
       setup,
       status: await setup.readStatus(ctx.ownerId, ctx.merchant.id),
-    }))
+    })),
   );
   const hasConnectedProvider = panels.some(({ setup, status }) =>
-    isPaymentProviderReady(setup.provider, status.connected, ctx.checks)
+    isPaymentProviderReady(setup.provider, status.connected, ctx.checks),
   );
   const next = nextStep("payments");
   const local = isLocalDomain(ctx.merchant.domain);
@@ -27,7 +27,10 @@ export async function Payments({ ctx }: { ctx: Ctx }) {
       lede="Connect at least one provider to continue. You can connect more than one."
       action={
         hasConnectedProvider && next ? (
-          <Button size="lg" render={<Link href={stepPath(ctx.merchant.slug, next)} />}>
+          <Button
+            size="lg"
+            render={<Link href={stepPath(ctx.merchant.slug, next)} />}
+          >
             Continue
           </Button>
         ) : undefined

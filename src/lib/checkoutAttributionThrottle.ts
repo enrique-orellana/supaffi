@@ -9,7 +9,8 @@ const globalForThrottle = globalThis as unknown as {
 };
 
 const addresses =
-  globalForThrottle.supaffiCheckoutAttributionAddresses ?? new Map<string, AddressWindow>();
+  globalForThrottle.supaffiCheckoutAttributionAddresses ??
+  new Map<string, AddressWindow>();
 if (process.env.NODE_ENV !== "production") {
   globalForThrottle.supaffiCheckoutAttributionAddresses = addresses;
 }
@@ -29,20 +30,20 @@ function trimOldest(): void {
 export function isCheckoutAttributionLimited(
   merchantId: string,
   address: string,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): boolean {
   const window = addresses.get(keyFor(merchantId, address));
   return Boolean(
     window &&
-      now - window.windowStartedAt < WINDOW_MS &&
-      window.count >= MAX_REGISTRATIONS_PER_ADDRESS
+    now - window.windowStartedAt < WINDOW_MS &&
+    window.count >= MAX_REGISTRATIONS_PER_ADDRESS,
   );
 }
 
 export function rememberCheckoutAttribution(
   merchantId: string,
   address: string,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): void {
   const key = keyFor(merchantId, address);
   const window = addresses.get(key);

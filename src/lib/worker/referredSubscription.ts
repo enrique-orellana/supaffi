@@ -6,12 +6,18 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import type { PaymentRef } from "./commission";
 
 const WITH_CLICK = {
-  click: { include: { affiliate: { include: { program: true } }, link: { select: { commissionRateOverride: true } } } },
+  click: {
+    include: {
+      affiliate: { include: { program: true } },
+      link: { select: { commissionRateOverride: true } },
+    },
+  },
 } satisfies Prisma.ReferredSubscriptionInclude;
 
-export type ReferredSubscriptionWithClick = Prisma.ReferredSubscriptionGetPayload<{
-  include: typeof WITH_CLICK;
-}>;
+export type ReferredSubscriptionWithClick =
+  Prisma.ReferredSubscriptionGetPayload<{
+    include: typeof WITH_CLICK;
+  }>;
 
 // A legacy click can hold commissions from several purchases. Looking at more
 // than a few would turn one renewal into a burst of Stripe calls, and the
@@ -20,10 +26,15 @@ const LEGACY_INVOICES_CHECKED = 3;
 
 // The Merchant's key cannot read invoices. Fixing the key fixes the answer, so
 // the check is left unrecorded for a later event to run again.
-const KEY_STRIPE_ERRORS = new Set(["StripePermissionError", "StripeAuthenticationError"]);
+const KEY_STRIPE_ERRORS = new Set([
+  "StripePermissionError",
+  "StripeAuthenticationError",
+]);
 
 /** Stripe fields are either an id or the expanded object carrying it. */
-export function idOf(value: string | { id: string } | null | undefined): string | null {
+export function idOf(
+  value: string | { id: string } | null | undefined,
+): string | null {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
 }
@@ -41,7 +52,9 @@ export function subscriptionIdOf(invoice: Stripe.Invoice): string | null {
     const id = idOf(invoice.parent.subscription_details?.subscription);
     if (id) return id;
   }
-  const legacy = (invoice as unknown as { subscription?: string | { id: string } | null }).subscription;
+  const legacy = (
+    invoice as unknown as { subscription?: string | { id: string } | null }
+  ).subscription;
   return idOf(legacy);
 }
 
@@ -55,9 +68,11 @@ export async function recordReferredSubscription(
   merchantId: string,
   clickId: string,
   stripeSubscriptionId: string,
-  stripeProductIds: string[] = []
+  stripeProductIds: string[] = [],
 ): Promise<ReferredSubscription> {
-  const where = { merchantId_stripeSubscriptionId: { merchantId, stripeSubscriptionId } };
+  const where = {
+    merchantId_stripeSubscriptionId: { merchantId, stripeSubscriptionId },
+  };
   try {
     return await db.referredSubscription.create({
       data: { merchantId, clickId, stripeSubscriptionId, stripeProductIds },
@@ -65,7 +80,8 @@ export async function recordReferredSubscription(
   } catch (err) {
     if (!isUniqueConstraintError(err)) throw err;
     const existing = await db.referredSubscription.findUniqueOrThrow({ where });
-    if (existing.stripeProductIds.length > 0 || stripeProductIds.length === 0) return existing;
+    if (existing.stripeProductIds.length > 0 || stripeProductIds.length === 0)
+      return existing;
     await fillStripeProductIds(existing.id, stripeProductIds);
     return db.referredSubscription.findUniqueOrThrow({ where });
   }
@@ -76,7 +92,10 @@ export async function recordReferredSubscription(
  * event stored them first, and returns what is stored now. The first writer
  * wins so every later invoice is measured against one set.
  */
-export async function fillStripeProductIds(referredId: string, stripeProductIds: string[]): Promise<string[]> {
+export async function fillStripeProductIds(
+  referredId: string,
+  stripeProductIds: string[],
+): Promise<string[]> {
   if (stripeProductIds.length > 0) {
     await db.referredSubscription.updateMany({
       where: { id: referredId, stripeProductIds: { isEmpty: true } },
@@ -110,7 +129,7 @@ const ITEMS_PAGE_SIZE = 100;
  */
 export async function subscriptionProductIds(
   stripe: Stripe,
-  subscriptionId: string
+  subscriptionId: string,
 ): Promise<string[] | "unanswered"> {
   try {
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -125,13 +144,15 @@ export async function subscriptionProductIds(
       items.push(...page.data);
       hasMore = page.has_more && page.data.length > 0;
     }
-    const products = items.map((item) => idOf(item.price.product)).filter((id): id is string => id !== null);
+    const products = items
+      .map((item) => idOf(item.price.product))
+      .filter((id): id is string => id !== null);
     return [...new Set(products)].sort();
   } catch (err) {
     const { type, code } = err as { type?: string; code?: string };
     if (code === "resource_missing" || (type && KEY_STRIPE_ERRORS.has(type))) {
       console.warn(
-        `[worker] subscription ${subscriptionId}: Stripe could not say which products it bills, so they are taken from its next renewal`
+        `[worker] subscription ${subscriptionId}: Stripe could not say which products it bills, so they are taken from its next renewal`,
       );
       return "unanswered";
     }
@@ -150,10 +171,18 @@ export async function subscriptionProductIds(
 export async function findReferredSubscription(
   merchant: Merchant,
   stripeSubscriptionId: string,
-  stripeCustomerId: string | null
+  stripeCustomerId: string | null,
 ): Promise<ReferredSubscriptionWithClick | null> {
-  const where = { merchantId_stripeSubscriptionId: { merchantId: merchant.id, stripeSubscriptionId } };
-  const found = await db.referredSubscription.findUnique({ where, include: WITH_CLICK });
+  const where = {
+    merchantId_stripeSubscriptionId: {
+      merchantId: merchant.id,
+      stripeSubscriptionId,
+    },
+  };
+  const found = await db.referredSubscription.findUnique({
+    where,
+    include: WITH_CLICK,
+  });
   if (found || !stripeCustomerId) return found;
   await recognizeLegacyClick(merchant, stripeCustomerId);
   // Looked up again whatever recognition did. Another event may have finished
@@ -173,7 +202,7 @@ export async function findReferredSubscription(
 async function retrieveLegacyInvoice(
   stripe: Stripe,
   clickId: string,
-  invoiceId: string
+  invoiceId: string,
 ): Promise<Stripe.Invoice | null | "unanswered"> {
   try {
     return await stripe.invoices.retrieve(invoiceId);
@@ -182,7 +211,7 @@ async function retrieveLegacyInvoice(
     if (code === "resource_missing") return null;
     if (type && KEY_STRIPE_ERRORS.has(type)) {
       console.warn(
-        `[worker] click ${clickId}: the Stripe key could not read invoices, so its referral is checked again on its next event`
+        `[worker] click ${clickId}: the Stripe key could not read invoices, so its referral is checked again on its next event`,
       );
       return "unanswered";
     }
@@ -209,7 +238,10 @@ async function retrieveLegacyInvoice(
  * The first payment is the earliest retrieved invoice of that subscription
  * that charged money, dated by the invoice, not by the commission row.
  */
-async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string): Promise<void> {
+async function recognizeLegacyClick(
+  merchant: Merchant,
+  stripeCustomerId: string,
+): Promise<void> {
   const click = await db.click.findFirst({
     where: {
       stripeCustomerId,
@@ -220,7 +252,10 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
     select: {
       id: true,
       commissions: {
-        where: { adjustsCommissionId: null, stripePaymentRef: { startsWith: "in_" } },
+        where: {
+          adjustsCommissionId: null,
+          stripePaymentRef: { startsWith: "in_" },
+        },
         orderBy: { createdAt: "asc" },
         take: LEGACY_INVOICES_CHECKED,
         select: { stripePaymentRef: true },
@@ -230,11 +265,16 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
   if (!click) return;
 
   const invoices: Stripe.Invoice[] = [];
-  const stripe = click.commissions.length > 0 ? await stripeClientFor(merchant) : null;
+  const stripe =
+    click.commissions.length > 0 ? await stripeClientFor(merchant) : null;
   if (stripe) {
     for (const { stripePaymentRef } of click.commissions) {
       if (!stripePaymentRef) continue;
-      const invoice = await retrieveLegacyInvoice(stripe, click.id, stripePaymentRef);
+      const invoice = await retrieveLegacyInvoice(
+        stripe,
+        click.id,
+        stripePaymentRef,
+      );
       if (invoice === "unanswered") return;
       if (invoice) invoices.push(invoice);
     }
@@ -245,17 +285,23 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
       invoices
         .filter((invoice) => invoice.billing_reason === "subscription_create")
         .map(subscriptionIdOf)
-        .filter((id): id is string => id !== null)
+        .filter((id): id is string => id !== null),
     ),
   ];
 
   for (const stripeSubscriptionId of adopted) {
     const firstPaid = invoices
-      .filter((invoice) => subscriptionIdOf(invoice) === stripeSubscriptionId && invoice.amount_paid > 0)
+      .filter(
+        (invoice) =>
+          subscriptionIdOf(invoice) === stripeSubscriptionId &&
+          invoice.amount_paid > 0,
+      )
       .sort((a, b) => a.created - b.created)[0];
     // What it bills now, which is what its checkout bought unless the plan
     // changed since. Left empty when Stripe cannot say; the next renewal fills it.
-    const products = stripe ? await subscriptionProductIds(stripe, stripeSubscriptionId) : "unanswered";
+    const products = stripe
+      ? await subscriptionProductIds(stripe, stripeSubscriptionId)
+      : "unanswered";
     try {
       await db.referredSubscription.create({
         data: {
@@ -273,7 +319,10 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
     }
   }
 
-  await db.click.update({ where: { id: click.id }, data: { legacyCheckedAt: new Date() } });
+  await db.click.update({
+    where: { id: click.id },
+    data: { legacyCheckedAt: new Date() },
+  });
 }
 
 /**
@@ -292,8 +341,12 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
  * on, and that payment must stay the only one it ever pays.
  */
 export async function claimFirstPayment(
-  referred: { id: string; firstPaymentRef: string | null; firstPaidAt: Date | null },
-  payment: PaymentRef
+  referred: {
+    id: string;
+    firstPaymentRef: string | null;
+    firstPaidAt: Date | null;
+  },
+  payment: PaymentRef,
 ): Promise<PaymentRef> {
   if (referred.firstPaymentRef && referred.firstPaidAt) {
     if (payment.at.getTime() >= referred.firstPaidAt.getTime()) {
@@ -307,7 +360,10 @@ export async function claimFirstPayment(
       where: { id: referred.id },
       select: { firstPaidAt: true },
     });
-    return { ref: referred.firstPaymentRef, at: current.firstPaidAt ?? payment.at };
+    return {
+      ref: referred.firstPaymentRef,
+      at: current.firstPaidAt ?? payment.at,
+    };
   }
   await db.referredSubscription.updateMany({
     where: { id: referred.id, firstPaymentRef: null },
@@ -317,5 +373,8 @@ export async function claimFirstPayment(
     where: { id: referred.id },
     select: { firstPaymentRef: true, firstPaidAt: true },
   });
-  return { ref: current.firstPaymentRef ?? payment.ref, at: current.firstPaidAt ?? payment.at };
+  return {
+    ref: current.firstPaymentRef ?? payment.ref,
+    at: current.firstPaidAt ?? payment.at,
+  };
 }

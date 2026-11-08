@@ -30,9 +30,11 @@ export function nowPaymentsCallbackUrl(webhookRouteId: string): string | null {
 export async function connectNowPayments(
   ownerId: string,
   merchantId: string,
-  input: NowPaymentsCredentials
+  input: NowPaymentsCredentials,
 ): Promise<void> {
-  const webhookSecretEnc = encrypt(requiredCredential(input.webhookSecret, "IPN secret"));
+  const webhookSecretEnc = encrypt(
+    requiredCredential(input.webhookSecret, "IPN secret"),
+  );
 
   await db.$transaction(async (tx) => {
     const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -45,7 +47,12 @@ export async function connectNowPayments(
     if (!merchants[0]) throw new Error("Merchant not found");
 
     await tx.paymentConnection.upsert({
-      where: { merchantId_provider: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database } },
+      where: {
+        merchantId_provider: {
+          merchantId,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+        },
+      },
       create: {
         merchantId,
         provider: PaymentProvider.NOWPAYMENTS.database,
@@ -67,7 +74,7 @@ export async function connectNowPayments(
 /** Disconnect while retaining the opaque callback ID for a later reconnect. */
 export async function disconnectNowPayments(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -94,10 +101,18 @@ export async function disconnectNowPayments(
 /** Safe settings-page view: no credential ciphertext or plaintext is returned. */
 export async function getNowPaymentsConnectionStatus(
   ownerId: string,
-  merchantId: string
-): Promise<{ connected: boolean; hasCallbackId: boolean; callbackUrl: string | null }> {
+  merchantId: string,
+): Promise<{
+  connected: boolean;
+  hasCallbackId: boolean;
+  callbackUrl: string | null;
+}> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: PaymentProvider.NOWPAYMENTS.database, merchant: { ownerId } },
+    where: {
+      merchantId,
+      provider: PaymentProvider.NOWPAYMENTS.database,
+      merchant: { ownerId },
+    },
     select: {
       webhookSecretEnc: true,
       status: true,
@@ -107,12 +122,14 @@ export async function getNowPaymentsConnectionStatus(
   });
   const connected = Boolean(
     connection?.status === "CONNECTED" &&
-      connection.enabled &&
-      connection.webhookSecretEnc
+    connection.enabled &&
+    connection.webhookSecretEnc,
   );
   return {
     connected,
     hasCallbackId: Boolean(connection?.webhookRouteId),
-    callbackUrl: connection ? nowPaymentsCallbackUrl(connection.webhookRouteId) : null,
+    callbackUrl: connection
+      ? nowPaymentsCallbackUrl(connection.webhookRouteId)
+      : null,
   };
 }

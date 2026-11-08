@@ -18,7 +18,6 @@ import type { PaymentProviderTrackingGuide } from "@/lib/payments/setupRegistry"
  * and clicks only prove it after somebody visits.
  */
 
-
 export function TrackingStatus({
   merchant,
   script,
@@ -59,7 +58,11 @@ export function TrackingStatus({
         <StatTile
           label="Script"
           value={live ? "Live" : "Not found"}
-          hint={live ? `on ${siteHost(merchant.websiteUrl)}` : `Looking on ${siteHost(merchant.websiteUrl)}`}
+          hint={
+            live
+              ? `on ${siteHost(merchant.websiteUrl)}`
+              : `Looking on ${siteHost(merchant.websiteUrl)}`
+          }
           tone={live ? "success" : "warning"}
         />
         <StatTile
@@ -67,15 +70,25 @@ export function TrackingStatus({
           value={String(clicks)}
           series={series.map((d) => d.clicks)}
         />
-        <StatTile label="Last click" value={lastClickAt ? formatDate(lastClickAt) : "None yet"} />
-        <StatTile label="First sale" value={verifiedAt ? formatDate(verifiedAt) : "Not yet"} />
+        <StatTile
+          label="Last click"
+          value={lastClickAt ? formatDate(lastClickAt) : "None yet"}
+        />
+        <StatTile
+          label="First sale"
+          value={verifiedAt ? formatDate(verifiedAt) : "Not yet"}
+        />
       </Tiles>
 
       <Section title="Script tag">
         <p className="mb-2 text-[13px] text-muted-foreground">
           In the head of every page an affiliate link can land on.
         </p>
-        <CodeBlock title="Tracking script" code={scriptTag} prompt={scriptPrompt} />
+        <CodeBlock
+          title="Tracking script"
+          code={scriptTag}
+          prompt={scriptPrompt}
+        />
       </Section>
 
       <Section title="Checkout" scroll>
@@ -87,7 +100,12 @@ export function TrackingStatus({
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <form action={checkAgain}>
-          <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+          <Button
+            type="submit"
+            size="sm"
+            variant="secondary"
+            className="cursor-pointer"
+          >
             Check the site again
           </Button>
         </form>

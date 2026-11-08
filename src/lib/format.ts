@@ -38,7 +38,8 @@ function formatterFor(currency: string): Intl.NumberFormat | null {
 export function formatMoney(amount: number | string, currency: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   const formatter = formatterFor(currency);
-  if (!formatter || Number.isNaN(value)) return `${amount} ${currency.toUpperCase()}`;
+  if (!formatter || Number.isNaN(value))
+    return `${amount} ${currency.toUpperCase()}`;
   return formatter.format(value);
 }
 
@@ -46,7 +47,10 @@ export function formatMoney(amount: number | string, currency: string): string {
 export function currencySymbol(currency: string): string {
   const formatter = formatterFor(currency);
   if (!formatter) return currency.toUpperCase();
-  return formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? currency.toUpperCase();
+  return (
+    formatter.formatToParts(0).find((part) => part.type === "currency")
+      ?.value ?? currency.toUpperCase()
+  );
 }
 
 /**
@@ -55,7 +59,10 @@ export function currencySymbol(currency: string): string {
  * across currencies cannot be ranked, so this is the only honest way to
  * choose which one leads.
  */
-export function prefer(totals: CurrencyTotal[], currency: string | null): CurrencyTotal[] {
+export function prefer(
+  totals: CurrencyTotal[],
+  currency: string | null,
+): CurrencyTotal[] {
   if (!currency) return totals;
   const index = totals.findIndex((t) => t.currency === currency);
   if (index <= 0) return totals;
@@ -67,7 +74,10 @@ export function prefer(totals: CurrencyTotal[], currency: string | null): Curren
  * so it borrows `fallback` (the product's usual currency) when the caller
  * knows one, and is a bare 0 when nothing has ever been sold.
  */
-export function money(totals: CurrencyTotal[], fallback?: string | null): string {
+export function money(
+  totals: CurrencyTotal[],
+  fallback?: string | null,
+): string {
   if (totals.length === 0) return fallback ? formatMoney(0, fallback) : "0";
   const [first] = totals;
   return formatMoney(first.total, first.currency);
@@ -86,7 +96,11 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
-const DAY_MONTH = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const DAY_MONTH = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
 const DAY_MONTH_YEAR = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",
@@ -96,13 +110,16 @@ const DAY_MONTH_YEAR = new Intl.DateTimeFormat("en-GB", {
 
 /** "24 Oct" this year, "24 Oct 2025" any other. */
 export function formatDate(date: Date, now: Date = new Date()): string {
-  return date.getUTCFullYear() === now.getUTCFullYear() ? DAY_MONTH.format(date) : DAY_MONTH_YEAR.format(date);
+  return date.getUTCFullYear() === now.getUTCFullYear()
+    ? DAY_MONTH.format(date)
+    : DAY_MONTH_YEAR.format(date);
 }
 
 /** Two letters for a product's tile: "IG" for Instant Gradient, "MO" for Mockit. */
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
-  const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "").slice(0, 2);
+  const letters =
+    words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "").slice(0, 2);
   return letters.toUpperCase() || "?";
 }
 
@@ -124,5 +141,9 @@ export function termsLine(terms: {
       : terms.durationType === "FIXED_MONTHS"
         ? `${rate} for ${terms.durationMonths ?? 0} months`
         : `${rate} of every payment`;
-  return [earning, `${terms.attributionWindowDays}-day cookie`, `${terms.holdingPeriodDays}-day hold`].join(" · ");
+  return [
+    earning,
+    `${terms.attributionWindowDays}-day cookie`,
+    `${terms.holdingPeriodDays}-day hold`,
+  ].join(" · ");
 }

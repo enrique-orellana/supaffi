@@ -17,7 +17,6 @@ import { PayoutDetailsForm } from "../PayoutDetailsForm";
  * screen can be rendered in the dev kit with fixtures.
  */
 
-
 /**
  * One row per payout, at the moment it was made. Two payouts made the same
  * day are two rows, each with its own time, because they were two transfers.
@@ -84,7 +83,11 @@ export function PayoutsScreen({
       {/* The same three words the ledger's badges use, so one state is one word
           everywhere on this dashboard. */}
       <Tiles columns={3}>
-        <StatTile label="Pending" value={money(pending)} hint={moneyHint(pending)} />
+        <StatTile
+          label="Pending"
+          value={money(pending)}
+          hint={moneyHint(pending)}
+        />
         <StatTile
           label="Payable"
           value={money(payable)}

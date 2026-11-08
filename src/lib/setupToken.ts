@@ -53,7 +53,10 @@ export function clearSetupToken(): void {
 }
 
 async function sha256(value: string): Promise<Uint8Array> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
   return new Uint8Array(digest);
 }
 
@@ -71,5 +74,8 @@ function equalFixedWidth(a: Uint8Array, b: Uint8Array): boolean {
 function base64url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }

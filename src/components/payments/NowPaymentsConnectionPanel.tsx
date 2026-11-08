@@ -15,17 +15,27 @@ import {
   saveNowPaymentsOnboardingAction,
 } from "@/app/onboarding/[product]/paymentActions";
 
-export function NowPaymentsConnectionPanel({ label, product, status, surface }: PaymentProviderPanelProps) {
-  const callbackUrl = status.details && "callbackUrl" in status.details ? status.details.callbackUrl : null;
+export function NowPaymentsConnectionPanel({
+  label,
+  product,
+  status,
+  surface,
+}: PaymentProviderPanelProps) {
+  const callbackUrl =
+    status.details && "callbackUrl" in status.details
+      ? status.details.callbackUrl
+      : null;
   const saveAction =
-    surface === "onboarding" ? saveNowPaymentsOnboardingAction : saveNowPaymentsConnectionAction;
+    surface === "onboarding"
+      ? saveNowPaymentsOnboardingAction
+      : saveNowPaymentsConnectionAction;
   const disconnectAction =
     surface === "onboarding"
       ? disconnectNowPaymentsOnboardingAction
       : disconnectNowPaymentsConnectionAction;
   const [state, formAction, pending] = useActionState(
     saveAction.bind(null, product),
-    { error: "" }
+    { error: "" },
   );
 
   return (
@@ -39,7 +49,12 @@ export function NowPaymentsConnectionPanel({ label, product, status, surface }: 
         </div>
         {status.connected && (
           <form action={disconnectAction.bind(null, product)}>
-            <Button type="submit" variant="secondary" size="sm" className="cursor-pointer">
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              className="cursor-pointer"
+            >
               Disconnect
             </Button>
           </form>
@@ -54,29 +69,53 @@ export function NowPaymentsConnectionPanel({ label, product, status, surface }: 
             name="ipnSecret"
             type="password"
             autoComplete="new-password"
-            placeholder={status.connected ? "Enter a replacement secret" : "Paste IPN secret"}
+            placeholder={
+              status.connected
+                ? "Enter a replacement secret"
+                : "Paste IPN secret"
+            }
             required
           />
         </div>
         <div className="flex flex-col gap-2">
-          {state.error && <p role="alert" className="text-sm text-status-danger">{state.error}</p>}
-          <Button type="submit" size="sm" className="w-fit cursor-pointer" disabled={pending}>
-            {pending ? "Saving" : status.connected ? "Rotate IPN secret" : "Save IPN secret"}
+          {state.error && (
+            <p role="alert" className="text-sm text-status-danger">
+              {state.error}
+            </p>
+          )}
+          <Button
+            type="submit"
+            size="sm"
+            className="w-fit cursor-pointer"
+            disabled={pending}
+          >
+            {pending
+              ? "Saving"
+              : status.connected
+                ? "Rotate IPN secret"
+                : "Save IPN secret"}
           </Button>
         </div>
       </form>
 
       <div className="grid gap-1.5 border-t border-neutral-200 pt-3">
-        <span className="text-xs text-muted-foreground">Supaffi receiver URL</span>
+        <span className="text-xs text-muted-foreground">
+          Supaffi receiver URL
+        </span>
         {callbackUrl ? (
           <CopyValue value={callbackUrl} className="font-mono text-xs" />
         ) : (
           <p className="text-xs text-muted-foreground">
-            A saved connection and a public instance domain are required to generate this URL.
+            A saved connection and a public instance domain are required to
+            generate this URL.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Set <code>SUPAFFI_WEBHOOK_URL</code> in your merchant-owned relay and set <code>EXISTING_WEBHOOK_URL</code> to your current payment webhook. Point the NOWPayments callback at the relay. It forwards the original signed notification to both destinations; Supaffi never calls your app.
+          Set <code>SUPAFFI_WEBHOOK_URL</code> in your merchant-owned relay and
+          set <code>EXISTING_WEBHOOK_URL</code> to your current payment webhook.
+          Point the NOWPayments callback at the relay. It forwards the original
+          signed notification to both destinations; Supaffi never calls your
+          app.
         </p>
       </div>
     </div>

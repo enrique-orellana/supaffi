@@ -10,7 +10,8 @@
 
 export const CODE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export type CodeValidationResult = { error: null; code: string } | { error: string; code: null };
+export type CodeValidationResult =
+  { error: null; code: string } | { error: string; code: null };
 
 export function validateCode(input: string): CodeValidationResult {
   const code = input.trim().toLowerCase();
@@ -19,7 +20,8 @@ export function validateCode(input: string): CodeValidationResult {
   }
   if (!CODE_PATTERN.test(code)) {
     return {
-      error: "Use lowercase letters, numbers and hyphens, with no hyphen at either end.",
+      error:
+        "Use lowercase letters, numbers and hyphens, with no hyphen at either end.",
       code: null,
     };
   }

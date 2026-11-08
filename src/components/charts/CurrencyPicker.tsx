@@ -3,7 +3,13 @@
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 /**
@@ -37,17 +43,29 @@ export function CurrencyPicker({
     if (next === options[0]) query.delete("currency");
     else query.set("currency", next);
     const search = query.toString();
-    startTransition(() => router.push(search ? `${pathname}?${search}` : pathname, { scroll: false }));
+    startTransition(() =>
+      router.push(search ? `${pathname}?${search}` : pathname, {
+        scroll: false,
+      }),
+    );
   }
 
   return (
     <Select
       value={value}
       onValueChange={choose}
-      items={Object.fromEntries(options.map((code) => [code, code.toUpperCase()]))}
+      items={Object.fromEntries(
+        options.map((code) => [code, code.toUpperCase()]),
+      )}
     >
-      <SelectTrigger size="sm" className={cn("cursor-pointer text-[13px]", className)} aria-label="Currency">
-        {pending && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+      <SelectTrigger
+        size="sm"
+        className={cn("cursor-pointer text-[13px]", className)}
+        aria-label="Currency"
+      >
+        {pending && (
+          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+        )}
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="end">

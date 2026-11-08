@@ -52,7 +52,7 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/lib/requireAffiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/requireAffiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -129,15 +129,21 @@ describe.skipIf(!hasDatabase)("requireAffiliate", () => {
   });
 
   it("redirects rather than render when a valid Affiliate session loads a different Merchant's host", async () => {
-    authMock.mockResolvedValue({ user: { id: affiliateId, role: "affiliate" } });
+    authMock.mockResolvedValue({
+      user: { id: affiliateId, role: "affiliate" },
+    });
     // Merchant A's Affiliate, but on Merchant B's own dashboard host.
     headersMock.mockResolvedValue(new Headers({ host: merchantB.domain }));
 
-    await expect(requireAffiliate()).rejects.toThrow("REDIRECT:/affiliates/login");
+    await expect(requireAffiliate()).rejects.toThrow(
+      "REDIRECT:/affiliates/login",
+    );
   });
 
   it("returns the Affiliate and its own Merchant when the host matches", async () => {
-    authMock.mockResolvedValue({ user: { id: affiliateId, role: "affiliate" } });
+    authMock.mockResolvedValue({
+      user: { id: affiliateId, role: "affiliate" },
+    });
     headersMock.mockResolvedValue(new Headers({ host: merchantA.domain }));
 
     const result = await requireAffiliate();

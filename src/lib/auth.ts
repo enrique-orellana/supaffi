@@ -1,9 +1,16 @@
 import NextAuth, { type Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { checkOwnerPassword, findOwnerForLogin } from "@/lib/owner";
-import { reserveLoginRequest, reserveLoginAttempt, clearLoginAttempts } from "@/lib/loginThrottle";
+import {
+  reserveLoginRequest,
+  reserveLoginAttempt,
+  clearLoginAttempts,
+} from "@/lib/loginThrottle";
 import { clientAddress } from "@/lib/clientAddress";
-import { checkAffiliatePassword, findAffiliateForLogin } from "@/lib/affiliatePassword";
+import {
+  checkAffiliatePassword,
+  findAffiliateForLogin,
+} from "@/lib/affiliatePassword";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { authConfig } from "@/lib/auth.config";
 import { dropSessionIfStale } from "@/lib/sessionGuard";
@@ -37,7 +44,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorize: async (credentials, request) => {
         const email = credentials?.email;
         const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") return null;
+        if (typeof email !== "string" || typeof password !== "string")
+          return null;
         // signIn from the login server action rebuilds this request from the
         // incoming headers, so the forwarded address is here.
         const reported = clientAddress(request.headers);
@@ -79,7 +87,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorize: async (credentials, request) => {
         const email = credentials?.email;
         const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") return null;
+        if (typeof email !== "string" || typeof password !== "string")
+          return null;
         const reported = clientAddress(request.headers);
         // Same order and same throttle as the Owner's provider above, with the
         // budget per product and email, so guesses on one affiliate never
@@ -88,8 +97,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const address = reported ?? "unknown";
         const host = request.headers.get("host");
         const merchant = host ? await getMerchantByDomain(host) : null;
-        const affiliate = merchant ? await findAffiliateForLogin(merchant.id, email) : null;
-        const budget = merchant && affiliate ? `${merchant.id}/${affiliate.email}` : null;
+        const affiliate = merchant
+          ? await findAffiliateForLogin(merchant.id, email)
+          : null;
+        const budget =
+          merchant && affiliate ? `${merchant.id}/${affiliate.email}` : null;
         if (!budget || !reserveLoginAttempt(budget, address)) {
           await checkAffiliatePassword(null, password);
           return null;

@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
   }
 
   const connection = await db.paymentConnection.findFirst({
-    where: { provider: PaymentProvider.STRIPE.database, merchant: { domain: host } },
+    where: {
+      provider: PaymentProvider.STRIPE.database,
+      merchant: { domain: host },
+    },
     select: {
       merchantId: true,
       webhookSecretEnc: true,
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     // limited to one per product every 15 minutes.
     if (shouldLogSignatureFailure(connection.merchantId)) {
       console.warn(
-        `[webhook] rejected a request for merchant ${connection.merchantId}: its signature did not verify against the signing secret on file.`
+        `[webhook] rejected a request for merchant ${connection.merchantId}: its signature did not verify against the signing secret on file.`,
       );
     }
     return new NextResponse(null, { status: 400 });

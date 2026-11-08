@@ -11,7 +11,10 @@ describe("requestHost", () => {
   });
 
   it("prefers the name the browser used over the app's own address", async () => {
-    incoming.headers = new Headers({ host: "3f2a9c1b:3000", "x-forwarded-host": "affiliates.shop.example" });
+    incoming.headers = new Headers({
+      host: "3f2a9c1b:3000",
+      "x-forwarded-host": "affiliates.shop.example",
+    });
     expect(await requestHost()).toBe("affiliates.shop.example");
   });
 

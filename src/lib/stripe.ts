@@ -18,9 +18,16 @@ const STRIPE_API_VERSION = "2026-10-28.endive" as const;
 // without a key. Nothing queues Stripe work for such a Merchant (no webhook
 // secret means the webhook route rejects the delivery before it is ever
 // stored), so reaching here without a key is a bug, not a user state.
-export async function stripeClientFor(merchant: { id: string }): Promise<Stripe> {
+export async function stripeClientFor(merchant: {
+  id: string;
+}): Promise<Stripe> {
   const connection = await db.paymentConnection.findUnique({
-    where: { merchantId_provider: { merchantId: merchant.id, provider: PaymentProvider.STRIPE.database } },
+    where: {
+      merchantId_provider: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.STRIPE.database,
+      },
+    },
     select: { apiKeyEnc: true },
   });
   if (!connection?.apiKeyEnc) {
@@ -37,12 +44,29 @@ export async function stripeClientFor(merchant: { id: string }): Promise<Stripe>
 // few three-decimal currencies. Getting this wrong silently makes
 // Commission.amount 100x too small or large for affected currencies.
 const ZERO_DECIMAL = new Set([
-  "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg",
-  "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf",
+  "bif",
+  "clp",
+  "djf",
+  "gnf",
+  "jpy",
+  "kmf",
+  "krw",
+  "mga",
+  "pyg",
+  "rwf",
+  "ugx",
+  "vnd",
+  "vuv",
+  "xaf",
+  "xof",
+  "xpf",
 ]);
 const THREE_DECIMAL = new Set(["bhd", "jod", "kwd", "omr", "tnd"]);
 
-export function minorUnitsToMajor(amountMinor: number, currency: string): number {
+export function minorUnitsToMajor(
+  amountMinor: number,
+  currency: string,
+): number {
   const cur = currency.toLowerCase();
   if (ZERO_DECIMAL.has(cur)) return amountMinor;
   if (THREE_DECIMAL.has(cur)) return amountMinor / 1000;

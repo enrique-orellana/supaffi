@@ -28,7 +28,7 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/lib/owner.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/owner.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -53,20 +53,29 @@ describe.skipIf(!hasDatabase)("owner", () => {
 
   it("refuses to create a second Owner", async () => {
     await createOwner("ugo@example.com", "correct horse battery staple");
-    await expect(createOwner("someone-else@example.com", "another password")).rejects.toThrow(
-      "An Owner already exists on this Instance"
-    );
+    await expect(
+      createOwner("someone-else@example.com", "another password"),
+    ).rejects.toThrow("An Owner already exists on this Instance");
   });
 
   it("verifies correct credentials and rejects incorrect ones", async () => {
     await createOwner("ugo@example.com", "correct horse battery staple");
-    const ok = await verifyOwnerCredentials("ugo@example.com", "correct horse battery staple");
+    const ok = await verifyOwnerCredentials(
+      "ugo@example.com",
+      "correct horse battery staple",
+    );
     expect(ok?.email).toBe("ugo@example.com");
 
-    const bad = await verifyOwnerCredentials("ugo@example.com", "wrong password");
+    const bad = await verifyOwnerCredentials(
+      "ugo@example.com",
+      "wrong password",
+    );
     expect(bad).toBeNull();
 
-    const noSuchUser = await verifyOwnerCredentials("nobody@example.com", "anything");
+    const noSuchUser = await verifyOwnerCredentials(
+      "nobody@example.com",
+      "anything",
+    );
     expect(noSuchUser).toBeNull();
   });
 
@@ -88,7 +97,9 @@ describe.skipIf(!hasDatabase)("owner", () => {
     const rejectedError = rejected[0];
     if (rejectedError.status === "rejected") {
       expect(rejectedError.reason).toBeInstanceOf(Error);
-      expect(rejectedError.reason.message).toBe("An Owner already exists on this Instance");
+      expect(rejectedError.reason.message).toBe(
+        "An Owner already exists on this Instance",
+      );
     }
 
     // Verify only one Owner exists in the database
@@ -98,48 +109,93 @@ describe.skipIf(!hasDatabase)("owner", () => {
 
   describe("account changes", () => {
     it("changes the email when the password is right", async () => {
-      const owner = await createOwner("first@example.com", "correct horse battery");
-      expect(
-        await changeOwnerEmail(owner.id, "correct horse battery", "Second@Example.com")
-      ).toBeNull();
-      expect((await db.owner.findUnique({ where: { id: owner.id } }))?.email).toBe(
-        "second@example.com"
+      const owner = await createOwner(
+        "first@example.com",
+        "correct horse battery",
       );
+      expect(
+        await changeOwnerEmail(
+          owner.id,
+          "correct horse battery",
+          "Second@Example.com",
+        ),
+      ).toBeNull();
+      expect(
+        (await db.owner.findUnique({ where: { id: owner.id } }))?.email,
+      ).toBe("second@example.com");
     });
 
     it("refuses an email change with the wrong password", async () => {
-      const owner = await createOwner("first@example.com", "correct horse battery");
-      const result = await changeOwnerEmail(owner.id, "wrong", "second@example.com");
+      const owner = await createOwner(
+        "first@example.com",
+        "correct horse battery",
+      );
+      const result = await changeOwnerEmail(
+        owner.id,
+        "wrong",
+        "second@example.com",
+      );
       expect(result?.error).toMatch(/password/i);
     });
 
     it("changes the password and the old one stops working", async () => {
-      const owner = await createOwner("first@example.com", "correct horse battery");
+      const owner = await createOwner(
+        "first@example.com",
+        "correct horse battery",
+      );
       expect(
-        await changeOwnerPassword(owner.id, "correct horse battery", "a much longer new one")
+        await changeOwnerPassword(
+          owner.id,
+          "correct horse battery",
+          "a much longer new one",
+        ),
       ).toBeNull();
-      expect(await verifyOwnerCredentials("first@example.com", "correct horse battery")).toBeNull();
       expect(
-        await verifyOwnerCredentials("first@example.com", "a much longer new one")
+        await verifyOwnerCredentials(
+          "first@example.com",
+          "correct horse battery",
+        ),
+      ).toBeNull();
+      expect(
+        await verifyOwnerCredentials(
+          "first@example.com",
+          "a much longer new one",
+        ),
       ).not.toBeNull();
     });
 
     it("stamps the password change so older sessions can be told apart", async () => {
-      const owner = await createOwner("first@example.com", "correct horse battery");
+      const owner = await createOwner(
+        "first@example.com",
+        "correct horse battery",
+      );
       expect(
-        (await db.owner.findUnique({ where: { id: owner.id } }))?.passwordChangedAt
+        (await db.owner.findUnique({ where: { id: owner.id } }))
+          ?.passwordChangedAt,
       ).toBeNull();
 
-      await changeOwnerPassword(owner.id, "correct horse battery", "a much longer new one");
+      await changeOwnerPassword(
+        owner.id,
+        "correct horse battery",
+        "a much longer new one",
+      );
 
-      const stamped = (await db.owner.findUnique({ where: { id: owner.id } }))?.passwordChangedAt;
+      const stamped = (await db.owner.findUnique({ where: { id: owner.id } }))
+        ?.passwordChangedAt;
       expect(stamped).toBeInstanceOf(Date);
       expect(Date.now() - stamped!.getTime()).toBeLessThan(60_000);
     });
 
     it("refuses a short new password", async () => {
-      const owner = await createOwner("first@example.com", "correct horse battery");
-      const result = await changeOwnerPassword(owner.id, "correct horse battery", "short");
+      const owner = await createOwner(
+        "first@example.com",
+        "correct horse battery",
+      );
+      const result = await changeOwnerPassword(
+        owner.id,
+        "correct horse battery",
+        "short",
+      );
       expect(result?.error).toMatch(/12/);
     });
   });
@@ -153,26 +209,46 @@ describe.skipIf(!hasDatabase)("ownerSessionIsCurrent", () => {
   const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
   it("accepts any session when the password has never been changed", async () => {
-    const owner = await createOwner("first@example.com", "correct horse battery");
-    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(Date.now() - 86_400_000)))).toBe(
-      true
+    const owner = await createOwner(
+      "first@example.com",
+      "correct horse battery",
     );
+    expect(
+      await ownerSessionIsCurrent(
+        owner.id,
+        seconds(new Date(Date.now() - 86_400_000)),
+      ),
+    ).toBe(true);
   });
 
   it("accepts a session signed in after the change and refuses one from before", async () => {
-    const owner = await createOwner("first@example.com", "correct horse battery");
-    const changedAt = new Date(Date.now() - 60_000);
-    await db.owner.update({ where: { id: owner.id }, data: { passwordChangedAt: changedAt } });
-
-    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() + 1000)))).toBe(
-      true
+    const owner = await createOwner(
+      "first@example.com",
+      "correct horse battery",
     );
+    const changedAt = new Date(Date.now() - 60_000);
+    await db.owner.update({
+      where: { id: owner.id },
+      data: { passwordChangedAt: changedAt },
+    });
+
     expect(
-      await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() - 1000)))
+      await ownerSessionIsCurrent(
+        owner.id,
+        seconds(new Date(changedAt.getTime() + 1000)),
+      ),
+    ).toBe(true);
+    expect(
+      await ownerSessionIsCurrent(
+        owner.id,
+        seconds(new Date(changedAt.getTime() - 1000)),
+      ),
     ).toBe(false);
   });
 
   it("refuses a session for an owner that no longer exists", async () => {
-    expect(await ownerSessionIsCurrent("no-such-owner", seconds(new Date()))).toBe(false);
+    expect(
+      await ownerSessionIsCurrent("no-such-owner", seconds(new Date())),
+    ).toBe(false);
   });
 });

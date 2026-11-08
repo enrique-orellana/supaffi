@@ -8,6 +8,9 @@ import { settleDisputeHold } from "../disputes";
  * than paid and then lost. The hold, and what a late or repeated event means
  * for it, is decided in disputes.ts.
  */
-export async function handleChargeDisputeCreated(merchant: Merchant, dispute: Stripe.Dispute): Promise<void> {
+export async function handleChargeDisputeCreated(
+  merchant: Merchant,
+  dispute: Stripe.Dispute,
+): Promise<void> {
   await settleDisputeHold(merchant, dispute);
 }

@@ -26,7 +26,10 @@ describe("dropSessionIfStale", () => {
 
   it("strips id and role from an affiliate session issued before the password change", async () => {
     affiliateSessionIsCurrent.mockResolvedValue(false);
-    const result = await dropSessionIfStale(sessionFor("affiliate"), tokenFor("affiliate"));
+    const result = await dropSessionIfStale(
+      sessionFor("affiliate"),
+      tokenFor("affiliate"),
+    );
     expect(affiliateSessionIsCurrent).toHaveBeenCalledWith("u1", 1000);
     expect(ownerSessionIsCurrent).not.toHaveBeenCalled();
     expect(result.user).not.toHaveProperty("id");
@@ -37,12 +40,17 @@ describe("dropSessionIfStale", () => {
   it("keeps a current affiliate session", async () => {
     affiliateSessionIsCurrent.mockResolvedValue(true);
     const session = sessionFor("affiliate");
-    expect(await dropSessionIfStale(session, tokenFor("affiliate"))).toBe(session);
+    expect(await dropSessionIfStale(session, tokenFor("affiliate"))).toBe(
+      session,
+    );
   });
 
   it("strips a stale owner session, checked against the owner lookup only", async () => {
     ownerSessionIsCurrent.mockResolvedValue(false);
-    const result = await dropSessionIfStale(sessionFor("owner"), tokenFor("owner"));
+    const result = await dropSessionIfStale(
+      sessionFor("owner"),
+      tokenFor("owner"),
+    );
     expect(ownerSessionIsCurrent).toHaveBeenCalledWith("u1", 1000);
     expect(affiliateSessionIsCurrent).not.toHaveBeenCalled();
     expect(result.user).not.toHaveProperty("id");
@@ -51,7 +59,9 @@ describe("dropSessionIfStale", () => {
 
   it("leaves a token with no role or no subject alone", async () => {
     const session = sessionFor("owner");
-    expect(await dropSessionIfStale(session, tokenFor(undefined))).toBe(session);
+    expect(await dropSessionIfStale(session, tokenFor(undefined))).toBe(
+      session,
+    );
     expect(await dropSessionIfStale(session, {} as JWT)).toBe(session);
     expect(ownerSessionIsCurrent).not.toHaveBeenCalled();
     expect(affiliateSessionIsCurrent).not.toHaveBeenCalled();

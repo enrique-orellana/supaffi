@@ -38,22 +38,30 @@ describe("originFor", () => {
   it("keeps the port and adds no trailing slash", () => {
     expect(originFor("localhost:3600")).toBe("http://localhost:3600");
     expect(originFor("affiliates.instantgradient.com")).toBe(
-      "https://affiliates.instantgradient.com"
+      "https://affiliates.instantgradient.com",
     );
   });
 });
 
 describe("signupLinkFor", () => {
   it("is the affiliate address for the default program", () => {
-    expect(signupLinkFor("affiliates.acme.com", "acme", "acme")).toBe("https://affiliates.acme.com");
+    expect(signupLinkFor("affiliates.acme.com", "acme", "acme")).toBe(
+      "https://affiliates.acme.com",
+    );
   });
 
   it("is the program's own signup page for any other program", () => {
-    expect(signupLinkFor("affiliates.acme.com", "agencies", "acme")).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
-    expect(signupLinkFor("affiliates.acme.com", "agencies", null)).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
+    expect(signupLinkFor("affiliates.acme.com", "agencies", "acme")).toBe(
+      "https://affiliates.acme.com/affiliates/signup/agencies",
+    );
+    expect(signupLinkFor("affiliates.acme.com", "agencies", null)).toBe(
+      "https://affiliates.acme.com/affiliates/signup/agencies",
+    );
   });
 
   it("keeps the program's page on a local address, whose root is the dashboard", () => {
-    expect(signupLinkFor("localhost:3000", "acme", "acme")).toBe("http://localhost:3000/affiliates/signup/acme");
+    expect(signupLinkFor("localhost:3000", "acme", "acme")).toBe(
+      "http://localhost:3000/affiliates/signup/acme",
+    );
   });
 });

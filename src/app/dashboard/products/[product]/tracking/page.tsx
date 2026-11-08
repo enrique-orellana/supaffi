@@ -8,7 +8,10 @@ import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { trackingScriptPrompt } from "@/lib/integrationPrompt";
 import { originFor } from "@/lib/url";
 import { TrackingStatus } from "./TrackingStatus";
-import { listPaymentProviderSetups, listPaymentTrackingGuides } from "@/lib/payments/setupRegistry";
+import {
+  listPaymentProviderSetups,
+  listPaymentTrackingGuides,
+} from "@/lib/payments/setupRegistry";
 
 /**
  * Where tracking stands, and the two snippets that fix it when it does not.
@@ -49,17 +52,21 @@ export default async function TrackingPage({
     runProductChecks(
       ownerId,
       merchant.id,
-      forceFresh ? { fresh: new Set<CheckSection>(["tracking"]) } : {}
+      forceFresh ? { fresh: new Set<CheckSection>(["tracking"]) } : {},
     ),
     getTrackingTimestamps(merchant.id),
     getProductMetrics(ownerId, merchant.id),
-    Promise.all(providerSetups.map(async ({ provider, readStatus }) => ({
-      provider,
-      connected: (await readStatus(ownerId, merchant.id)).connected,
-    }))),
+    Promise.all(
+      providerSetups.map(async ({ provider, readStatus }) => ({
+        provider,
+        connected: (await readStatus(ownerId, merchant.id)).connected,
+      })),
+    ),
   ]);
   const trackingGuides = listPaymentTrackingGuides(
-    paymentStatuses.filter(({ connected }) => connected).map(({ provider }) => provider)
+    paymentStatuses
+      .filter(({ connected }) => connected)
+      .map(({ provider }) => provider),
   );
 
   // Nothing to write: the check runs at render time, so asking again is asking
@@ -85,7 +92,10 @@ export default async function TrackingPage({
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
       trackingGuides={trackingGuides}
-      scriptPrompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+      scriptPrompt={trackingScriptPrompt({
+        websiteUrl: merchant.websiteUrl,
+        scriptTag,
+      })}
       checkAgain={checkAgain}
     />
   );

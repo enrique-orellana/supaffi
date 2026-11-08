@@ -1,6 +1,10 @@
 "use client";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,7 +16,15 @@ import { cn } from "@/lib/utils";
  * underline and an instant tooltip, so the page stays quiet and the reader
  * who wants the detail gets it on hover.
  */
-export function Term({ tip, className, children }: { tip: string; className?: string; children: React.ReactNode }) {
+export function Term({
+  tip,
+  className,
+  children,
+}: {
+  tip: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -20,7 +32,7 @@ export function Term({ tip, className, children }: { tip: string; className?: st
           <span
             className={cn(
               "cursor-help underline decoration-neutral-400 decoration-dashed underline-offset-[3px] transition-colors hover:decoration-neutral-700",
-              className
+              className,
             )}
           />
         }

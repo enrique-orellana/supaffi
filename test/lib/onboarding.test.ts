@@ -1,6 +1,26 @@
 import { describe, it, expect } from "vitest";
 import { PaymentProvider } from "@/lib/payments/types";
-import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName, dnsZone, normalizeStepId, isStepId, stepLabel } from "@/lib/onboarding";
+import {
+  stepIds,
+  stepIndex,
+  displayStep,
+  stepStates,
+  nextStep,
+  previousStep,
+  resumeStep,
+  stepPath,
+  suggestSubdomain,
+  backToDashboardHref,
+  checkSectionFor,
+  siteHost,
+  splitSubdomain,
+  rehomeSubdomain,
+  dnsRecordName,
+  dnsZone,
+  normalizeStepId,
+  isStepId,
+  stepLabel,
+} from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -31,7 +51,13 @@ const checks = (over: Partial<ProductChecks> = {}): ProductChecks => ({
 
 describe("stepIds", () => {
   it("has five steps, the finished screen not being one", () => {
-    expect(stepIds()).toEqual(["product", "subdomain", "payments", "terms", "tracking"]);
+    expect(stepIds()).toEqual([
+      "product",
+      "subdomain",
+      "payments",
+      "terms",
+      "tracking",
+    ]);
     expect(stepIds()).not.toContain("link");
   });
   it("has no webhook step: the key's own save creates the endpoint", () => {
@@ -41,7 +67,12 @@ describe("stepIds", () => {
 
 describe("stepStates", () => {
   it("marks the product done and the current step current", () => {
-    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "subdomain" });
+    const states = stepStates({
+      setup: setup(),
+      checks: checks(),
+      onboardingCompletedAt: null,
+      current: "subdomain",
+    });
     expect(states.find((s) => s.id === "product")?.state).toBe("done");
     expect(states.find((s) => s.id === "subdomain")?.state).toBe("current");
     expect(states.find((s) => s.id === "terms")?.state).toBe("upcoming");
@@ -81,7 +112,12 @@ describe("stepStates", () => {
   });
 
   it.each([
-    { description: "no providers", connectedPaymentProviders: [], stripeKeyOk: false, expected: "waiting" },
+    {
+      description: "no providers",
+      connectedPaymentProviders: [],
+      stripeKeyOk: false,
+      expected: "waiting",
+    },
     {
       description: "NOWPayments alone",
       connectedPaymentProviders: [PaymentProvider.NOWPAYMENTS.id],
@@ -96,7 +132,10 @@ describe("stepStates", () => {
     },
     {
       description: "both providers",
-      connectedPaymentProviders: [PaymentProvider.STRIPE.id, PaymentProvider.NOWPAYMENTS.id],
+      connectedPaymentProviders: [
+        PaymentProvider.STRIPE.id,
+        PaymentProvider.NOWPAYMENTS.id,
+      ],
       stripeKeyOk: true,
       expected: "done",
     },
@@ -105,15 +144,18 @@ describe("stepStates", () => {
     connectedPaymentProviders: ProductSetup["connectedPaymentProviders"];
     stripeKeyOk: boolean;
     expected: "waiting" | "done";
-  }[])("marks Payments correctly for $description", ({ connectedPaymentProviders, stripeKeyOk, expected }) => {
-    const states = stepStates({
-      setup: setup({ connectedPaymentProviders }),
-      checks: checks({ stripe: { key: stripeKeyOk ? ok : no, webhook: no } }),
-      onboardingCompletedAt: null,
-      current: "terms",
-    });
-    expect(states.find((s) => s.id === "payments")?.state).toBe(expected);
-  });
+  }[])(
+    "marks Payments correctly for $description",
+    ({ connectedPaymentProviders, stripeKeyOk, expected }) => {
+      const states = stepStates({
+        setup: setup({ connectedPaymentProviders }),
+        checks: checks({ stripe: { key: stripeKeyOk ? ok : no, webhook: no } }),
+        onboardingCompletedAt: null,
+        current: "terms",
+      });
+      expect(states.find((s) => s.id === "payments")?.state).toBe(expected);
+    },
+  );
 
   it("a step the user walked past is waiting while its check says no", () => {
     // Pressing Continue is not evidence. A record that was deleted, or a
@@ -176,7 +218,12 @@ describe("stepStates", () => {
   });
 
   it("a step nobody has reached is still upcoming", () => {
-    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "subdomain" });
+    const states = stepStates({
+      setup: setup(),
+      checks: checks(),
+      onboardingCompletedAt: null,
+      current: "subdomain",
+    });
     expect(states.find((s) => s.id === "payments")?.state).toBe("upcoming");
     expect(states.find((s) => s.id === "tracking")?.state).toBe("upcoming");
   });
@@ -193,7 +240,12 @@ describe("stepStates", () => {
   });
 
   it("product stays current while the user is on it", () => {
-    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "product" });
+    const states = stepStates({
+      setup: setup(),
+      checks: checks(),
+      onboardingCompletedAt: null,
+      current: "product",
+    });
     expect(states.find((s) => s.id === "product")?.state).toBe("current");
   });
 });
@@ -223,7 +275,9 @@ describe("navigation", () => {
   });
 
   it("builds the path", () => {
-    expect(stepPath("instantgradient", "payments")).toBe("/onboarding/instantgradient/payments");
+    expect(stepPath("instantgradient", "payments")).toBe(
+      "/onboarding/instantgradient/payments",
+    );
   });
 
   it("normalizes the legacy Stripe step and rejects unknown step ids", () => {
@@ -238,52 +292,86 @@ describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
     // Nothing stored anywhere means the Owner never got past the subdomain.
     expect(resumeStep(setup(), null)).toBe("subdomain");
-    expect(resumeStep(setup({
-      stripeConnected: true,
-      stripeKeyStored: true,
-      stripeWebhookStored: true,
-      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
-    }), null)).toBe("terms");
-    expect(resumeStep(setup({
-      stripeConnected: true,
-      stripeKeyStored: true,
-      stripeWebhookStored: true,
-      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
-      firstProgramSlug: "standard",
-    }), null)).toBe("tracking");
+    expect(
+      resumeStep(
+        setup({
+          stripeConnected: true,
+          stripeKeyStored: true,
+          stripeWebhookStored: true,
+          connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+        }),
+        null,
+      ),
+    ).toBe("terms");
+    expect(
+      resumeStep(
+        setup({
+          stripeConnected: true,
+          stripeKeyStored: true,
+          stripeWebhookStored: true,
+          connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+          firstProgramSlug: "standard",
+        }),
+        null,
+      ),
+    ).toBe("tracking");
   });
   it("moves past Payments once a provider is connected", () => {
-    expect(resumeStep(setup({
-      stripeKeyStored: true,
-      stripeWebhookStored: false,
-      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
-    }), null)).toBe("terms");
+    expect(
+      resumeStep(
+        setup({
+          stripeKeyStored: true,
+          stripeWebhookStored: false,
+          connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+        }),
+        null,
+      ),
+    ).toBe("terms");
   });
 
   it("resumes at Payments until any provider is connected", () => {
-    expect(resumeStep(setup({ firstProgramSlug: "standard", trackingStatus: "verified" }), null)).toBe("payments");
-    expect(resumeStep(setup({
-      connectedPaymentProviders: [PaymentProvider.NOWPAYMENTS.id],
-      firstProgramSlug: "standard",
-      trackingStatus: "verified",
-    }), null)).toBeNull();
+    expect(
+      resumeStep(
+        setup({ firstProgramSlug: "standard", trackingStatus: "verified" }),
+        null,
+      ),
+    ).toBe("payments");
+    expect(
+      resumeStep(
+        setup({
+          connectedPaymentProviders: [PaymentProvider.NOWPAYMENTS.id],
+          firstProgramSlug: "standard",
+          trackingStatus: "verified",
+        }),
+        null,
+      ),
+    ).toBeNull();
   });
   it("returns no resume step when every setup step is complete", () => {
-    expect(resumeStep(setup({
-      stripeConnected: true,
-      stripeKeyStored: true,
-      stripeWebhookStored: true,
-      connectedPaymentProviders: [PaymentProvider.STRIPE.id],
-      firstProgramSlug: "standard",
-      trackingStatus: "awaiting-sale",
-    }), null)).toBeNull();
+    expect(
+      resumeStep(
+        setup({
+          stripeConnected: true,
+          stripeKeyStored: true,
+          stripeWebhookStored: true,
+          connectedPaymentProviders: [PaymentProvider.STRIPE.id],
+          firstProgramSlug: "standard",
+          trackingStatus: "awaiting-sale",
+        }),
+        null,
+      ),
+    ).toBeNull();
   });
 });
 
 describe("suggestSubdomain", () => {
   it("prefixes go to the site's host", () => {
-    expect(suggestSubdomain("https://instantgradient.com")).toBe("affiliates.instantgradient.com");
-    expect(suggestSubdomain("https://www.mokkit.co/pricing")).toBe("affiliates.mokkit.co");
+    expect(suggestSubdomain("https://instantgradient.com")).toBe(
+      "affiliates.instantgradient.com",
+    );
+    expect(suggestSubdomain("https://www.mokkit.co/pricing")).toBe(
+      "affiliates.mokkit.co",
+    );
   });
   it("gives nothing for an address it cannot read", () => {
     expect(suggestSubdomain("not a url")).toBe("");
@@ -294,7 +382,12 @@ describe("backToDashboardHref", () => {
   it("offers the dashboard only when another product has finished onboarding", () => {
     expect(backToDashboardHref([])).toBeNull();
     expect(backToDashboardHref([{ onboardingCompletedAt: null }])).toBeNull();
-    expect(backToDashboardHref([{ onboardingCompletedAt: null }, { onboardingCompletedAt: new Date() }])).toBe("/dashboard");
+    expect(
+      backToDashboardHref([
+        { onboardingCompletedAt: null },
+        { onboardingCompletedAt: new Date() },
+      ]),
+    ).toBe("/dashboard");
   });
 });
 
@@ -310,29 +403,45 @@ describe("checkSectionFor", () => {
 
 describe("siteHost", () => {
   it("is the hostname, or the raw address when it cannot be read", () => {
-    expect(siteHost("https://www.instantgradient.com/pricing")).toBe("www.instantgradient.com");
+    expect(siteHost("https://www.instantgradient.com/pricing")).toBe(
+      "www.instantgradient.com",
+    );
     expect(siteHost("instantgradient.com")).toBe("instantgradient.com");
   });
 });
 
 describe("splitSubdomain", () => {
   it("splits the label a user may change from the root they may not", () => {
-    expect(splitSubdomain("affiliates.instantgradient.com", "https://instantgradient.com")).toEqual({
+    expect(
+      splitSubdomain(
+        "affiliates.instantgradient.com",
+        "https://instantgradient.com",
+      ),
+    ).toEqual({
       prefix: "affiliates",
       suffix: ".instantgradient.com",
     });
   });
 
   it("ignores www on the website when matching the root", () => {
-    expect(splitSubdomain("affiliates.mokkit.co", "https://www.mokkit.co")).toEqual({
+    expect(
+      splitSubdomain("affiliates.mokkit.co", "https://www.mokkit.co"),
+    ).toEqual({
       prefix: "affiliates",
       suffix: ".mokkit.co",
     });
   });
 
   it("refuses to split an address that is not under the product's own site", () => {
-    expect(splitSubdomain("affiliates.somewhereelse.com", "https://instantgradient.com")).toBeNull();
-    expect(splitSubdomain("localhost:3600", "http://localhost:3600")).toBeNull();
+    expect(
+      splitSubdomain(
+        "affiliates.somewhereelse.com",
+        "https://instantgradient.com",
+      ),
+    ).toBeNull();
+    expect(
+      splitSubdomain("localhost:3600", "http://localhost:3600"),
+    ).toBeNull();
   });
 });
 
@@ -365,16 +474,28 @@ describe("dnsRecordName", () => {
 
 describe("rehomeSubdomain", () => {
   it("carries a chosen label onto the new site when the website is corrected", () => {
-    expect(rehomeSubdomain("affiliates.instantgradient.com", "https://instantgradient.com", "https://mokkit.co")).toBe(
-      "affiliates.mokkit.co"
-    );
+    expect(
+      rehomeSubdomain(
+        "affiliates.instantgradient.com",
+        "https://instantgradient.com",
+        "https://mokkit.co",
+      ),
+    ).toBe("affiliates.mokkit.co");
   });
 
   it("falls back to the default label when there was none to carry", () => {
-    expect(rehomeSubdomain("localhost:3600", "http://localhost:3600", "https://mokkit.co")).toBe("affiliates.mokkit.co");
+    expect(
+      rehomeSubdomain(
+        "localhost:3600",
+        "http://localhost:3600",
+        "https://mokkit.co",
+      ),
+    ).toBe("affiliates.mokkit.co");
   });
 
   it("leaves the address alone when the new website yields nothing usable", () => {
-    expect(rehomeSubdomain("affiliates.mokkit.co", "https://mokkit.co", "not a url")).toBe("affiliates.mokkit.co");
+    expect(
+      rehomeSubdomain("affiliates.mokkit.co", "https://mokkit.co", "not a url"),
+    ).toBe("affiliates.mokkit.co");
   });
 });

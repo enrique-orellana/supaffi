@@ -9,10 +9,15 @@ export type ReversalOutcome = { void: true } | { void: false; amount: number };
 
 const UNPAID_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
 
-export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Charge): Promise<void> {
+export async function handleChargeRefunded(
+  merchant: Merchant,
+  charge: Stripe.Charge,
+): Promise<void> {
   const stripe = await stripeClientFor(merchant);
   const paymentRefs = await resolvePaymentReferenceIds(stripe, {
-    legacyInvoice: (charge as unknown as { invoice?: string | { id: string } | null }).invoice ?? null,
+    legacyInvoice:
+      (charge as unknown as { invoice?: string | { id: string } | null })
+        .invoice ?? null,
     paymentIntentId: idOf(charge.payment_intent),
   });
   if (paymentRefs.length === 0) return; // couldn't trace this charge to anything Supaffi tracks
@@ -22,8 +27,10 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
       gross: commission.grossAmount ?? commission.amount,
       chargeTotal: charge.amount,
       refunded: charge.amount_refunded,
-      referredChargeMinor: readStoredReferredShare(commission.referredChargeMinor),
-    })
+      referredChargeMinor: readStoredReferredShare(
+        commission.referredChargeMinor,
+      ),
+    }),
   );
 }
 
@@ -41,7 +48,7 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
  */
 export async function findCommissionForPayment(
   merchant: Merchant,
-  paymentRefs: readonly string[]
+  paymentRefs: readonly string[],
 ): Promise<Commission | null> {
   for (const stripePaymentRef of paymentRefs) {
     const commission = await db.commission.findUnique({
@@ -78,7 +85,7 @@ export async function reverseCommission(
   merchant: Merchant,
   paymentRefs: readonly string[],
   voidReason: string,
-  outcomeFor: (commission: Commission) => ReversalOutcome
+  outcomeFor: (commission: Commission) => ReversalOutcome,
 ): Promise<void> {
   const commission = await findCommissionForPayment(merchant, paymentRefs);
   // Either this payment never earns a commission (excluded, unattributed), or
@@ -105,13 +112,19 @@ export async function reverseCommission(
           status: { in: [...UNPAID_STATUSES] },
           amount: { gt: new Prisma.Decimal(outcome.amount) },
         },
-        data: { amount: new Prisma.Decimal(outcome.amount), voidReason: "partial refund" },
+        data: {
+          amount: new Prisma.Decimal(outcome.amount),
+          voidReason: "partial refund",
+        },
       });
   if (count > 0) return;
 
   // Nothing written: the amount was already at or below this figure, or the
   // status moved since the read. Only a payout in between is worth a log line.
-  const current = await db.commission.findUnique({ where: { id: commission.id }, select: { status: true } });
+  const current = await db.commission.findUnique({
+    where: { id: commission.id },
+    select: { status: true },
+  });
   if (current?.status === "PAID") logPaidIsFinal(commission.id, voidReason);
 }
 
@@ -119,7 +132,7 @@ export async function reverseCommission(
 // the merchant absorbed. A redelivered event logs again, which is harmless.
 function logPaidIsFinal(commissionId: string, cause: string): void {
   console.info(
-    `[worker] ${cause} on commission ${commissionId} arrived after it was paid. A paid commission is final, so nothing changed.`
+    `[worker] ${cause} on commission ${commissionId} arrived after it was paid. A paid commission is final, so nothing changed.`,
   );
 }
 
@@ -185,7 +198,9 @@ export function prorateCommission(input: {
   return { void: false, amount: amount.toNumber() };
 }
 
-export function idOf(ref: string | { id: string } | null | undefined): string | null {
+export function idOf(
+  ref: string | { id: string } | null | undefined,
+): string | null {
   if (!ref) return null;
   return typeof ref === "string" ? ref : ref.id;
 }
@@ -206,7 +221,10 @@ export function idOf(ref: string | { id: string } | null | undefined): string | 
 // this SDK's types don't declare it.
 export async function resolvePaymentReferenceIds(
   stripe: Stripe,
-  payment: { legacyInvoice: string | { id: string } | null; paymentIntentId: string | null }
+  payment: {
+    legacyInvoice: string | { id: string } | null;
+    paymentIntentId: string | null;
+  },
 ): Promise<string[]> {
   const { paymentIntentId } = payment;
   let invoiceId = idOf(payment.legacyInvoice);
@@ -217,8 +235,12 @@ export async function resolvePaymentReferenceIds(
       limit: 1,
     });
     const match = payments.data[0];
-    if (match) invoiceId = typeof match.invoice === "string" ? match.invoice : match.invoice.id;
+    if (match)
+      invoiceId =
+        typeof match.invoice === "string" ? match.invoice : match.invoice.id;
   }
 
-  return [invoiceId, paymentIntentId].filter((ref): ref is string => ref !== null);
+  return [invoiceId, paymentIntentId].filter(
+    (ref): ref is string => ref !== null,
+  );
 }

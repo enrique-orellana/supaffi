@@ -38,11 +38,19 @@ export const loadStepContext = cache(async (slug: string) => {
 // is the one thing polling has to see move; the rest of the rail is served
 // from the last run.
 export const loadChecks = cache(
-  async (ownerId: string, merchantId: string, current: StepId): Promise<ProductChecks> => {
+  async (
+    ownerId: string,
+    merchantId: string,
+    current: StepId,
+  ): Promise<ProductChecks> => {
     const section = checkSectionFor(current);
     const fresh =
       current === "payments"
-        ? new Set(listPaymentProviderSetups().flatMap(({ checkSections }) => [...checkSections]))
+        ? new Set(
+            listPaymentProviderSetups().flatMap(({ checkSections }) => [
+              ...checkSections,
+            ]),
+          )
         : section
           ? new Set([section])
           : undefined;
@@ -54,8 +62,10 @@ export const loadChecks = cache(
       // Owner's own website, with nothing on screen to say why.
       background: true,
     });
-  }
+  },
 );
 
 /** Everything a step screen is handed: the request's context plus its lights. */
-export type Ctx = Awaited<ReturnType<typeof loadStepContext>> & { checks: ProductChecks };
+export type Ctx = Awaited<ReturnType<typeof loadStepContext>> & {
+  checks: ProductChecks;
+};

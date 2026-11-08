@@ -35,10 +35,14 @@ describe("uniqueSlug", () => {
 
   it("walks to the first free suffix", async () => {
     const taken = new Set(["docs", "docs-2"]);
-    expect(await uniqueSlug("Docs", "product", async (c) => taken.has(c))).toBe("docs-3");
+    expect(await uniqueSlug("Docs", "product", async (c) => taken.has(c))).toBe(
+      "docs-3",
+    );
   });
 
   it("falls back when the name has nothing sluggable in it", async () => {
-    expect(await uniqueSlug("???", "product", async () => false)).toBe("product");
+    expect(await uniqueSlug("???", "product", async () => false)).toBe(
+      "product",
+    );
   });
 });

@@ -25,7 +25,11 @@ const BASE = "/dashboard/products/acme/payouts";
 
 async function target(): Promise<string> {
   try {
-    await markPayoutPaidAction(PRODUCT, [{ id: "c1", amount: "10.00" }], new Date().toISOString());
+    await markPayoutPaidAction(
+      PRODUCT,
+      [{ id: "c1", amount: "10.00" }],
+      new Date().toISOString(),
+    );
   } catch (error) {
     return (error as Error).message.replace("redirect:", "");
   }
@@ -41,12 +45,20 @@ describe("markPayoutPaidAction", () => {
   });
 
   it("reports rows that were already paid, with when, when nothing was recorded", async () => {
-    markMock.mockResolvedValue({ count: 0, skipped: 0, alreadyPaid: { count: 2, paidAt: new Date(1_700_000_000_000) } });
+    markMock.mockResolvedValue({
+      count: 0,
+      skipped: 0,
+      alreadyPaid: { count: 2, paidAt: new Date(1_700_000_000_000) },
+    });
     expect(await target()).toBe(`${BASE}?already=2&paidOn=1700000000000`);
   });
 
   it("flags a press that recorded some rows and found others already paid", async () => {
-    markMock.mockResolvedValue({ count: 1, skipped: 0, alreadyPaid: { count: 1, paidAt: null } });
+    markMock.mockResolvedValue({
+      count: 1,
+      skipped: 0,
+      alreadyPaid: { count: 1, paidAt: null },
+    });
     expect(await target()).toBe(`${BASE}?already=1&recorded=1`);
   });
 });

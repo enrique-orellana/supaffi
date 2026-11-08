@@ -18,8 +18,14 @@ import {
   seedReferredSubscription,
 } from "./referralFixtures";
 
-function programOf(type: Program["commissionDurationType"], months: number | null = null): Program {
-  return { commissionDurationType: type, commissionDurationMonths: months } as Program;
+function programOf(
+  type: Program["commissionDurationType"],
+  months: number | null = null,
+): Program {
+  return {
+    commissionDurationType: type,
+    commissionDurationMonths: months,
+  } as Program;
 }
 
 const at = (iso: string) => new Date(iso);
@@ -28,46 +34,105 @@ const start = { ref: "in_first", at: at("2026-01-31T00:00:00Z") };
 describe("isWithinReferralDuration", () => {
   it("pays a forever program whatever the referral already earned", () => {
     const history = { start, earnedOnAnotherPayment: true };
-    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_60", at: at("2031-01-31T00:00:00Z") })).toBe(true);
+    expect(
+      isWithinReferralDuration(programOf("FOREVER"), history, {
+        ref: "in_60",
+        at: at("2031-01-31T00:00:00Z"),
+      }),
+    ).toBe(true);
   });
 
   it("pays a one-time program on the referral's first payment only", () => {
     const program = programOf("ONE_TIME");
     const history = { start, earnedOnAnotherPayment: false };
     expect(isWithinReferralDuration(program, history, start)).toBe(true);
-    expect(isWithinReferralDuration(program, history, { ref: "in_other_subscription", at: at("2026-02-01T00:00:00Z") })).toBe(false);
+    expect(
+      isWithinReferralDuration(program, history, {
+        ref: "in_other_subscription",
+        at: at("2026-02-01T00:00:00Z"),
+      }),
+    ).toBe(false);
   });
 
   it("pays a one-time program nothing once another payment of the referral earned, even on the first payment", () => {
-    expect(isWithinReferralDuration(programOf("ONE_TIME"), { start, earnedOnAnotherPayment: true }, start)).toBe(false);
+    expect(
+      isWithinReferralDuration(
+        programOf("ONE_TIME"),
+        { start, earnedOnAnotherPayment: true },
+        start,
+      ),
+    ).toBe(false);
   });
 
   it("pays the first payment of a referral that has nothing yet", () => {
     for (const type of ["ONE_TIME", "FIXED_MONTHS"] as const) {
-      expect(isWithinReferralDuration(programOf(type, 3), { start: null, earnedOnAnotherPayment: false }, start)).toBe(true);
+      expect(
+        isWithinReferralDuration(
+          programOf(type, 3),
+          { start: null, earnedOnAnotherPayment: false },
+          start,
+        ),
+      ).toBe(true);
     }
   });
 
   it("counts fixed months from the referral's first payment, whichever subscription a payment belongs to", () => {
     const program = programOf("FIXED_MONTHS", 3);
     const history = { start, earnedOnAnotherPayment: true };
-    expect(isWithinReferralDuration(program, history, { ref: "in_second_sub", at: at("2026-04-15T00:00:00Z") })).toBe(true);
-    expect(isWithinReferralDuration(program, history, { ref: "in_second_sub_2", at: at("2026-05-15T00:00:00Z") })).toBe(false);
+    expect(
+      isWithinReferralDuration(program, history, {
+        ref: "in_second_sub",
+        at: at("2026-04-15T00:00:00Z"),
+      }),
+    ).toBe(true);
+    expect(
+      isWithinReferralDuration(program, history, {
+        ref: "in_second_sub_2",
+        at: at("2026-05-15T00:00:00Z"),
+      }),
+    ).toBe(false);
   });
 
   it("uses the click's fixed-month duration even if the program defaults are forever", () => {
     const history = { start, earnedOnAnotherPayment: true };
-    const clickDuration = { commissionDurationType: "FIXED_MONTHS" as const, commissionDurationMonths: 3 };
+    const clickDuration = {
+      commissionDurationType: "FIXED_MONTHS" as const,
+      commissionDurationMonths: 3,
+    };
 
-    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_april", at: at("2026-04-15T00:00:00Z") }, clickDuration)).toBe(true);
-    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_may", at: at("2026-05-15T00:00:00Z") }, clickDuration)).toBe(false);
+    expect(
+      isWithinReferralDuration(
+        programOf("FOREVER"),
+        history,
+        { ref: "in_april", at: at("2026-04-15T00:00:00Z") },
+        clickDuration,
+      ),
+    ).toBe(true);
+    expect(
+      isWithinReferralDuration(
+        programOf("FOREVER"),
+        history,
+        { ref: "in_may", at: at("2026-05-15T00:00:00Z") },
+        clickDuration,
+      ),
+    ).toBe(false);
   });
 
   it("uses a click's one-time duration instead of the program's recurring default", () => {
     const history = { start, earnedOnAnotherPayment: true };
-    const clickDuration = { commissionDurationType: "ONE_TIME" as const, commissionDurationMonths: null };
+    const clickDuration = {
+      commissionDurationType: "ONE_TIME" as const,
+      commissionDurationMonths: null,
+    };
 
-    expect(isWithinReferralDuration(programOf("FOREVER"), history, { ref: "in_second_payment", at: at("2026-02-01T00:00:00Z") }, clickDuration)).toBe(false);
+    expect(
+      isWithinReferralDuration(
+        programOf("FOREVER"),
+        history,
+        { ref: "in_second_payment", at: at("2026-02-01T00:00:00Z") },
+        clickDuration,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -75,10 +140,15 @@ describe("commissionDurationForClick", () => {
   it("prefers a captured code duration and falls back to current program terms for old clicks", () => {
     const program = programOf("FOREVER");
 
-    expect(commissionDurationForClick(program, {
-      commissionDurationTypeSnapshot: "FIXED_MONTHS",
-      commissionDurationMonthsSnapshot: 6,
-    })).toEqual({ commissionDurationType: "FIXED_MONTHS", commissionDurationMonths: 6 });
+    expect(
+      commissionDurationForClick(program, {
+        commissionDurationTypeSnapshot: "FIXED_MONTHS",
+        commissionDurationMonthsSnapshot: 6,
+      }),
+    ).toEqual({
+      commissionDurationType: "FIXED_MONTHS",
+      commissionDurationMonths: 6,
+    });
     expect(commissionDurationForClick(program, null)).toEqual({
       commissionDurationType: "FOREVER",
       commissionDurationMonths: null,
@@ -92,7 +162,7 @@ describe("readReferralHistory", () => {
   async function seedCommission(
     click: { id: string; affiliateId: string },
     ref: string | null,
-    fields: Partial<Prisma.CommissionUncheckedCreateInput> = {}
+    fields: Partial<Prisma.CommissionUncheckedCreateInput> = {},
   ) {
     return db.commission.create({
       data: {
@@ -119,7 +189,9 @@ describe("readReferralHistory", () => {
   });
 
   it("has nothing for a click whose only subscription is still on a free trial", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+    const { click } = await seedReferral(merchant, {
+      durationType: "ONE_TIME",
+    });
     await seedReferredSubscription(merchant.id, click.id, "sub_trial");
 
     expect(await readReferralHistory(merchant.id, click.id, "in_new")).toEqual({
@@ -129,13 +201,27 @@ describe("readReferralHistory", () => {
   });
 
   it("starts at the earliest first payment among the click's subscriptions, cancelled ones included", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
-    await seedReferredSubscription(merchant.id, click.id, "sub_march", { ref: "in_march", at: at("2026-03-01T00:00:00Z") });
-    const january = await seedReferredSubscription(merchant.id, click.id, "sub_january", {
-      ref: "in_january",
-      at: at("2026-01-10T00:00:00Z"),
+    const { click } = await seedReferral(merchant, {
+      durationType: "FIXED_MONTHS",
+      months: 3,
     });
-    await db.referredSubscription.update({ where: { id: january.id }, data: { cancelledAt: new Date() } });
+    await seedReferredSubscription(merchant.id, click.id, "sub_march", {
+      ref: "in_march",
+      at: at("2026-03-01T00:00:00Z"),
+    });
+    const january = await seedReferredSubscription(
+      merchant.id,
+      click.id,
+      "sub_january",
+      {
+        ref: "in_january",
+        at: at("2026-01-10T00:00:00Z"),
+      },
+    );
+    await db.referredSubscription.update({
+      where: { id: january.id },
+      data: { cancelledAt: new Date() },
+    });
     await seedReferredSubscription(merchant.id, click.id, "sub_trial");
 
     const history = await readReferralHistory(merchant.id, click.id, "in_new");
@@ -146,18 +232,37 @@ describe("readReferralHistory", () => {
   });
 
   it("ignores subscription rows another product holds for the same click", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
+    const { click } = await seedReferral(merchant, {
+      durationType: "FIXED_MONTHS",
+      months: 3,
+    });
     const other = await seedMerchant(merchant.ownerId);
-    await seedReferredSubscription(other.id, click.id, "sub_other", { ref: "in_other", at: at("2025-12-01T00:00:00Z") });
-    await seedReferredSubscription(merchant.id, click.id, "sub_own", { ref: "in_own", at: at("2026-01-10T00:00:00Z") });
+    await seedReferredSubscription(other.id, click.id, "sub_other", {
+      ref: "in_other",
+      at: at("2025-12-01T00:00:00Z"),
+    });
+    await seedReferredSubscription(merchant.id, click.id, "sub_own", {
+      ref: "in_own",
+      at: at("2026-01-10T00:00:00Z"),
+    });
 
-    expect((await readReferralHistory(merchant.id, click.id, "in_new")).start?.ref).toBe("in_own");
+    expect(
+      (await readReferralHistory(merchant.id, click.id, "in_new")).start?.ref,
+    ).toBe("in_own");
   });
 
   it("starts at a one-time purchase's commission when it came before any subscription", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
-    await seedCommission(click, "pi_once", { createdAt: at("2026-01-10T00:00:00Z") });
-    await seedReferredSubscription(merchant.id, click.id, "sub_later", { ref: "in_later", at: at("2026-03-01T00:00:00Z") });
+    const { click } = await seedReferral(merchant, {
+      durationType: "FIXED_MONTHS",
+      months: 3,
+    });
+    await seedCommission(click, "pi_once", {
+      createdAt: at("2026-01-10T00:00:00Z"),
+    });
+    await seedReferredSubscription(merchant.id, click.id, "sub_later", {
+      ref: "in_later",
+      at: at("2026-03-01T00:00:00Z"),
+    });
 
     const history = await readReferralHistory(merchant.id, click.id, "in_new");
 
@@ -171,51 +276,119 @@ describe("readReferralHistory", () => {
     ["paid", { status: "PAID", paidAt: new Date() }],
     ["flagged", { status: "FLAGGED", flagReason: "card" }],
     ["held by a dispute", { status: "PENDING", disputeOpenedAt: new Date() }],
-    ["voided by a refund", { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" }],
-    ["voided by a chargeback", { status: "VOIDED", voidedAt: new Date(), voidReason: "chargeback" }],
-    ["voided by the owner", { status: "VOIDED", voidedAt: new Date(), voidReason: "refund (by owner)" }],
-    ["voided as a confirmed self referral", { status: "VOIDED", voidedAt: new Date(), voidReason: "confirmed self-referral" }],
-  ])("counts an earlier commission %s as already earned", async (_label, fields) => {
-    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-    await seedCommission(click, "in_earlier", fields);
+    [
+      "voided by a refund",
+      { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" },
+    ],
+    [
+      "voided by a chargeback",
+      { status: "VOIDED", voidedAt: new Date(), voidReason: "chargeback" },
+    ],
+    [
+      "voided by the owner",
+      {
+        status: "VOIDED",
+        voidedAt: new Date(),
+        voidReason: "refund (by owner)",
+      },
+    ],
+    [
+      "voided as a confirmed self referral",
+      {
+        status: "VOIDED",
+        voidedAt: new Date(),
+        voidReason: "confirmed self-referral",
+      },
+    ],
+  ])(
+    "counts an earlier commission %s as already earned",
+    async (_label, fields) => {
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
+      await seedCommission(click, "in_earlier", fields);
 
-    expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(true);
-  });
+      expect(
+        (await readReferralHistory(merchant.id, click.id, "in_new"))
+          .earnedOnAnotherPayment,
+      ).toBe(true);
+    },
+  );
 
   it("rejects a commission that combines a click and an affiliate from different Merchants", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+    const { click } = await seedReferral(merchant, {
+      durationType: "ONE_TIME",
+    });
     const other = await seedMerchant(merchant.ownerId);
-    const { affiliate: otherAffiliate } = await seedReferral(other, { durationType: "ONE_TIME" });
-    await expect(seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant"))
-      .rejects.toMatchObject({ code: "P2003" });
+    const { affiliate: otherAffiliate } = await seedReferral(other, {
+      durationType: "ONE_TIME",
+    });
+    await expect(
+      seedCommission(
+        { id: click.id, affiliateId: otherAffiliate.id },
+        "in_other_merchant",
+      ),
+    ).rejects.toMatchObject({ code: "P2003" });
 
-    expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(false);
+    expect(
+      (await readReferralHistory(merchant.id, click.id, "in_new"))
+        .earnedOnAnotherPayment,
+    ).toBe(false);
   });
 
   it("does not count the payment's own commission or its refund adjustments, so a redelivery is not blocked by itself", async () => {
-    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-    const own = await seedCommission(click, "in_own", { status: "PAID", paidAt: new Date() });
-    await seedCommission(click, null, { adjustsCommissionId: own.id, amount: -5, grossAmount: null });
+    const { click } = await seedReferral(merchant, {
+      durationType: "ONE_TIME",
+    });
+    const own = await seedCommission(click, "in_own", {
+      status: "PAID",
+      paidAt: new Date(),
+    });
+    await seedCommission(click, null, {
+      adjustsCommissionId: own.id,
+      amount: -5,
+      grossAmount: null,
+    });
 
-    expect((await readReferralHistory(merchant.id, click.id, "in_own")).earnedOnAnotherPayment).toBe(false);
+    expect(
+      (await readReferralHistory(merchant.id, click.id, "in_own"))
+        .earnedOnAnotherPayment,
+    ).toBe(false);
   });
 
   it("counts a subscription payment that left no commission as the start, so it still spends the referral", async () => {
     // What an excluded checkout, or one that came to nothing, leaves behind.
-    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-    await seedReferredSubscription(merchant.id, click.id, "sub_excluded", { ref: "in_excluded", at: at("2026-01-10T00:00:00Z") });
+    const { click } = await seedReferral(merchant, {
+      durationType: "ONE_TIME",
+    });
+    await seedReferredSubscription(merchant.id, click.id, "sub_excluded", {
+      ref: "in_excluded",
+      at: at("2026-01-10T00:00:00Z"),
+    });
 
     const history = await readReferralHistory(merchant.id, click.id, "in_new");
 
     expect(history.start?.ref).toBe("in_excluded");
     expect(history.earnedOnAnotherPayment).toBe(false);
-    expect(isWithinReferralDuration(programOf("ONE_TIME"), history, { ref: "in_new", at: at("2026-02-10T00:00:00Z") })).toBe(false);
+    expect(
+      isWithinReferralDuration(programOf("ONE_TIME"), history, {
+        ref: "in_new",
+        at: at("2026-02-10T00:00:00Z"),
+      }),
+    ).toBe(false);
   });
 
   it("asks the database nothing for a forever program", async () => {
     const queries = vi.spyOn(db, "$queryRaw");
     try {
-      expect(await referralStillEarns(merchant.id, "no_click", programOf("FOREVER"), start)).toBe(true);
+      expect(
+        await referralStillEarns(
+          merchant.id,
+          "no_click",
+          programOf("FOREVER"),
+          start,
+        ),
+      ).toBe(true);
       expect(queries).not.toHaveBeenCalled();
     } finally {
       queries.mockRestore();
@@ -226,6 +399,8 @@ describe("readReferralHistory", () => {
     const rows = await db.$queryRaw<{ indexname: string }[]>`
       SELECT indexname FROM pg_indexes WHERE tablename = 'Commission'
     `;
-    expect(rows.map((row) => row.indexname)).toContain("Commission_clickId_createdAt_idx");
+    expect(rows.map((row) => row.indexname)).toContain(
+      "Commission_clickId_createdAt_idx",
+    );
   });
 });

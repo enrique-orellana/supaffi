@@ -73,7 +73,10 @@ export function AffiliateFilters({
             </span>
             <ChevronDown className="opacity-60" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 min-w-52 overflow-y-auto">
+          <DropdownMenuContent
+            align="start"
+            className="max-h-72 min-w-52 overflow-y-auto"
+          >
             <DropdownMenuItem
               className="cursor-pointer"
               render={
@@ -84,7 +87,9 @@ export function AffiliateFilters({
                 />
               }
             >
-              <Check className={programSlug === null ? "opacity-100" : "opacity-0"} />
+              <Check
+                className={programSlug === null ? "opacity-100" : "opacity-0"}
+              />
               <span>All programs</span>
             </DropdownMenuItem>
             {programs.map((p) => (
@@ -99,7 +104,11 @@ export function AffiliateFilters({
                   />
                 }
               >
-                <Check className={programSlug === p.slug ? "opacity-100" : "opacity-0"} />
+                <Check
+                  className={
+                    programSlug === p.slug ? "opacity-100" : "opacity-0"
+                  }
+                />
                 <span className="truncate">{p.name}</span>
               </DropdownMenuItem>
             ))}

@@ -11,9 +11,17 @@ export const runtime = "nodejs";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-async function readBoundedBody(request: Request, maxBytes: number): Promise<Buffer | null> {
+async function readBoundedBody(
+  request: Request,
+  maxBytes: number,
+): Promise<Buffer | null> {
   const contentLength = request.headers.get("content-length");
-  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) return null;
+  if (
+    contentLength &&
+    /^\d+$/.test(contentLength) &&
+    Number(contentLength) > maxBytes
+  )
+    return null;
   if (!request.body) return null;
 
   const reader = request.body.getReader();
@@ -61,14 +69,20 @@ function queuedPayload(event: VerifiedProviderEvent): Prisma.InputJsonObject {
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ connectionId: string }> }
+  { params }: { params: Promise<{ connectionId: string }> },
 ) {
   const receivedAt = new Date();
-  const contentType = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
-  if (contentType !== "application/json") return new NextResponse(null, { status: 415 });
+  const contentType = request.headers
+    .get("content-type")
+    ?.split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (contentType !== "application/json")
+    return new NextResponse(null, { status: 415 });
 
   const { connectionId } = await params;
-  if (!/^[\da-z_-]{8,64}$/i.test(connectionId)) return new NextResponse(null, { status: 404 });
+  if (!/^[\da-z_-]{8,64}$/i.test(connectionId))
+    return new NextResponse(null, { status: 404 });
 
   const connection = await db.paymentConnection.findFirst({
     where: {
@@ -79,14 +93,17 @@ export async function POST(
     },
     select: { id: true, merchantId: true, webhookSecretEnc: true },
   });
-  if (!connection?.webhookSecretEnc) return new NextResponse(null, { status: 404 });
+  if (!connection?.webhookSecretEnc)
+    return new NextResponse(null, { status: 404 });
 
   const rawBodyBytes = await readBoundedBody(request, MAX_BODY_BYTES);
   if (!rawBodyBytes?.byteLength) return new NextResponse(null, { status: 413 });
 
   let providerRawBody: string;
   try {
-    providerRawBody = new TextDecoder("utf-8", { fatal: true }).decode(rawBodyBytes);
+    providerRawBody = new TextDecoder("utf-8", { fatal: true }).decode(
+      rawBodyBytes,
+    );
   } catch {
     return new NextResponse(null, { status: 413 });
   }
@@ -106,7 +123,11 @@ export async function POST(
   } catch {
     return new NextResponse(null, { status: 400 });
   }
-  if (!event || event.provider !== PaymentProvider.NOWPAYMENTS.id || !event.paymentRef) {
+  if (
+    !event ||
+    event.provider !== PaymentProvider.NOWPAYMENTS.id ||
+    !event.paymentRef
+  ) {
     return new NextResponse(null, { status: 400 });
   }
   try {

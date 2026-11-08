@@ -11,13 +11,17 @@ export type ProgramFormValues = {
 };
 
 export function validateProgramInput(
-  input: ProgramFormValues
-): { error: string; parsed?: undefined } | { error: null; parsed: ProgramInput } {
+  input: ProgramFormValues,
+):
+  | { error: string; parsed?: undefined }
+  | { error: null; parsed: ProgramInput } {
   if (!input.name.trim()) return { error: "Name is required" };
 
   const rate = Number(input.defaultCommissionRate);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
-    return { error: "Commission rate must be greater than 0 and no more than 100" };
+    return {
+      error: "Commission rate must be greater than 0 and no more than 100",
+    };
   }
 
   const durationType = input.commissionDurationType;
@@ -35,13 +39,23 @@ export function validateProgramInput(
   }
 
   const attributionWindowDays = Number(input.attributionWindowDays);
-  if (!Number.isFinite(attributionWindowDays) || attributionWindowDays <= 0 || !Number.isInteger(attributionWindowDays)) {
+  if (
+    !Number.isFinite(attributionWindowDays) ||
+    attributionWindowDays <= 0 ||
+    !Number.isInteger(attributionWindowDays)
+  ) {
     return { error: "Time to buy must be a whole number of days, at least 1" };
   }
 
   const holdingPeriodDays = Number(input.holdingPeriodDays);
-  if (!Number.isFinite(holdingPeriodDays) || holdingPeriodDays <= 0 || !Number.isInteger(holdingPeriodDays)) {
-    return { error: "Hold before paying must be a whole number of days, at least 1" };
+  if (
+    !Number.isFinite(holdingPeriodDays) ||
+    holdingPeriodDays <= 0 ||
+    !Number.isInteger(holdingPeriodDays)
+  ) {
+    return {
+      error: "Hold before paying must be a whole number of days, at least 1",
+    };
   }
 
   return {

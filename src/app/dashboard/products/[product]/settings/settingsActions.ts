@@ -10,8 +10,15 @@ import {
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
-import { connectNowPayments, disconnectNowPayments } from "@/lib/paymentConnections";
-import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
+import {
+  connectNowPayments,
+  disconnectNowPayments,
+} from "@/lib/paymentConnections";
+import {
+  validateProductInput,
+  normalizeDomain,
+  normalizeWebsiteUrl,
+} from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
@@ -41,15 +48,20 @@ async function owner(): Promise<string> {
 }
 
 /** The settings URL, optionally asking for one section of checks to be re-run. */
-const settings = (slug: string, fresh?: "dns" | typeof PaymentProvider.STRIPE.id) =>
-  `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
+const settings = (
+  slug: string,
+  fresh?: "dns" | typeof PaymentProvider.STRIPE.id,
+) => `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
-type ProductFormState = { error: string; values?: { name: string; domain: string; websiteUrl: string } };
+type ProductFormState = {
+  error: string;
+  values?: { name: string; domain: string; websiteUrl: string };
+};
 
 export async function updateProductAction(
   product: ProductRef,
   _prev: ProductFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ProductFormState> {
   const ownerId = await owner();
   const input = {
@@ -64,7 +76,11 @@ export async function updateProductAction(
   try {
     await updateMerchant(ownerId, product.id, input);
   } catch (err) {
-    if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
+    if (isUniqueConstraintError(err))
+      return {
+        error: "Another product already uses that subdomain",
+        values: input,
+      };
     throw err;
   }
   // The sidebar and the product switcher are rendered by the dashboard layout,
@@ -76,7 +92,7 @@ export async function updateProductAction(
 export async function replaceStripeKeyAction(
   product: ProductRef,
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const key = String(formData.get("value") ?? "").trim();
@@ -93,11 +109,12 @@ export async function replaceStripeKeyAction(
 export async function replaceWebhookSecretAction(
   product: ProductRef,
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const secret = String(formData.get("value") ?? "").trim();
-  if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
+  if (!secret.startsWith("whsec_"))
+    return { error: "The signing secret starts with whsec_" };
   await connectStripe(ownerId, product.id, { webhookSecret: secret });
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
   await upgradeMerchantWebhookEvents(product.id);
@@ -107,7 +124,7 @@ export async function replaceWebhookSecretAction(
 export async function saveNowPaymentsConnectionAction(
   product: ProductRef,
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
@@ -119,7 +136,7 @@ export async function saveNowPaymentsConnectionAction(
 
 export async function disconnectNowPaymentsConnectionAction(
   product: ProductRef,
-  _formData: FormData
+  _formData: FormData,
 ): Promise<void> {
   const ownerId = await owner();
   await disconnectNowPayments(ownerId, product.id);
@@ -127,13 +144,17 @@ export async function disconnectNowPaymentsConnectionAction(
   redirect(settings(product.slug));
 }
 
-export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {
+export async function deleteProductAction(
+  product: ProductRef,
+  formData: FormData,
+): Promise<void> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/dashboard");
   // Typing the name is the confirmation. A dialog button alone is one
   // misclick from a year of commission history.
-  if (String(formData.get("confirm") ?? "") !== merchant.name) redirect(settings(product.slug));
+  if (String(formData.get("confirm") ?? "") !== merchant.name)
+    redirect(settings(product.slug));
   await deleteMerchant(ownerId, product.id);
   revalidatePath("/dashboard", "layout");
   redirect("/dashboard");

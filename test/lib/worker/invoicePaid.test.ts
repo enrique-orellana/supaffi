@@ -16,7 +16,11 @@ import { db } from "@/lib/db";
 const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_renewal", metadata: {} })),
-    list: vi.fn(async (_params: unknown): Promise<{ data: Array<{ id: string }> }> => ({ data: [] })),
+    list: vi.fn(
+      async (_params: unknown): Promise<{ data: Array<{ id: string }> }> => ({
+        data: [],
+      }),
+    ),
   },
   paymentMethods: {
     list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [] })),
@@ -25,10 +29,15 @@ const stripeStub = vi.hoisted(() => ({
     list: vi.fn(async (): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
   disputes: {
-    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({
+      data: [],
+    })),
   },
   paymentIntents: {
-    retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_renewal", latest_charge: null })),
+    retrieve: vi.fn(async (): Promise<unknown> => ({
+      id: "pi_renewal",
+      latest_charge: null,
+    })),
   },
   invoices: {
     // Only reached when recognising a referral from before 0.2.5; the tests
@@ -36,18 +45,24 @@ const stripeStub = vi.hoisted(() => ({
     retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
     // Every renewal that can earn reads its lines. beforeEach answers from the
     // lines invoiceFixture registered for that invoice.
-    listLineItems: vi.fn(async (_id: string, _params?: unknown): Promise<unknown> => undefined),
+    listLineItems: vi.fn(
+      async (_id: string, _params?: unknown): Promise<unknown> => undefined,
+    ),
   },
   // Read when a legacy referral is recognised, for the products it bills.
   subscriptions: {
     retrieve: vi.fn(async (id: string): Promise<unknown> => ({
       id,
-      items: { data: [{ id: "si_basic", price: { product: "prod_basic" } }], has_more: false },
+      items: {
+        data: [{ id: "si_basic", price: { product: "prod_basic" } }],
+        has_more: false,
+      },
     })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  const actual =
+    await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
@@ -94,13 +109,18 @@ type ExclusionRead = {
 };
 
 function subscriptionParent(subscription: string) {
-  return { type: "subscription_details", subscription_details: { subscription, metadata: {} } };
+  return {
+    type: "subscription_details",
+    subscription_details: { subscription, metadata: {} },
+  };
 }
 
 const seconds = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 async function clearAll() {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -124,7 +144,7 @@ describe("handleInvoicePaid", () => {
   function invoiceFixture(
     fields: Record<string, unknown> & { amount_paid_off_stripe?: number } = {},
     lines?: Stripe.InvoiceLineItem[],
-    read: ExclusionRead = {}
+    read: ExclusionRead = {},
   ): Stripe.Invoice {
     const { amount_paid_off_stripe, ...payloadFields } = fields;
     const invoice = {
@@ -138,7 +158,9 @@ describe("handleInvoicePaid", () => {
       parent: subscriptionParent(SUBSCRIPTION_ID),
       total: 12000,
       total_excluding_tax: 10000,
-      total_taxes: [{ amount: 2000, tax_behavior: "inclusive", taxable_amount: 10000 }],
+      total_taxes: [
+        { amount: 2000, tax_behavior: "inclusive", taxable_amount: 10000 },
+      ],
       amount_paid: 12000,
       shipping_cost: null,
       ...payloadFields,
@@ -148,10 +170,11 @@ describe("handleInvoicePaid", () => {
       lines ?? [
         invoiceLine({
           amount: invoice.total,
-          inclusiveTax: invoice.total - (invoice.total_excluding_tax ?? invoice.total),
+          inclusiveTax:
+            invoice.total - (invoice.total_excluding_tax ?? invoice.total),
           subscription: subscriptionIdOf(invoice),
         }),
-      ]
+      ],
     );
     const subscription = subscriptionIdOf(invoice);
     invoiceReadsById.set(invoice.id, {
@@ -167,7 +190,13 @@ describe("handleInvoicePaid", () => {
       parent: subscription
         ? {
             type: "subscription_details",
-            subscription_details: { subscription: { id: subscription, metadata: read.subscriptionMetadata ?? {} }, metadata: {} },
+            subscription_details: {
+              subscription: {
+                id: subscription,
+                metadata: read.subscriptionMetadata ?? {},
+              },
+              metadata: {},
+            },
           }
         : null,
     });
@@ -179,9 +208,14 @@ describe("handleInvoicePaid", () => {
     stripeStub.customers.retrieve.mockClear();
     stripeStub.subscriptions.retrieve.mockClear();
     stripeStub.invoicePayments.list.mockReset();
-    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [],
+    }));
     stripeStub.paymentIntents.retrieve.mockReset();
-    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_renewal", latest_charge: null }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_renewal",
+      latest_charge: null,
+    }));
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.invoices.retrieve.mockReset();
@@ -195,17 +229,24 @@ describe("handleInvoicePaid", () => {
     });
     linesByInvoice.clear();
     stripeStub.invoices.listLineItems.mockReset();
-    stripeStub.invoices.listLineItems.mockImplementation(async (id: string) => ({
-      data: linesByInvoice.get(id) ?? [],
-      has_more: false,
-    }));
+    stripeStub.invoices.listLineItems.mockImplementation(
+      async (id: string) => ({
+        data: linesByInvoice.get(id) ?? [],
+        has_more: false,
+      }),
+    );
     stripeStub.customers.list.mockReset();
     stripeStub.customers.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentMethods.list.mockReset();
-    stripeStub.paymentMethods.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.paymentMethods.list.mockImplementation(async () => ({
+      data: [],
+    }));
 
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -214,7 +255,9 @@ describe("handleInvoicePaid", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     const program = await db.program.create({
@@ -250,8 +293,11 @@ describe("handleInvoicePaid", () => {
       merchant.id,
       clickId,
       SUBSCRIPTION_ID,
-      { ref: "in_checkout", at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-      [PRODUCT_ID]
+      {
+        ref: "in_checkout",
+        at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      },
+      [PRODUCT_ID],
     );
   });
 
@@ -263,7 +309,9 @@ describe("handleInvoicePaid", () => {
   it("earns 20.00 on a 120.00 renewal that has 20.00 VAT inside the price", async () => {
     await handleInvoicePaid(merchant, invoiceFixture());
 
-    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId },
+    });
     expect(commission.saleAmount?.toString()).toBe("100");
     expect(commission.amount.toString()).toBe("20");
     expect(commission.status).toBe("PENDING");
@@ -278,7 +326,9 @@ describe("handleInvoicePaid", () => {
     // Half the invoice paid in money, half from credit: half the pre-tax base.
     await handleInvoicePaid(merchant, invoiceFixture({ amount_paid: 6000 }));
 
-    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId },
+    });
     expect(commission.saleAmount?.toString()).toBe("50");
     expect(commission.amount.toString()).toBe("10");
   });
@@ -287,7 +337,10 @@ describe("handleInvoicePaid", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await expect(
-        handleInvoicePaid(merchant, invoiceFixture({ total_excluding_tax: null, total_taxes: null }))
+        handleInvoicePaid(
+          merchant,
+          invoiceFixture({ total_excluding_tax: null, total_taxes: null }),
+        ),
       ).resolves.toBeUndefined();
     } finally {
       errors.mockRestore();
@@ -297,7 +350,9 @@ describe("handleInvoicePaid", () => {
 
   it("applies a refund that happened before the renewal was recorded", async () => {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({
-      data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+      data: [
+        { payment: { type: "payment_intent", payment_intent: "pi_renewal" } },
+      ],
     }));
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
       id: "pi_renewal",
@@ -306,30 +361,50 @@ describe("handleInvoicePaid", () => {
 
     await handleInvoicePaid(merchant, invoiceFixture());
 
-    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId },
+    });
     // A quarter of the charge came back, so a quarter of the 20.00 goes.
     expect(commission.amount.toString()).toBe("15");
     expect(commission.grossAmount?.toString()).toBe("20");
     expect(commission.voidReason).toBe("partial refund");
-    expect(stripeStub.invoicePayments.list).toHaveBeenCalledWith({ invoice: "in_renewal", status: "paid", limit: 1 });
+    expect(stripeStub.invoicePayments.list).toHaveBeenCalledWith({
+      invoice: "in_renewal",
+      status: "paid",
+      limit: 1,
+    });
   });
 
   it("holds a renewal whose charge is already under an open dispute", async () => {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({
-      data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+      data: [
+        { payment: { type: "payment_intent", payment_intent: "pi_renewal" } },
+      ],
     }));
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
       id: "pi_renewal",
-      latest_charge: { id: "ch_renewal", amount: 12000, amount_refunded: 0, disputed: true },
+      latest_charge: {
+        id: "ch_renewal",
+        amount: 12000,
+        amount_refunded: 0,
+        disputed: true,
+      },
     }));
-    stripeStub.disputes.list.mockImplementation(async () => ({ data: [{ id: "dp_1", status: "under_review" }] }));
+    stripeStub.disputes.list.mockImplementation(async () => ({
+      data: [{ id: "dp_1", status: "under_review" }],
+    }));
 
     await handleInvoicePaid(merchant, invoiceFixture());
 
-    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId },
+    });
     expect(commission.status).toBe("PENDING");
     expect(commission.disputeOpenedAt).not.toBeNull();
-    expect(stripeStub.disputes.list).toHaveBeenCalledWith({ payment_intent: "pi_renewal", limit: 100 });
+    expect(stripeStub.disputes.list).toHaveBeenCalledWith({
+      payment_intent: "pi_renewal",
+      limit: 100,
+    });
   });
 
   it("holds a renewal, and logs, when its disputed charge's dispute list is still empty", async () => {
@@ -338,23 +413,36 @@ describe("handleInvoicePaid", () => {
     // existed, not a charge cleared of every dispute.
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     stripeStub.invoicePayments.list.mockImplementation(async () => ({
-      data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+      data: [
+        { payment: { type: "payment_intent", payment_intent: "pi_renewal" } },
+      ],
     }));
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
       id: "pi_renewal",
-      latest_charge: { id: "ch_renewal", amount: 12000, amount_refunded: 0, disputed: true },
+      latest_charge: {
+        id: "ch_renewal",
+        amount: 12000,
+        amount_refunded: 0,
+        disputed: true,
+      },
     }));
 
     try {
       await handleInvoicePaid(merchant, invoiceFixture());
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(warnings).toHaveBeenCalledTimes(1);
-      expect(warnings).toHaveBeenCalledWith(expect.stringContaining(commission.id));
+      expect(warnings).toHaveBeenCalledWith(
+        expect.stringContaining(commission.id),
+      );
     } finally {
       warnings.mockRestore();
     }
 
-    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId },
+    });
     expect(commission.status).toBe("PENDING");
     expect(commission.disputeOpenedAt).not.toBeNull();
   });
@@ -373,11 +461,17 @@ describe("handleInvoicePaid", () => {
       // and has no parent. The flag is only on the subscription in Stripe.
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ parent: null, subscription: SUBSCRIPTION_ID }, undefined, { subscriptionMetadata: FLAG })
+        invoiceFixture(
+          { parent: null, subscription: SUBSCRIPTION_ID },
+          undefined,
+          { subscriptionMetadata: FLAG },
+        ),
       );
 
       expect(await db.commission.count()).toBe(0);
-      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_renewal", { expand: EARNING_INVOICE_EXPAND });
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_renewal", {
+        expand: EARNING_INVOICE_EXPAND,
+      });
       expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
       expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
     });
@@ -385,7 +479,10 @@ describe("handleInvoicePaid", () => {
     it("earns nothing when the subscription was excluded after the payload's snapshot was taken", async () => {
       // The payload's subscription_details.metadata is a snapshot from when
       // the invoice was finalized; the live subscription carries the flag.
-      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { subscriptionMetadata: FLAG }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({}, undefined, { subscriptionMetadata: FLAG }),
+      );
 
       expect(await db.commission.count()).toBe(0);
     });
@@ -398,13 +495,19 @@ describe("handleInvoicePaid", () => {
     });
 
     it("earns nothing on an invoice flagged after it was sent", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { invoiceMetadata: FLAG }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({}, undefined, { invoiceMetadata: FLAG }),
+      );
 
       expect(await db.commission.count()).toBe(0);
     });
 
     it("earns nothing on a renewal whose customer is excluded, read from the same invoice read", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { customerMetadata: FLAG }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({}, undefined, { customerMetadata: FLAG }),
+      );
 
       expect(await db.commission.count()).toBe(0);
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
@@ -419,14 +522,22 @@ describe("handleInvoicePaid", () => {
         amount_paid_off_stripe: 0,
         metadata: {},
         customer: CUSTOMER_ID,
-        parent: { type: "subscription_details", subscription_details: { subscription: SUBSCRIPTION_ID, metadata: {} } },
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription: SUBSCRIPTION_ID, metadata: {} },
+        },
       }));
-      stripeStub.subscriptions.retrieve.mockResolvedValueOnce({ id: SUBSCRIPTION_ID, metadata: FLAG });
+      stripeStub.subscriptions.retrieve.mockResolvedValueOnce({
+        id: SUBSCRIPTION_ID,
+        metadata: FLAG,
+      });
 
       await handleInvoicePaid(merchant, invoiceFixture());
 
       expect(await db.commission.count()).toBe(0);
-      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith(SUBSCRIPTION_ID);
+      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith(
+        SUBSCRIPTION_ID,
+      );
     });
 
     it("records nothing and fails the event, so it is retried, when a subscription it has to read cannot be read", async () => {
@@ -440,10 +551,14 @@ describe("handleInvoicePaid", () => {
         parent: null,
       }));
       stripeStub.subscriptions.retrieve.mockRejectedValueOnce(
-        Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" })
+        Object.assign(new Error("Stripe is unavailable"), {
+          type: "StripeConnectionError",
+        }),
       );
 
-      await expect(handleInvoicePaid(merchant, invoiceFixture())).rejects.toThrow(/sub_renewal.*retried/);
+      await expect(
+        handleInvoicePaid(merchant, invoiceFixture()),
+      ).rejects.toThrow(/sub_renewal.*retried/);
       expect(await db.commission.count()).toBe(0);
 
       // The retry, once Stripe answers, earns as usual.
@@ -454,7 +569,10 @@ describe("handleInvoicePaid", () => {
     it("earns nothing on a renewal whose customer was deleted, since its flag can no longer be read", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { customerDeleted: true }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({}, undefined, { customerDeleted: true }),
+      );
 
       expect(await db.commission.count()).toBe(0);
       expect(warn).toHaveBeenCalledTimes(1);
@@ -478,68 +596,123 @@ describe("handleInvoicePaid", () => {
 
   describe("referred subscriptions", () => {
     it("leaves a subscription's first invoice to the checkout that created it", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_create", billing_reason: "subscription_create" }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_create",
+          billing_reason: "subscription_create",
+        }),
+      );
       expect(await db.commission.count()).toBe(0);
     });
 
     it("pays the affiliate of the product the customer subscribed to when products share a Stripe account", async () => {
       const other = await seedMerchant(merchant.ownerId);
       const b = await seedReferral(other);
-      await seedReferredSubscription(other.id, b.click.id, "sub_b", { ref: "in_b1", at: new Date() });
+      await seedReferredSubscription(other.id, b.click.id, "sub_b", {
+        ref: "in_b1",
+        at: new Date(),
+      });
 
       // Both products' webhook endpoints receive a copy of every invoice on
       // the shared account, for the same customer.
-      const invoice = invoiceFixture({ id: "in_b2", parent: subscriptionParent("sub_b") });
+      const invoice = invoiceFixture({
+        id: "in_b2",
+        parent: subscriptionParent("sub_b"),
+      });
       await handleInvoicePaid(merchant, invoice);
       await handleInvoicePaid(other, invoice);
 
-      const commissions = await db.commission.findMany({ where: { stripePaymentRef: "in_b2" } });
+      const commissions = await db.commission.findMany({
+        where: { stripePaymentRef: "in_b2" },
+      });
       expect(commissions.map((c) => c.affiliateId)).toEqual([b.affiliate.id]);
     });
 
     it("earns nothing on another subscription of a referred customer", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_x", parent: subscriptionParent("sub_unreferred") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_x",
+          parent: subscriptionParent("sub_unreferred"),
+        }),
+      );
 
       expect(await db.commission.count()).toBe(0);
       expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
     });
 
     it("earns nothing on a one-off invoice for a referred customer", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_manual", billing_reason: "manual", parent: null }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_manual",
+          billing_reason: "manual",
+          parent: null,
+        }),
+      );
       expect(await db.commission.count()).toBe(0);
     });
 
     it("reads the subscription from invoices sent in the shape older API versions use", async () => {
-      await handleInvoicePaid(merchant, invoiceFixture({ parent: null, subscription: SUBSCRIPTION_ID }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ parent: null, subscription: SUBSCRIPTION_ID }),
+      );
       expect(await db.commission.count()).toBe(1);
     });
 
     it("pays a one-time program on the first paid invoice after a free trial, and only on that one", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
       await seedReferredSubscription(merchant.id, click.id, "sub_trial");
       const onTrial = (fields: Record<string, unknown>) =>
         invoiceFixture({ parent: subscriptionParent("sub_trial"), ...fields });
 
       // The $0 trial invoice neither earns nor uses up the one-time commission.
-      await handleInvoicePaid(merchant, onTrial({ id: "in_trial", total: 0, total_excluding_tax: 0, total_taxes: [], amount_paid: 0 }));
+      await handleInvoicePaid(
+        merchant,
+        onTrial({
+          id: "in_trial",
+          total: 0,
+          total_excluding_tax: 0,
+          total_taxes: [],
+          amount_paid: 0,
+        }),
+      );
       await handleInvoicePaid(merchant, onTrial({ id: "in_first_paid" }));
       // A redelivery of the first paid invoice is still recognised as the first.
       await handleInvoicePaid(merchant, onTrial({ id: "in_first_paid" }));
       await handleInvoicePaid(merchant, onTrial({ id: "in_next" }));
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (
+        await db.commission.findMany({ where: { clickId: click.id } })
+      ).map((c) => c.stripePaymentRef);
       expect(refs).toEqual(["in_first_paid"]);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
+      const referred = await db.referredSubscription.findFirstOrThrow({
+        where: { clickId: click.id },
+      });
       expect(referred.firstPaymentRef).toBe("in_first_paid");
     });
 
     it("pays a one-time program nothing on renewals after its checkout commission", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-      await seedReferredSubscription(merchant.id, click.id, "sub_once", { ref: "in_first", at: new Date() });
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_once", {
+        ref: "in_first",
+        at: new Date(),
+      });
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_2", parent: subscriptionParent("sub_once") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_2", parent: subscriptionParent("sub_once") }),
+      );
 
-      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(
+        0,
+      );
     });
 
     it("counts fixed months from the first payment, not from the click", async () => {
@@ -555,10 +728,26 @@ describe("handleInvoicePaid", () => {
       });
       const parent = subscriptionParent("sub_fixed");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_2",
+          parent,
+          created: seconds("2026-02-28T00:00:00Z"),
+        }),
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_3",
+          parent,
+          created: seconds("2026-03-31T00:00:00Z"),
+        }),
+      );
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (
+        await db.commission.findMany({ where: { clickId: click.id } })
+      ).map((c) => c.stripePaymentRef);
       expect(refs).toEqual(["in_2"]);
     });
 
@@ -567,35 +756,90 @@ describe("handleInvoicePaid", () => {
       // claims the subscription's first payment; month 1 arrives after it and
       // must move the window back to when the subscription truly started,
       // not stretch it a month further from month 2's later date.
-      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
+      const { click } = await seedReferral(merchant, {
+        durationType: "FIXED_MONTHS",
+        months: 2,
+      });
       await seedReferredSubscription(merchant.id, click.id, "sub_out_of_order");
       const parent = subscriptionParent("sub_out_of_order");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") }));
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_month_2",
+          parent,
+          created: seconds("2026-02-28T00:00:00Z"),
+        }),
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_month_1",
+          parent,
+          created: seconds("2026-01-31T00:00:00Z"),
+        }),
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_month_3",
+          parent,
+          created: seconds("2026-03-31T00:00:00Z"),
+        }),
+      );
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (
+        await db.commission.findMany({ where: { clickId: click.id } })
+      ).map((c) => c.stripePaymentRef);
       expect(refs.sort()).toEqual(["in_month_1", "in_month_2"]);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
+      const referred = await db.referredSubscription.findFirstOrThrow({
+        where: { clickId: click.id },
+      });
       // The ref stays on whichever payment claimed it first; only the date moves.
       expect(referred.firstPaymentRef).toBe("in_month_2");
-      expect(referred.firstPaidAt?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+      expect(referred.firstPaidAt?.toISOString()).toBe(
+        "2026-01-31T00:00:00.000Z",
+      );
     });
 
     it("pays a one-time program only once when its first payment is delivered out of order", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-      await seedReferredSubscription(merchant.id, click.id, "sub_once_out_of_order");
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
+      await seedReferredSubscription(
+        merchant.id,
+        click.id,
+        "sub_once_out_of_order",
+      );
       const parent = subscriptionParent("sub_once_out_of_order");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_month_2",
+          parent,
+          created: seconds("2026-02-28T00:00:00Z"),
+        }),
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_month_1",
+          parent,
+          created: seconds("2026-01-31T00:00:00Z"),
+        }),
+      );
 
-      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(
+        1,
+      );
     });
 
     it("creates nothing once a self referral was confirmed on the click", async () => {
-      await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+      await db.click.update({
+        where: { id: clickId },
+        data: { fraudConfirmedAt: new Date() },
+      });
 
       await handleInvoicePaid(merchant, invoiceFixture());
 
@@ -603,7 +847,9 @@ describe("handleInvoicePaid", () => {
     });
 
     it("earns nothing on the next renewal once the Owner confirmed a self referral from an unflagged commission", async () => {
-      const { affiliateId } = await db.click.findUniqueOrThrow({ where: { id: clickId } });
+      const { affiliateId } = await db.click.findUniqueOrThrow({
+        where: { id: clickId },
+      });
       const first = await db.commission.create({
         data: {
           affiliateId,
@@ -620,15 +866,25 @@ describe("handleInvoicePaid", () => {
       await confirmCommissionFraud(merchant.ownerId, merchant.id, first.id);
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_renewal" } })).toBe(0);
-      expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("VOIDED");
+      expect(
+        await db.commission.count({
+          where: { stripePaymentRef: "in_renewal" },
+        }),
+      ).toBe(0);
+      expect(
+        (await db.commission.findUniqueOrThrow({ where: { id: first.id } }))
+          .status,
+      ).toBe("VOIDED");
     });
 
     it("creates nothing when the self referral is confirmed while the renewal is being processed", async () => {
       // Confirmed after the handler's first check on the click, during its
       // Stripe reads, and before it writes.
       stripeStub.invoicePayments.list.mockImplementationOnce(async () => {
-        await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+        await db.click.update({
+          where: { id: clickId },
+          data: { fraudConfirmedAt: new Date() },
+        });
         return { data: [] };
       });
 
@@ -638,15 +894,26 @@ describe("handleInvoicePaid", () => {
     });
 
     it("flags a renewal billed to the affiliate's own email", async () => {
-      const { click } = await seedReferral(merchant, { affiliateEmail: "own@example.com" });
-      await seedReferredSubscription(merchant.id, click.id, "sub_own", { ref: "in_first", at: new Date() });
+      const { click } = await seedReferral(merchant, {
+        affiliateEmail: "own@example.com",
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_own", {
+        ref: "in_first",
+        at: new Date(),
+      });
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_own", parent: subscriptionParent("sub_own"), customer_email: "OWN@example.com" })
+        invoiceFixture({
+          id: "in_own",
+          parent: subscriptionParent("sub_own"),
+          customer_email: "OWN@example.com",
+        }),
       );
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId: click.id },
+      });
       expect(commission.status).toBe("FLAGGED");
       expect(commission.flagReason).toMatch(/^email:/);
     });
@@ -655,29 +922,49 @@ describe("handleInvoicePaid", () => {
       const { affiliate, click } = await seedReferral(merchant);
       await seedLegacyClick(click.id, "cus_legacy");
       await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first");
-      stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_legacy_first", "sub_legacy"));
+      stripeStub.invoices.retrieve.mockResolvedValueOnce(
+        retrievedInvoice("in_legacy_first", "sub_legacy"),
+      );
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_legacy_2", customer: "cus_legacy", parent: subscriptionParent("sub_legacy") })
+        invoiceFixture({
+          id: "in_legacy_2",
+          customer: "cus_legacy",
+          parent: subscriptionParent("sub_legacy"),
+        }),
       );
 
-      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_legacy_first");
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_legacy_2" } })).toBe(1);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith(
+        "in_legacy_first",
+      );
+      expect(
+        await db.commission.count({
+          where: { stripePaymentRef: "in_legacy_2" },
+        }),
+      ).toBe(1);
     });
 
     it("does not pay a legacy customer's subscription that their referral did not start", async () => {
       const { affiliate, click } = await seedReferral(merchant);
       await seedLegacyClick(click.id, "cus_legacy");
       await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first");
-      stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_legacy_first", "sub_referred"));
+      stripeStub.invoices.retrieve.mockResolvedValueOnce(
+        retrievedInvoice("in_legacy_first", "sub_referred"),
+      );
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_other", customer: "cus_legacy", parent: subscriptionParent("sub_unreferred") })
+        invoiceFixture({
+          id: "in_other",
+          customer: "cus_legacy",
+          parent: subscriptionParent("sub_unreferred"),
+        }),
       );
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_other" } })).toBe(0);
+      expect(
+        await db.commission.count({ where: { stripePaymentRef: "in_other" } }),
+      ).toBe(0);
     });
 
     it("does not recognise a legacy referral whose first purchase never earned, such as a trial that converted", async () => {
@@ -689,42 +976,98 @@ describe("handleInvoicePaid", () => {
       // is adopted and the subscription stays unrecognised.
       const { affiliate, click } = await seedReferral(merchant);
       await seedLegacyClick(click.id, "cus_legacy");
-      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_renewal_1");
-      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_renewal_2");
+      await seedInvoiceCommission(
+        affiliate.id,
+        click.id,
+        "in_legacy_renewal_1",
+      );
+      await seedInvoiceCommission(
+        affiliate.id,
+        click.id,
+        "in_legacy_renewal_2",
+      );
       stripeStub.invoices.retrieve.mockImplementation(async (id: string) =>
-        retrievedInvoice(id, "sub_trial", { billingReason: "subscription_cycle" })
+        retrievedInvoice(id, "sub_trial", {
+          billingReason: "subscription_cycle",
+        }),
       );
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_after_upgrade", customer: "cus_legacy", parent: subscriptionParent("sub_trial") })
+        invoiceFixture({
+          id: "in_after_upgrade",
+          customer: "cus_legacy",
+          parent: subscriptionParent("sub_trial"),
+        }),
       );
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_after_upgrade" } })).toBe(0);
-      expect(await db.referredSubscription.count({ where: { stripeSubscriptionId: "sub_trial" } })).toBe(0);
+      expect(
+        await db.commission.count({
+          where: { stripePaymentRef: "in_after_upgrade" },
+        }),
+      ).toBe(0);
+      expect(
+        await db.referredSubscription.count({
+          where: { stripeSubscriptionId: "sub_trial" },
+        }),
+      ).toBe(0);
     });
   });
 
   describe("only referred subscription revenue earns", () => {
-    it.each(["manual", "quote_accept", "automatic_pending_invoice_item_invoice", "subscription_threshold", "upcoming", "subscription", null])(
+    it.each([
+      "manual",
+      "quote_accept",
+      "automatic_pending_invoice_item_invoice",
+      "subscription_threshold",
+      "upcoming",
+      "subscription",
+      null,
+    ])(
       "earns nothing on an invoice billed for %s, even on the referred subscription",
       async (billingReason) => {
-        await handleInvoicePaid(merchant, invoiceFixture({ id: "in_other_reason", billing_reason: billingReason }));
+        await handleInvoicePaid(
+          merchant,
+          invoiceFixture({
+            id: "in_other_reason",
+            billing_reason: billingReason,
+          }),
+        );
 
         expect(await db.commission.count()).toBe(0);
         expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
-      }
+      },
     );
 
     it("does not let a manual invoice on a free trial use up a one-time program's first payment", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-      await seedReferredSubscription(merchant.id, click.id, "sub_trial_manual", undefined, [PRODUCT_ID]);
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
+      await seedReferredSubscription(
+        merchant.id,
+        click.id,
+        "sub_trial_manual",
+        undefined,
+        [PRODUCT_ID],
+      );
       const parent = subscriptionParent("sub_trial_manual");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_manual_fee", billing_reason: "manual", parent }));
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_first_cycle", parent }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_manual_fee",
+          billing_reason: "manual",
+          parent,
+        }),
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_first_cycle", parent }),
+      );
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (
+        await db.commission.findMany({ where: { clickId: click.id } })
+      ).map((c) => c.stripePaymentRef);
       expect(refs).toEqual(["in_first_cycle"]);
     });
 
@@ -735,15 +1078,26 @@ describe("handleInvoicePaid", () => {
         {
           total: 18000,
           total_excluding_tax: 15000,
-          total_taxes: [{ amount: 3000, tax_behavior: "inclusive", taxable_amount: 15000 }],
+          total_taxes: [
+            { amount: 3000, tax_behavior: "inclusive", taxable_amount: 15000 },
+          ],
           amount_paid: 18000,
         },
-        [invoiceLine({ amount: 12000, inclusiveTax: 2000 }), invoiceLine({ amount: 6000, inclusiveTax: 1000, source: "invoice_item" })]
+        [
+          invoiceLine({ amount: 12000, inclusiveTax: 2000 }),
+          invoiceLine({
+            amount: 6000,
+            inclusiveTax: 1000,
+            source: "invoice_item",
+          }),
+        ],
       );
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.saleAmount?.toString()).toBe("100");
       expect(commission.amount.toString()).toBe("20");
     });
@@ -754,15 +1108,19 @@ describe("handleInvoicePaid", () => {
         {
           total: 9600,
           total_excluding_tax: 8000,
-          total_taxes: [{ amount: 1600, tax_behavior: "inclusive", taxable_amount: 8000 }],
+          total_taxes: [
+            { amount: 1600, tax_behavior: "inclusive", taxable_amount: 8000 },
+          ],
           amount_paid: 9600,
         },
-        [invoiceLine({ amount: 12000, discount: 2400, inclusiveTax: 1600 })]
+        [invoiceLine({ amount: 12000, discount: 2400, inclusiveTax: 1600 })],
       );
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.saleAmount?.toString()).toBe("80");
       expect(commission.amount.toString()).toBe("16");
     });
@@ -771,13 +1129,25 @@ describe("handleInvoicePaid", () => {
       // From 100.00 to 160.00 a month halfway through, no tax: 50.00 back for
       // the old price's unused half, 80.00 for the new price's.
       const invoice = invoiceFixture(
-        { id: "in_upgrade", billing_reason: "subscription_update", total: 3000, total_excluding_tax: 3000, total_taxes: [], amount_paid: 3000 },
-        [invoiceLine({ amount: -5000, proration: true }), invoiceLine({ amount: 8000, proration: true })]
+        {
+          id: "in_upgrade",
+          billing_reason: "subscription_update",
+          total: 3000,
+          total_excluding_tax: 3000,
+          total_taxes: [],
+          amount_paid: 3000,
+        },
+        [
+          invoiceLine({ amount: -5000, proration: true }),
+          invoiceLine({ amount: 8000, proration: true }),
+        ],
       );
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { stripePaymentRef: "in_upgrade" } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { stripePaymentRef: "in_upgrade" },
+      });
       expect(commission.saleAmount?.toString()).toBe("30");
       expect(commission.amount.toString()).toBe("6");
     });
@@ -787,7 +1157,13 @@ describe("handleInvoicePaid", () => {
       try {
         await handleInvoicePaid(
           merchant,
-          invoiceFixture({ id: "in_switched" }, [invoiceLine({ amount: 12000, inclusiveTax: 2000, product: "prod_other" })])
+          invoiceFixture({ id: "in_switched" }, [
+            invoiceLine({
+              amount: 12000,
+              inclusiveTax: 2000,
+              product: "prod_other",
+            }),
+          ]),
         );
         expect(warnings).toHaveBeenCalledTimes(1);
         const [message] = warnings.mock.calls[0];
@@ -802,40 +1178,80 @@ describe("handleInvoicePaid", () => {
 
     it("takes the products of a subscription recorded before 0.2.7 from its next renewal, then holds it to them", async () => {
       const { click } = await seedReferral(merchant);
-      await seedReferredSubscription(merchant.id, click.id, "sub_no_products", { ref: "in_first", at: new Date() });
+      await seedReferredSubscription(merchant.id, click.id, "sub_no_products", {
+        ref: "in_first",
+        at: new Date(),
+      });
       const parent = subscriptionParent("sub_no_products");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_fills", parent }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_fills", parent }),
+      );
       const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         await handleInvoicePaid(
           merchant,
           invoiceFixture({ id: "in_after_switch", parent }, [
-            invoiceLine({ amount: 12000, inclusiveTax: 2000, subscription: "sub_no_products", product: "prod_other" }),
-          ])
+            invoiceLine({
+              amount: 12000,
+              inclusiveTax: 2000,
+              subscription: "sub_no_products",
+              product: "prod_other",
+            }),
+          ]),
         );
       } finally {
         warnings.mockRestore();
       }
 
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_products" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({
+        where: { stripeSubscriptionId: "sub_no_products" },
+      });
       expect(referred.stripeProductIds).toEqual([PRODUCT_ID]);
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (
+        await db.commission.findMany({ where: { clickId: click.id } })
+      ).map((c) => c.stripePaymentRef);
       expect(refs).toEqual(["in_fills"]);
     });
 
     it("reads every page of a renewal's lines before earning", async () => {
-      stripeStub.invoices.listLineItems.mockImplementation(async (_id: string, params?: unknown) =>
-        (params as { starting_after?: string } | undefined)?.starting_after === "il_page_1"
-          ? { data: [invoiceLine({ id: "il_page_2", amount: 6000, inclusiveTax: 1000 })], has_more: false }
-          : { data: [invoiceLine({ id: "il_page_1", amount: 6000, inclusiveTax: 1000 })], has_more: true }
+      stripeStub.invoices.listLineItems.mockImplementation(
+        async (_id: string, params?: unknown) =>
+          (params as { starting_after?: string } | undefined)
+            ?.starting_after === "il_page_1"
+            ? {
+                data: [
+                  invoiceLine({
+                    id: "il_page_2",
+                    amount: 6000,
+                    inclusiveTax: 1000,
+                  }),
+                ],
+                has_more: false,
+              }
+            : {
+                data: [
+                  invoiceLine({
+                    id: "il_page_1",
+                    amount: 6000,
+                    inclusiveTax: 1000,
+                  }),
+                ],
+                has_more: true,
+              },
       );
 
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.saleAmount?.toString()).toBe("100");
-      expect(stripeStub.invoices.listLineItems).toHaveBeenCalledWith("in_renewal", { limit: 100, starting_after: "il_page_1" });
+      expect(stripeStub.invoices.listLineItems).toHaveBeenCalledWith(
+        "in_renewal",
+        { limit: 100, starting_after: "il_page_1" },
+      );
     });
 
     it("earns nothing, and logs once, when a line's origin cannot be read", async () => {
@@ -843,7 +1259,13 @@ describe("handleInvoicePaid", () => {
       try {
         await handleInvoicePaid(
           merchant,
-          invoiceFixture({ id: "in_unknown" }, [invoiceLine({ amount: 12000, inclusiveTax: 2000, source: "unknown" })])
+          invoiceFixture({ id: "in_unknown" }, [
+            invoiceLine({
+              amount: 12000,
+              inclusiveTax: 2000,
+              source: "unknown",
+            }),
+          ]),
         );
         expect(errors).toHaveBeenCalledTimes(1);
         const [message] = errors.mock.calls[0];
@@ -860,8 +1282,10 @@ describe("handleInvoicePaid", () => {
         // A permission error's raw message names the masked key and the
         // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
         throw Object.assign(
-          new Error("The provided key does not have the required permissions on account acct_secret123"),
-          { type: "StripePermissionError", code: "permission_error" }
+          new Error(
+            "The provided key does not have the required permissions on account acct_secret123",
+          ),
+          { type: "StripePermissionError", code: "permission_error" },
         );
       });
 
@@ -871,8 +1295,12 @@ describe("handleInvoicePaid", () => {
       } catch (err) {
         thrown = err as Error;
       }
-      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
-      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      expect(thrown?.message).toMatch(
+        /StripePermissionError\/permission_error/,
+      );
+      expect(thrown?.message).not.toMatch(
+        /acct_secret123|required permissions/,
+      );
       expect(thrown?.cause).toBeUndefined();
       expect(inspect(thrown)).not.toContain("acct_secret123");
       expect(inspect(thrown)).not.toContain("required permissions");
@@ -884,7 +1312,10 @@ describe("handleInvoicePaid", () => {
     it("earns nothing, and logs once, on a renewal paid entirely outside Stripe", async () => {
       const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
-        await handleInvoicePaid(merchant, invoiceFixture({ amount_paid_off_stripe: 12000 }));
+        await handleInvoicePaid(
+          merchant,
+          invoiceFixture({ amount_paid_off_stripe: 12000 }),
+        );
         expect(warnings).toHaveBeenCalledTimes(1);
         const [message] = warnings.mock.calls[0];
         expect(message).toContain("in_renewal");
@@ -899,9 +1330,14 @@ describe("handleInvoicePaid", () => {
     it("earns only on the part paid through Stripe when a renewal is paid partly out of band", async () => {
       // 120.00 with 20.00 VAT inside; 60.00 of the 120.00 paid was settled
       // outside Stripe, so only the other half is scaled into the base.
-      await handleInvoicePaid(merchant, invoiceFixture({ amount_paid_off_stripe: 6000 }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ amount_paid_off_stripe: 6000 }),
+      );
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.saleAmount?.toString()).toBe("50");
       expect(commission.amount.toString()).toBe("10");
     });
@@ -909,7 +1345,9 @@ describe("handleInvoicePaid", () => {
     it("earns the same as before amount_paid_off_stripe existed, when a renewal carries none of it", async () => {
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.saleAmount?.toString()).toBe("100");
       expect(commission.amount.toString()).toBe("20");
     });
@@ -920,8 +1358,10 @@ describe("handleInvoicePaid", () => {
         // A permission error's raw message names the masked key and the
         // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
         throw Object.assign(
-          new Error("The provided key does not have the required permissions on account acct_secret123"),
-          { type: "StripePermissionError", code: "permission_error" }
+          new Error(
+            "The provided key does not have the required permissions on account acct_secret123",
+          ),
+          { type: "StripePermissionError", code: "permission_error" },
         );
       });
 
@@ -931,8 +1371,12 @@ describe("handleInvoicePaid", () => {
       } catch (err) {
         thrown = err as Error;
       }
-      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
-      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      expect(thrown?.message).toMatch(
+        /StripePermissionError\/permission_error/,
+      );
+      expect(thrown?.message).not.toMatch(
+        /acct_secret123|required permissions/,
+      );
       // No `cause` kept: tick.ts logs the whole thrown error, and Node's
       // default inspection of an Error prints its `cause`, so the raw Stripe
       // message would still reach the server log through it even with the
@@ -948,7 +1392,11 @@ describe("handleInvoicePaid", () => {
       // Answers the read without the field at all, as this pinned version is
       // not documented to ever do, rather than a queued 0 or the payload's own
       // (also absent) value.
-      stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({ id, total: 12000, amount_paid: 12000 }));
+      stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({
+        id,
+        total: 12000,
+        amount_paid: 12000,
+      }));
       const errors = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
         await handleInvoicePaid(merchant, invoice);
@@ -969,7 +1417,9 @@ describe("handleInvoicePaid", () => {
     // above does, so the cap against charge.amount has something to compare.
     function chargePaid(amount: number) {
       stripeStub.invoicePayments.list.mockImplementation(async () => ({
-        data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+        data: [
+          { payment: { type: "payment_intent", payment_intent: "pi_renewal" } },
+        ],
       }));
       stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
         id: "pi_renewal",
@@ -981,7 +1431,9 @@ describe("handleInvoicePaid", () => {
       chargePaid(12000);
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(12000n);
     });
 
@@ -992,7 +1444,9 @@ describe("handleInvoicePaid", () => {
       chargePaid(10000);
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(10000n);
     });
 
@@ -1005,15 +1459,26 @@ describe("handleInvoicePaid", () => {
         {
           total: 22000,
           total_excluding_tax: 20000,
-          total_taxes: [{ amount: 2000, tax_behavior: "exclusive", taxable_amount: 10000 }],
+          total_taxes: [
+            { amount: 2000, tax_behavior: "exclusive", taxable_amount: 10000 },
+          ],
           amount_paid: 22000,
         },
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })]
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({
+            amount: 10000,
+            exclusiveTax: 2000,
+            product: "prod_addon",
+          }),
+        ],
       );
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(10000n);
     });
 
@@ -1023,13 +1488,23 @@ describe("handleInvoicePaid", () => {
       // what was paid is exactly 50.5, which must round down to 50, not up
       // to 51.
       const invoice = invoiceFixture(
-        { total: 200, total_excluding_tax: 200, total_taxes: [], amount_paid: 101 },
-        [invoiceLine({ amount: 100 }), invoiceLine({ amount: 100, product: "prod_other" })]
+        {
+          total: 200,
+          total_excluding_tax: 200,
+          total_taxes: [],
+          amount_paid: 101,
+        },
+        [
+          invoiceLine({ amount: 100 }),
+          invoiceLine({ amount: 100, product: "prod_other" }),
+        ],
       );
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(50n);
     });
 
@@ -1047,10 +1522,12 @@ describe("handleInvoicePaid", () => {
           total_excluding_tax: 3_000_000_000,
           total_taxes: [],
           amount_paid: 3_000_000_000,
-        })
+        }),
       );
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(3_000_000_000n);
       expect(commission.amount.toString()).toBe("6000000");
     });
@@ -1067,9 +1544,11 @@ describe("handleInvoicePaid", () => {
           total_excluding_tax: 3_000_000_000,
           total_taxes: [],
           amount_paid: 3_000_000_000,
-        })
+        }),
       );
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.referredChargeMinor).toBe(3_000_000_000n);
 
       await handleChargeRefunded(merchant, {
@@ -1083,7 +1562,9 @@ describe("handleInvoicePaid", () => {
         payment_intent: "pi_idr_renewal",
       } as unknown as Stripe.Charge);
 
-      const refunded = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      const refunded = await db.commission.findUniqueOrThrow({
+        where: { id: commission.id },
+      });
       expect(refunded.status).toBe("VOIDED");
       expect(refunded.voidReason).toBe("refund");
     });
@@ -1096,15 +1577,38 @@ describe("handleInvoicePaid", () => {
     }
 
     it("measures a second subscription on the same click from the click's first payment", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
-      await seedReferredSubscription(merchant.id, click.id, "sub_first", { ref: "in_first", at: new Date("2026-01-31T00:00:00Z") });
-      await seedReferredSubscription(merchant.id, click.id, "sub_second", { ref: "in_second", at: new Date("2026-03-15T00:00:00Z") });
+      const { click } = await seedReferral(merchant, {
+        durationType: "FIXED_MONTHS",
+        months: 3,
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_first", {
+        ref: "in_first",
+        at: new Date("2026-01-31T00:00:00Z"),
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_second", {
+        ref: "in_second",
+        at: new Date("2026-03-15T00:00:00Z"),
+      });
       const parent = subscriptionParent("sub_second");
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_second_2", parent, created: seconds("2026-04-15T00:00:00Z") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_second_2",
+          parent,
+          created: seconds("2026-04-15T00:00:00Z"),
+        }),
+      );
       // Inside sub_second's own three months, but past the referral's, which
       // started on January 31 and ended on April 30.
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_second_3", parent, created: seconds("2026-05-15T00:00:00Z") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_second_3",
+          parent,
+          created: seconds("2026-05-15T00:00:00Z"),
+        }),
+      );
 
       expect(await refsOn(click.id)).toEqual(["in_second_2"]);
     });
@@ -1112,39 +1616,65 @@ describe("handleInvoicePaid", () => {
     it("pays a one-time program nothing on a second subscription once the first spent the referral's payment", async () => {
       // The first subscription's checkout was excluded, so it left no
       // commission, but money moved and the referral's one payment is used.
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
-      await seedReferredSubscription(merchant.id, click.id, "sub_first", { ref: "in_first", at: new Date("2026-01-10T00:00:00Z") });
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_first", {
+        ref: "in_first",
+        at: new Date("2026-01-10T00:00:00Z"),
+      });
       await seedReferredSubscription(merchant.id, click.id, "sub_trial");
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_trial_paid", parent: subscriptionParent("sub_trial"), created: seconds("2026-02-10T00:00:00Z") })
+        invoiceFixture({
+          id: "in_trial_paid",
+          parent: subscriptionParent("sub_trial"),
+          created: seconds("2026-02-10T00:00:00Z"),
+        }),
       );
 
-      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
-      const trial = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_trial" } });
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(
+        0,
+      );
+      const trial = await db.referredSubscription.findFirstOrThrow({
+        where: { stripeSubscriptionId: "sub_trial" },
+      });
       expect(trial.firstPaymentRef).toBe("in_trial_paid");
     });
 
     it("pays a one-time program once when a later subscription's first payment is processed before an earlier one's", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      const { click } = await seedReferral(merchant, {
+        durationType: "ONE_TIME",
+      });
       await seedReferredSubscription(merchant.id, click.id, "sub_early");
       await seedReferredSubscription(merchant.id, click.id, "sub_late");
 
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-02-20T00:00:00Z") })
+        invoiceFixture({
+          id: "in_late_1",
+          parent: subscriptionParent("sub_late"),
+          created: seconds("2026-02-20T00:00:00Z"),
+        }),
       );
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_early_1", parent: subscriptionParent("sub_early"), created: seconds("2026-02-10T00:00:00Z") })
+        invoiceFixture({
+          id: "in_early_1",
+          parent: subscriptionParent("sub_early"),
+          created: seconds("2026-02-10T00:00:00Z"),
+        }),
       );
 
       expect(await refsOn(click.id)).toEqual(["in_late_1"]);
     });
 
     it("moves a fixed-months window back when an earlier subscription's first payment is processed late, keeping an already-earned payment now outside it", async () => {
-      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
+      const { click } = await seedReferral(merchant, {
+        durationType: "FIXED_MONTHS",
+        months: 2,
+      });
       await seedReferredSubscription(merchant.id, click.id, "sub_early");
       await seedReferredSubscription(merchant.id, click.id, "sub_late");
 
@@ -1153,35 +1683,71 @@ describe("handleInvoicePaid", () => {
       // ends on March 31, before this payment's own date of April 2.
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-04-02T00:00:00Z") })
+        invoiceFixture({
+          id: "in_late_1",
+          parent: subscriptionParent("sub_late"),
+          created: seconds("2026-04-02T00:00:00Z"),
+        }),
       );
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_early_1", parent: subscriptionParent("sub_early"), created: seconds("2026-01-31T00:00:00Z") })
+        invoiceFixture({
+          id: "in_early_1",
+          parent: subscriptionParent("sub_early"),
+          created: seconds("2026-01-31T00:00:00Z"),
+        }),
       );
       // Inside sub_late's own two months, past the referral's, which ended on March 31.
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_late_2", parent: subscriptionParent("sub_late"), created: seconds("2026-05-05T00:00:00Z") })
+        invoiceFixture({
+          id: "in_late_2",
+          parent: subscriptionParent("sub_late"),
+          created: seconds("2026-05-05T00:00:00Z"),
+        }),
       );
 
       expect(await refsOn(click.id)).toEqual(["in_early_1", "in_late_1"]);
     });
 
     it("measures a referral recognised from before 0.2.5 from its checkout invoice", async () => {
-      const { affiliate, click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
+      const { affiliate, click } = await seedReferral(merchant, {
+        durationType: "FIXED_MONTHS",
+        months: 3,
+      });
       await seedLegacyClick(click.id, "cus_legacy");
-      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first", new Date("2026-01-10T00:00:00Z"));
+      await seedInvoiceCommission(
+        affiliate.id,
+        click.id,
+        "in_legacy_first",
+        new Date("2026-01-10T00:00:00Z"),
+      );
       stripeStub.invoices.retrieve.mockResolvedValueOnce(
-        retrievedInvoice("in_legacy_first", "sub_legacy", { created: new Date("2026-01-10T00:00:00Z") })
+        retrievedInvoice("in_legacy_first", "sub_legacy", {
+          created: new Date("2026-01-10T00:00:00Z"),
+        }),
       );
       const legacy = (id: string, iso: string) =>
-        invoiceFixture({ id, customer: "cus_legacy", parent: subscriptionParent("sub_legacy"), created: seconds(iso) });
+        invoiceFixture({
+          id,
+          customer: "cus_legacy",
+          parent: subscriptionParent("sub_legacy"),
+          created: seconds(iso),
+        });
 
-      await handleInvoicePaid(merchant, legacy("in_legacy_2", "2026-02-10T00:00:00Z"));
-      await handleInvoicePaid(merchant, legacy("in_legacy_5", "2026-05-10T00:00:00Z"));
+      await handleInvoicePaid(
+        merchant,
+        legacy("in_legacy_2", "2026-02-10T00:00:00Z"),
+      );
+      await handleInvoicePaid(
+        merchant,
+        legacy("in_legacy_5", "2026-05-10T00:00:00Z"),
+      );
 
-      expect(await refsOn(click.id)).toEqual(["in_legacy_2", "in_legacy_first"]);
+      expect(await refsOn(click.id)).toEqual([
+        "in_legacy_2",
+        "in_legacy_first",
+      ]);
     });
   });
 
@@ -1190,15 +1756,21 @@ describe("handleInvoicePaid", () => {
     // affiliate's own Stripe customers.
     function payWithAffiliatesCard() {
       stripeStub.invoicePayments.list.mockImplementation(async () => ({
-        data: [{ payment: { type: "payment_intent", payment_intent: "pi_card" } }],
+        data: [
+          { payment: { type: "payment_intent", payment_intent: "pi_card" } },
+        ],
       }));
       stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
         id: "pi_card",
         latest_charge: null,
         payment_method: { id: "pm_card", card: { fingerprint: "fp_own" } },
       }));
-      stripeStub.customers.list.mockImplementation(async () => ({ data: [{ id: "cus_affiliate_own" }] }));
-      stripeStub.paymentMethods.list.mockImplementation(async () => ({ data: [{ card: { fingerprint: "fp_own" } }] }));
+      stripeStub.customers.list.mockImplementation(async () => ({
+        data: [{ id: "cus_affiliate_own" }],
+      }));
+      stripeStub.paymentMethods.list.mockImplementation(async () => ({
+        data: [{ card: { fingerprint: "fp_own" } }],
+      }));
     }
 
     it("flags every renewal paid with a card that matches one of the affiliate's own customers", async () => {
@@ -1207,12 +1779,20 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r1" }));
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r2" }));
 
-      const commissions = await db.commission.findMany({ where: { clickId }, orderBy: { stripePaymentRef: "asc" } });
-      expect(commissions.map((c) => [c.stripePaymentRef, c.status, c.flagReason])).toEqual([
+      const commissions = await db.commission.findMany({
+        where: { clickId },
+        orderBy: { stripePaymentRef: "asc" },
+      });
+      expect(
+        commissions.map((c) => [c.stripePaymentRef, c.status, c.flagReason]),
+      ).toEqual([
         ["in_r1", "FLAGGED", "card"],
         ["in_r2", "FLAGGED", "card"],
       ]);
-      expect(stripeStub.paymentIntents.retrieve).toHaveBeenCalledWith("pi_card", { expand: ["payment_method"] });
+      expect(stripeStub.paymentIntents.retrieve).toHaveBeenCalledWith(
+        "pi_card",
+        { expand: ["payment_method"] },
+      );
     });
 
     it("flags the first paid invoice after a free trial the same way", async () => {
@@ -1220,9 +1800,17 @@ describe("handleInvoicePaid", () => {
       await seedReferredSubscription(merchant.id, click.id, "sub_trial_card");
       payWithAffiliatesCard();
 
-      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_trial_paid", parent: subscriptionParent("sub_trial_card") }));
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          id: "in_trial_paid",
+          parent: subscriptionParent("sub_trial_card"),
+        }),
+      );
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId: click.id },
+      });
       expect(commission.flagReason).toBe("card");
     });
 
@@ -1238,7 +1826,9 @@ describe("handleInvoicePaid", () => {
         errors.mockRestore();
       }
 
-      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      const commission = await db.commission.findFirstOrThrow({
+        where: { clickId },
+      });
       expect(commission.status).toBe("PENDING");
       expect(commission.flagReason).toBeNull();
     });

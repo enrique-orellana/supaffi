@@ -62,7 +62,11 @@ export function AffiliateTable({
     return (
       <div className="flex h-full flex-col">
         {filtered ? (
-          <EmptyState icon={<Users />} title="Nothing matches" body="Widen the filters to see more." />
+          <EmptyState
+            icon={<Users />}
+            title="Nothing matches"
+            body="Widen the filters to see more."
+          />
         ) : (
           <EmptyState
             icon={<Users />}
@@ -105,9 +109,13 @@ export function AffiliateTable({
                 href={row.href}
                 className="flex min-w-0 cursor-pointer flex-col after:absolute after:inset-0"
               >
-                <span className="truncate font-medium">{row.name ?? row.email}</span>
+                <span className="truncate font-medium">
+                  {row.name ?? row.email}
+                </span>
                 {row.name && (
-                  <span className="truncate text-xs text-muted-foreground">{row.email}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {row.email}
+                  </span>
                 )}
               </Link>
             </TableCell>
@@ -119,12 +127,18 @@ export function AffiliateTable({
             <TableCell className="max-w-32">
               <span className="block truncate text-sm">{row.programName}</span>
             </TableCell>
-            <TableCell className="text-right tabular-nums">{row.clicks}</TableCell>
-            <TableCell className="text-right tabular-nums">{row.conversions}</TableCell>
+            <TableCell className="text-right tabular-nums">
+              {row.clicks}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {row.conversions}
+            </TableCell>
             <TableCell className="text-right whitespace-nowrap tabular-nums">
               <span className="block">{row.earned}</span>
               {row.earnedHint && (
-                <span className="block text-[11px] text-muted-foreground">{row.earnedHint}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {row.earnedHint}
+                </span>
               )}
             </TableCell>
             <TableCell className="text-right whitespace-nowrap tabular-nums">
@@ -133,7 +147,9 @@ export function AffiliateTable({
                 {row.rateIsOverride && (
                   <>
                     <Pencil className="size-3 text-muted-foreground" />
-                    <span className="sr-only">Overrides the program default</span>
+                    <span className="sr-only">
+                      Overrides the program default
+                    </span>
                   </>
                 )}
               </span>

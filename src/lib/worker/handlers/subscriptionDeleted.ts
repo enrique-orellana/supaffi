@@ -17,9 +17,13 @@ import { findReferredSubscription, idOf } from "../referredSubscription";
  */
 export async function handleSubscriptionDeleted(
   merchant: Merchant,
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
 ): Promise<void> {
-  const referred = await findReferredSubscription(merchant, subscription.id, idOf(subscription.customer));
+  const referred = await findReferredSubscription(
+    merchant,
+    subscription.id,
+    idOf(subscription.customer),
+  );
   if (!referred) return;
 
   const now = new Date();

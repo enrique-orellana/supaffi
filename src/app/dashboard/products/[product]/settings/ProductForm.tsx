@@ -17,7 +17,15 @@ import { updateProductAction } from "./settingsActions";
  * line to draw.
  */
 
-function Row({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+function Row({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: ReactNode;
+}) {
   // Aligned to the top, with the label nudged onto the input's centre line, so
   // a field with something under it keeps its label beside the field.
   return (
@@ -40,9 +48,12 @@ export function ProductForm({
   /** The two DNS lights, rendered on the server and sat beside the subdomain. */
   lights: ReactNode | null;
 }) {
-  const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
-    error: "",
-  });
+  const [state, action, pending] = useActionState(
+    updateProductAction.bind(null, product),
+    {
+      error: "",
+    },
+  );
   const values = state.values ?? initial;
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -67,7 +78,11 @@ export function ProductForm({
             className="font-mono lg:max-w-80"
             required
           />
-          {lights && <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">{lights}</div>}
+          {lights && (
+            <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">
+              {lights}
+            </div>
+          )}
         </div>
       </Row>
 
@@ -78,7 +93,12 @@ export function ProductForm({
       )}
 
       <div className="flex items-center gap-3">
-        <Button type="submit" size="sm" className="cursor-pointer" disabled={pending}>
+        <Button
+          type="submit"
+          size="sm"
+          className="cursor-pointer"
+          disabled={pending}
+        >
           {pending ? "Saving" : "Save"}
         </Button>
       </div>

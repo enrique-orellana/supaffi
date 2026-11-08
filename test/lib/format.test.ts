@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { currencySymbol, formatCount, formatMoney } from "@/lib/format";
-import { formatDate, initials, money, moneyHint, termsLine } from "@/lib/format";
+import {
+  formatDate,
+  initials,
+  money,
+  moneyHint,
+  termsLine,
+} from "@/lib/format";
 
 describe("money", () => {
   it("prints an empty total as a bare 0, or as a zero in the fallback currency", () => {
@@ -18,7 +24,7 @@ describe("money", () => {
       money([
         { currency: "eur", total: "10.00" },
         { currency: "usd", total: "240.00" },
-      ])
+      ]),
     ).toBe("€10.00");
   });
 });
@@ -38,7 +44,7 @@ describe("moneyHint", () => {
         { currency: "eur", total: "10.00" },
         { currency: "usd", total: "240.00" },
         { currency: "gbp", total: "5.00" },
-      ])
+      ]),
     ).toBe("$240.00  ·  £5.00");
   });
 });
@@ -68,7 +74,9 @@ describe("formatDate", () => {
 
   it("drops the year for this year and keeps it for any other", () => {
     expect(formatDate(new Date("2026-03-01T00:00:00Z"), now)).toBe("1 Mar");
-    expect(formatDate(new Date("2025-12-31T00:00:00Z"), now)).toBe("31 Dec 2025");
+    expect(formatDate(new Date("2025-12-31T00:00:00Z"), now)).toBe(
+      "31 Dec 2025",
+    );
   });
 });
 
@@ -81,15 +89,26 @@ describe("initials", () => {
 });
 
 describe("termsLine", () => {
-  const base = { durationMonths: null, attributionWindowDays: 60, holdingPeriodDays: 30 };
+  const base = {
+    durationMonths: null,
+    attributionWindowDays: 60,
+    holdingPeriodDays: 30,
+  };
 
   it("states rate and duration, cookie window and hold", () => {
-    expect(termsLine({ ...base, rate: 30, durationType: "FIXED_MONTHS", durationMonths: 12 })).toBe(
-      "30% for 12 months · 60-day cookie · 30-day hold"
+    expect(
+      termsLine({
+        ...base,
+        rate: 30,
+        durationType: "FIXED_MONTHS",
+        durationMonths: 12,
+      }),
+    ).toBe("30% for 12 months · 60-day cookie · 30-day hold");
+    expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe(
+      "12.5% of every payment · 60-day cookie · 30-day hold",
     );
-    expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe("12.5% of every payment · 60-day cookie · 30-day hold");
     expect(termsLine({ ...base, rate: 25, durationType: "ONE_TIME" })).toBe(
-      "25% of the first payment · 60-day cookie · 30-day hold"
+      "25% of the first payment · 60-day cookie · 30-day hold",
     );
   });
 });

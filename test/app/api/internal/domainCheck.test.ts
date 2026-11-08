@@ -23,7 +23,7 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/app/api/internal/domainCheck.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/app/api/internal/domainCheck.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -38,7 +38,9 @@ function ask(domain?: string, forwardedFor = "172.18.0.3") {
   const url = domain
     ? `http://app:3000/api/internal/domain-check?domain=${encodeURIComponent(domain)}`
     : "http://app:3000/api/internal/domain-check";
-  return GET(new NextRequest(url, { headers: { "x-forwarded-for": forwardedFor } }));
+  return GET(
+    new NextRequest(url, { headers: { "x-forwarded-for": forwardedFor } }),
+  );
 }
 
 // skipIf, not runIf: matches test/app/api/track/route.test.ts and

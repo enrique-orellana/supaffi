@@ -18,30 +18,43 @@ describe("validateProductInput", () => {
   });
 
   it("rejects a missing name", () => {
-    expect(validateProductInput({ ...validInput, name: "  " })).toBe("Name is required");
+    expect(validateProductInput({ ...validInput, name: "  " })).toBe(
+      "Name is required",
+    );
   });
 
   it("rejects a domain containing a protocol", () => {
     expect(
-      validateProductInput({ ...validInput, domain: "https://affiliates.instantgradient.com" })
+      validateProductInput({
+        ...validInput,
+        domain: "https://affiliates.instantgradient.com",
+      }),
     ).toBe("Domain must be a bare hostname (no https://, no path)");
   });
 
   it("rejects a domain containing a path", () => {
     expect(
-      validateProductInput({ ...validInput, domain: "affiliates.instantgradient.com/foo" })
+      validateProductInput({
+        ...validInput,
+        domain: "affiliates.instantgradient.com/foo",
+      }),
     ).toBe("Domain must be a bare hostname (no https://, no path)");
   });
 
   it("rejects a website URL without a scheme", () => {
-    expect(validateProductInput({ ...validInput, websiteUrl: "example.com" })).toBe(
-      "Website URL must be a full address starting with http:// or https://"
+    expect(
+      validateProductInput({ ...validInput, websiteUrl: "example.com" }),
+    ).toBe(
+      "Website URL must be a full address starting with http:// or https://",
     );
   });
 
   it("accepts a mixed-case, whitespace-padded domain (validated against the normalized form)", () => {
     expect(
-      validateProductInput({ ...validInput, domain: " Affiliates.InstantGradient.com " })
+      validateProductInput({
+        ...validInput,
+        domain: " Affiliates.InstantGradient.com ",
+      }),
     ).toBeNull();
   });
 
@@ -49,8 +62,8 @@ describe("validateProductInput", () => {
     expect(
       validateProductInput(
         { ...validInput, domain: "supaffi.example.com" },
-        "supaffi.example.com"
-      )
+        "supaffi.example.com",
+      ),
     ).toBe("That domain serves this Supaffi instance.");
   });
 
@@ -58,8 +71,8 @@ describe("validateProductInput", () => {
     expect(
       validateProductInput(
         { ...validInput, domain: "  Supaffi.Example.COM " },
-        "supaffi.example.com"
-      )
+        "supaffi.example.com",
+      ),
     ).toBe("That domain serves this Supaffi instance.");
   });
 
@@ -67,13 +80,15 @@ describe("validateProductInput", () => {
     expect(
       validateProductInput(
         { ...validInput, domain: "affiliates.instantgradient.com" },
-        "supaffi.example.com"
-      )
+        "supaffi.example.com",
+      ),
     ).toBeNull();
   });
 
   it("skips the check when no Instance domain is configured, so local development is unaffected", () => {
-    expect(validateProductInput({ ...validInput, domain: "localhost:3000" }, "")).toBeNull();
+    expect(
+      validateProductInput({ ...validInput, domain: "localhost:3000" }, ""),
+    ).toBeNull();
   });
 });
 
@@ -85,42 +100,46 @@ describe("validateStripeCredentials", () => {
   });
 
   it("accepts a restricted key, which is what the one-click link creates", () => {
-    expect(validateStripeCredentials({ ...valid, secretKey: "rk_live_abc123" })).toBeNull();
+    expect(
+      validateStripeCredentials({ ...valid, secretKey: "rk_live_abc123" }),
+    ).toBeNull();
   });
 
   it("rejects a key starting with neither prefix", () => {
-    expect(validateStripeCredentials({ ...valid, secretKey: "not-a-key" })).toBe(
-      "Stripe key must start with rk_ or sk_"
-    );
+    expect(
+      validateStripeCredentials({ ...valid, secretKey: "not-a-key" }),
+    ).toBe("Stripe key must start with rk_ or sk_");
   });
 
   it("rejects a webhook secret not starting with whsec_", () => {
-    expect(validateStripeCredentials({ ...valid, webhookSecret: "not-a-secret" })).toBe(
-      "Stripe webhook signing secret must start with whsec_"
-    );
+    expect(
+      validateStripeCredentials({ ...valid, webhookSecret: "not-a-secret" }),
+    ).toBe("Stripe webhook signing secret must start with whsec_");
   });
 
   it("rejects blank fields on a first connect", () => {
-    expect(validateStripeCredentials({ secretKey: "", webhookSecret: "" })).toBe(
-      "Stripe key must start with rk_ or sk_"
-    );
+    expect(
+      validateStripeCredentials({ secretKey: "", webhookSecret: "" }),
+    ).toBe("Stripe key must start with rk_ or sk_");
   });
 
   it("accepts blank fields when reconnecting, since blank means keep the stored one", () => {
-    expect(validateStripeCredentials({ secretKey: "", webhookSecret: "" }, true)).toBeNull();
+    expect(
+      validateStripeCredentials({ secretKey: "", webhookSecret: "" }, true),
+    ).toBeNull();
   });
 
   it("still rejects a malformed field when reconnecting", () => {
-    expect(validateStripeCredentials({ secretKey: "nope", webhookSecret: "" }, true)).toBe(
-      "Stripe key must start with rk_ or sk_"
-    );
+    expect(
+      validateStripeCredentials({ secretKey: "nope", webhookSecret: "" }, true),
+    ).toBe("Stripe key must start with rk_ or sk_");
   });
 });
 
 describe("normalizeDomain", () => {
   it("trims and lowercases the domain so it matches a real Host header/SNI", () => {
     expect(normalizeDomain(" Affiliates.InstantGradient.com ")).toBe(
-      "affiliates.instantgradient.com"
+      "affiliates.instantgradient.com",
     );
   });
 });
@@ -131,8 +150,12 @@ describe("normalizeWebsiteUrl", () => {
   });
 
   it("keeps an address that already has a scheme", () => {
-    expect(normalizeWebsiteUrl("http://localhost:3000")).toBe("http://localhost:3000");
-    expect(normalizeWebsiteUrl("https://pagecast.app/pricing")).toBe("https://pagecast.app/pricing");
+    expect(normalizeWebsiteUrl("http://localhost:3000")).toBe(
+      "http://localhost:3000",
+    );
+    expect(normalizeWebsiteUrl("https://pagecast.app/pricing")).toBe(
+      "https://pagecast.app/pricing",
+    );
   });
 
   it("leaves an empty value empty, for the required check", () => {

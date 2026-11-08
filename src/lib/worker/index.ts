@@ -14,7 +14,9 @@ export function startWorker(): void {
   interval.unref();
 
   startListening(() => {
-    runTick().catch((err) => console.error("[worker] notified tick failed", err));
+    runTick().catch((err) =>
+      console.error("[worker] notified tick failed", err),
+    );
   });
 
   runTick().catch((err) => console.error("[worker] initial tick failed", err));
@@ -25,6 +27,8 @@ export function startWorker(): void {
   // machine, where seeded products carry keys Stripe has never seen and every
   // start would log a page of failures.
   if (!isDevInstance()) {
-    upgradeAllWebhookEvents().catch((err) => console.error("[worker] webhook event upgrade failed", err));
+    upgradeAllWebhookEvents().catch((err) =>
+      console.error("[worker] webhook event upgrade failed", err),
+    );
   }
 }

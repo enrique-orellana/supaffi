@@ -1,14 +1,16 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# npm ci runs the postinstall hook (`prisma generate`), which needs the
-# schema present, so it has to be copied in before npm ci runs, not just
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm install runs the postinstall hook (`prisma generate`), which needs the
+# schema present, so it has to be copied in before install runs, not just
 # in the builder stage's later `COPY . .`.
 COPY prisma ./prisma
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
 FROM node:24-alpine AS builder
 WORKDIR /app
+RUN corepack enable
 # Auth.js v5 needs AUTH_SECRET present when its config module loads, which
 # happens during `next build` while compiling the /api/auth routes, not
 # just at runtime. Passed in as a build arg (docker-compose.yml), doesn't
@@ -18,8 +20,8 @@ ARG AUTH_SECRET=build-time-placeholder-not-used-at-runtime
 ENV AUTH_SECRET=${AUTH_SECRET}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npx prisma generate
-RUN npm run build
+RUN pnpm exec prisma generate
+RUN pnpm run build
 
 # The Prisma CLI on its own, for the entrypoint's `migrate deploy`. Installed
 # against the project's lockfile, so every package in its tree is the version
@@ -29,9 +31,9 @@ RUN npm run build
 # this platform in its postinstall.
 FROM node:24-alpine AS migrator
 WORKDIR /migrator
-COPY package-lock.json ./
-RUN node -e 'const v = require("./package-lock.json").packages["node_modules/prisma"].version; require("fs").writeFileSync("package.json", JSON.stringify({ private: true, dependencies: { prisma: v } }))' \
-  && npm install --no-audit --no-fund
+RUN corepack enable
+COPY docker/prisma-migrator/package.json docker/prisma-migrator/pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --prod
 
 FROM node:24-alpine AS runner
 WORKDIR /app

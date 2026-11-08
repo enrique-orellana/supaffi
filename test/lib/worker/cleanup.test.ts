@@ -18,7 +18,9 @@ const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
 
 async function clearAll() {
   await db.webhookEvent.deleteMany();
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   // Release 3 added a foreign key from ReferredSubscription to Click, so it
   // has to go first.
@@ -33,7 +35,10 @@ async function clearAll() {
 
 async function seedMerchant() {
   const owner = await db.owner.create({
-    data: { email: `cleanup-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `cleanup-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
   const merchant = await db.merchant.create({
     data: {
@@ -48,9 +53,20 @@ async function seedMerchant() {
   return { ownerId: owner.id, merchant };
 }
 
-function row(merchantId: string, status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED", createdAt: Date) {
+function row(
+  merchantId: string,
+  status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED",
+  createdAt: Date,
+) {
   return db.webhookEvent.create({
-    data: { merchantId, provider: PaymentProvider.STRIPE.database, providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
+    data: {
+      merchantId,
+      provider: PaymentProvider.STRIPE.database,
+      providerEventId: `evt_${crypto.randomUUID()}`,
+      payload: {},
+      status,
+      createdAt,
+    },
   });
 }
 
@@ -73,8 +89,12 @@ describe("cleanupProcessedEvents", () => {
 
     expect(await cleanupProcessedEvents(NOW)).toBe(2);
 
-    const left = (await db.webhookEvent.findMany({ select: { id: true } })).map((r) => r.id).sort();
-    expect(left).toEqual([recent.id, failed.id, pending.id, processing.id].sort());
+    const left = (await db.webhookEvent.findMany({ select: { id: true } }))
+      .map((r) => r.id)
+      .sort();
+    expect(left).toEqual(
+      [recent.id, failed.id, pending.id, processing.id].sort(),
+    );
     expect(left).not.toContain(old1.id);
     expect(left).not.toContain(old2.id);
   });
@@ -86,7 +106,9 @@ describe("cleanupProcessedEvents", () => {
 
     expect(await cleanupProcessedEvents(NOW)).toBe(1);
 
-    expect((await db.webhookEvent.findMany()).map((r) => r.id)).toEqual([newest.id]);
+    expect((await db.webhookEvent.findMany()).map((r) => r.id)).toEqual([
+      newest.id,
+    ]);
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(true);
   });
 
@@ -99,14 +121,17 @@ describe("cleanupProcessedEvents", () => {
 
     expect(await cleanupProcessedEvents(NOW)).toBe(1);
 
-    const left = (await db.webhookEvent.findMany({ select: { id: true } })).map((r) => r.id).sort();
+    const left = (await db.webhookEvent.findMany({ select: { id: true } }))
+      .map((r) => r.id)
+      .sort();
     expect(left).toEqual([newestA.id, onlyB.id].sort());
     expect((await webhookEventReceived(ownerIdB, merchantB.id)).ok).toBe(true);
   });
 
   it("works through a large backlog in batches", async () => {
     const { merchant } = await seedMerchant();
-    for (let i = 0; i < 5; i++) await row(merchant.id, "PROCESSED", ago(100 + i));
+    for (let i = 0; i < 5; i++)
+      await row(merchant.id, "PROCESSED", ago(100 + i));
     await row(merchant.id, "PROCESSED", ago(1));
 
     expect(await cleanupProcessedEvents(NOW, { batchSize: 2 })).toBe(5);
@@ -120,8 +145,12 @@ describe("cleanupProcessedEvents", () => {
 
     await cleanupProcessedEvents(NOW);
 
-    const after = await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
-    expect(after.trackingVerifiedAt?.getTime()).toBe(merchant.trackingVerifiedAt?.getTime());
+    const after = await db.merchant.findUniqueOrThrow({
+      where: { id: merchant.id },
+    });
+    expect(after.trackingVerifiedAt?.getTime()).toBe(
+      merchant.trackingVerifiedAt?.getTime(),
+    );
     expect(await getTrackingStatus(merchant.id)).toBe("verified");
   });
 });
@@ -165,7 +194,7 @@ describe("runDailyCleanup", () => {
         () =>
           new Promise<number>((resolve) => {
             release = resolve;
-          })
+          }),
       ),
     });
     const first = runDailyCleanup(d);

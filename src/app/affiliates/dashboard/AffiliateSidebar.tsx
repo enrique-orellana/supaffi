@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOutAffiliate } from "./signOutAffiliate";
-import { Building2, LinkIcon, LogOut, Receipt, Wallet, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  LinkIcon,
+  LogOut,
+  Receipt,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { initials } from "@/lib/format";
@@ -41,7 +48,12 @@ const BASE = "/affiliates/dashboard";
 const NAV: { key: string; href: string; label: string; icon: LucideIcon }[] = [
   { key: "overview", href: "", label: "Overview", icon: Building2 },
   { key: "links", href: "/links", label: "Links", icon: LinkIcon },
-  { key: "commissions", href: "/commissions", label: "Commissions", icon: Receipt },
+  {
+    key: "commissions",
+    href: "/commissions",
+    label: "Commissions",
+    icon: Receipt,
+  },
   { key: "payouts", href: "/payouts", label: "Payouts", icon: Wallet },
 ];
 
@@ -79,8 +91,12 @@ export function AffiliateSidebar({
         <div className="flex h-12 w-full items-center gap-3 px-2.5 text-left">
           <Mark name={merchantName} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{merchantName}</span>
-            <span className="block truncate text-[11px] text-muted-foreground">{merchantSite}</span>
+            <span className="block truncate text-sm font-medium">
+              {merchantName}
+            </span>
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {merchantSite}
+            </span>
           </span>
         </div>
         <div className="my-3 h-px bg-border" aria-hidden />
@@ -92,7 +108,10 @@ export function AffiliateSidebar({
             <SidebarMenu className="gap-2">
               {NAV.map((item) => {
                 const href = `${BASE}${item.href}`;
-                const current = item.href === "" ? pathname === BASE : pathname.startsWith(href);
+                const current =
+                  item.href === ""
+                    ? pathname === BASE
+                    : pathname.startsWith(href);
                 return (
                   <SidebarMenuItem key={item.key}>
                     <SidebarMenuButton
@@ -125,11 +144,22 @@ export function AffiliateSidebar({
         <ThemeToggle />
         <div className="flex items-center gap-2.5 px-2">
           <Avatar className="size-8 shrink-0">
-            <AvatarFallback>{email.charAt(0).toUpperCase() || "?"}</AvatarFallback>
+            <AvatarFallback>
+              {email.charAt(0).toUpperCase() || "?"}
+            </AvatarFallback>
           </Avatar>
-          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+            {email}
+          </span>
           <form action={signOutAffiliate}>
-            <Button type="submit" variant="ghost" size="icon-sm" className="cursor-pointer" aria-label="Log out" title="Log out">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="icon-sm"
+              className="cursor-pointer"
+              aria-label="Log out"
+              title="Log out"
+            >
               <LogOut />
             </Button>
           </form>

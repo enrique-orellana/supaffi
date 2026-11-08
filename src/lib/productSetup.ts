@@ -47,36 +47,43 @@ export const SETUP_STEP_COUNT = 3;
 
 export async function getProductSetup(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<ProductSetup> {
   const paymentProviderSetups = listPaymentProviderSetups();
-  const [providerStatuses, programs, trackingStatus, affiliateCount] = await Promise.all([
-    Promise.all(
-      paymentProviderSetups.map(async ({ provider, readStatus }) => ({
-        provider,
-        ...await readStatus(ownerId, merchantId),
-      }))
-    ),
-    db.program.findMany({
-      where: { merchantId },
-      orderBy: { createdAt: "asc" },
-      select: { slug: true, signupOpen: true },
-    }),
-    getTrackingStatus(merchantId),
-    db.affiliate.count({ where: { merchantId } }),
-  ]);
+  const [providerStatuses, programs, trackingStatus, affiliateCount] =
+    await Promise.all([
+      Promise.all(
+        paymentProviderSetups.map(async ({ provider, readStatus }) => ({
+          provider,
+          ...(await readStatus(ownerId, merchantId)),
+        })),
+      ),
+      db.program.findMany({
+        where: { merchantId },
+        orderBy: { createdAt: "asc" },
+        select: { slug: true, signupOpen: true },
+      }),
+      getTrackingStatus(merchantId),
+      db.affiliate.count({ where: { merchantId } }),
+    ]);
 
   const connectedPaymentProviders = providerStatuses
     .filter(({ connected }) => connected)
     .map(({ provider }) => provider);
   const integrationsConnected = connectedPaymentProviders.length > 0;
-  const stripeStatus = providerStatuses.find(({ provider }) => provider === PaymentProvider.STRIPE.id);
+  const stripeStatus = providerStatuses.find(
+    ({ provider }) => provider === PaymentProvider.STRIPE.id,
+  );
   const stripeConnected = stripeStatus?.connected ?? false;
   const stripeDetails = stripeStatus?.details;
   const stripeKeyStored =
-    stripeDetails && "keyStored" in stripeDetails ? stripeDetails.keyStored : false;
+    stripeDetails && "keyStored" in stripeDetails
+      ? stripeDetails.keyStored
+      : false;
   const stripeWebhookStored =
-    stripeDetails && "webhookStored" in stripeDetails ? stripeDetails.webhookStored : false;
+    stripeDetails && "webhookStored" in stripeDetails
+      ? stripeDetails.webhookStored
+      : false;
 
   // Tracking counts as done once anything has been recorded, not once a sale
   // has proven the checkout half. Waiting on a stranger to buy something is not
@@ -103,4 +110,3 @@ export async function getProductSetup(
     complete: doneCount === SETUP_STEP_COUNT,
   };
 }
-

@@ -56,7 +56,11 @@ export function LoginForm() {
               required
             />
           </div>
-          <Button type="submit" className="mt-1 cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            className="mt-1 cursor-pointer"
+            disabled={pending}
+          >
             Log in
           </Button>
         </form>

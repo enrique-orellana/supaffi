@@ -16,7 +16,10 @@ import { completeSetup } from "./completeSetup";
 const initialState = { error: "" };
 
 export function SetupForm() {
-  const [state, formAction, pending] = useActionState(completeSetup, initialState);
+  const [state, formAction, pending] = useActionState(
+    completeSetup,
+    initialState,
+  );
   // Held here so a refused attempt keeps what was typed: React resets an
   // uncontrolled form after every action.
   const [setupToken, setSetupToken] = useState("");
@@ -86,7 +89,11 @@ export function SetupForm() {
               minLength={12}
             />
           </div>
-          <Button type="submit" className="mt-1 cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            className="mt-1 cursor-pointer"
+            disabled={pending}
+          >
             Create account
           </Button>
         </form>

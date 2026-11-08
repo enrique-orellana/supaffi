@@ -11,7 +11,10 @@ import { validateCode } from "./validation";
 
 type FormState = { error: string };
 
-export type SignupFormAction = (prevState: FormState, formData: FormData) => Promise<FormState>;
+export type SignupFormAction = (
+  prevState: FormState,
+  formData: FormData,
+) => Promise<FormState>;
 
 type Props = {
   action: SignupFormAction;
@@ -20,7 +23,10 @@ type Props = {
 };
 
 export function SignupForm({ action, linkHost }: Props) {
-  const [state, formAction, pending] = useActionState<FormState, FormData>(action, { error: "" });
+  const [state, formAction, pending] = useActionState<FormState, FormData>(
+    action,
+    { error: "" },
+  );
   const [name, setName] = useState("");
   // Controlled like the name, so a refused signup keeps it: React resets an
   // uncontrolled form after every action.
@@ -102,18 +108,32 @@ export function SignupForm({ action, linkHost }: Props) {
                 className="min-w-0 flex-1 bg-transparent font-mono text-sm text-foreground outline-none"
               />
             </div>
-            <input type="hidden" name="codeTouched" value={codeTouched ? "1" : ""} />
+            <input
+              type="hidden"
+              name="codeTouched"
+              value={codeTouched ? "1" : ""}
+            />
             {/* The label says what the field is. A line under it saying so
                 again was the kind of sentence nobody reads. Only an error
                 earns the second line. */}
-            {codeError && <p className="text-xs text-status-danger">{codeError}</p>}
+            {codeError && (
+              <p className="text-xs text-status-danger">{codeError}</p>
+            )}
           </div>
-          <Button type="submit" size="lg" className="mt-1 cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            size="lg"
+            className="mt-1 cursor-pointer"
+            disabled={pending}
+          >
             Get my link
           </Button>
           <p className="text-center text-[13px] text-muted-foreground">
             Already signed up?{" "}
-            <a href="/affiliates/login" className="cursor-pointer font-medium text-foreground underline underline-offset-2">
+            <a
+              href="/affiliates/login"
+              className="cursor-pointer font-medium text-foreground underline underline-offset-2"
+            >
               Log in
             </a>
           </p>

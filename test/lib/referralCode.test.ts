@@ -19,7 +19,7 @@ if (process.env.DATABASE_URL) {
 
 if (!hasDatabase) {
   console.warn(
-    "Skipping test/lib/referralCode.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/referralCode.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -116,7 +116,7 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
     expect(code).toBe("sarah3");
   });
 
-  it("falls back to \"affiliate\" for a name with no letters or digits", async () => {
+  it('falls back to "affiliate" for a name with no letters or digits', async () => {
     const code = await generateLinkCode("!!!", merchantId);
     expect(code).toBe("affiliate");
   });

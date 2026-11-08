@@ -37,7 +37,7 @@ if (url) {
   if (!database.endsWith("_test")) {
     throw new Error(
       `Refusing to run: DATABASE_URL points at "${database}", not a scratch database. ` +
-        `The suites clear whole tables. Use a database whose name ends in "_test".`
+        `The suites clear whole tables. Use a database whose name ends in "_test".`,
     );
   }
 }

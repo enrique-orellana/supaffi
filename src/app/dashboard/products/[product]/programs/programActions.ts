@@ -16,13 +16,23 @@ function read(formData: FormData) {
   const result = validateProgramInput({
     name: String(formData.get("name") ?? ""),
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
-    commissionDurationType: String(formData.get("commissionDurationType") ?? ""),
-    commissionDurationMonths: String(formData.get("commissionDurationMonths") ?? ""),
+    commissionDurationType: String(
+      formData.get("commissionDurationType") ?? "",
+    ),
+    commissionDurationMonths: String(
+      formData.get("commissionDurationMonths") ?? "",
+    ),
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
   });
   if (result.error !== null) return result;
-  return { error: null, parsed: { ...result.parsed, signupOpen: formData.get("signupOpen") === "on" } };
+  return {
+    error: null,
+    parsed: {
+      ...result.parsed,
+      signupOpen: formData.get("signupOpen") === "on",
+    },
+  };
 }
 
 async function owner(): Promise<string> {
@@ -34,7 +44,7 @@ async function owner(): Promise<string> {
 export async function createProgramAction(
   product: { id: string; slug: string },
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const result = read(formData);
@@ -50,7 +60,7 @@ export async function updateProgramAction(
   product: { id: string; slug: string },
   programId: string,
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const result = read(formData);

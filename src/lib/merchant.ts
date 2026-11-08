@@ -17,15 +17,15 @@ type MerchantDetailsInput = {
 
 export async function createMerchant(
   ownerId: string,
-  input: MerchantDetailsInput
+  input: MerchantDetailsInput,
 ): Promise<{ id: string; slug: string }> {
   const slug = await uniqueSlug(input.name, "product", async (candidate) =>
     Boolean(
       await db.merchant.findFirst({
         where: { ownerId, slug: candidate },
         select: { id: true },
-      })
-    )
+      }),
+    ),
   );
 
   return db.merchant.create({
@@ -60,10 +60,18 @@ async function assertOwns(ownerId: string, merchantId: string): Promise<void> {
 export async function connectStripe(
   ownerId: string,
   merchantId: string,
-  input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null }
+  input: {
+    secretKey?: string;
+    webhookSecret?: string;
+    webhookEndpointId?: string | null;
+  },
 ): Promise<void> {
-  const newSecretKeyEnc = input.secretKey ? encrypt(input.secretKey) : undefined;
-  const newWebhookSecretEnc = input.webhookSecret ? encrypt(input.webhookSecret) : undefined;
+  const newSecretKeyEnc = input.secretKey
+    ? encrypt(input.secretKey)
+    : undefined;
+  const newWebhookSecretEnc = input.webhookSecret
+    ? encrypt(input.webhookSecret)
+    : undefined;
 
   await db.$transaction(async (tx) => {
     const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -77,20 +85,36 @@ export async function connectStripe(
     if (!merchant) throw new Error("Merchant not found");
 
     const existing = await tx.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
-      select: { apiKeyEnc: true, webhookSecretEnc: true, externalEndpointId: true },
+      where: {
+        merchantId_provider: {
+          merchantId,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
+      select: {
+        apiKeyEnc: true,
+        webhookSecretEnc: true,
+        externalEndpointId: true,
+      },
     });
     const apiKeyEnc = newSecretKeyEnc ?? existing?.apiKeyEnc ?? null;
-    const webhookSecretEnc = newWebhookSecretEnc ?? existing?.webhookSecretEnc ?? null;
+    const webhookSecretEnc =
+      newWebhookSecretEnc ?? existing?.webhookSecretEnc ?? null;
     // An explicit null means the endpoint was configured manually and should
     // not later be removed by the application.
-    const externalEndpointId = input.webhookEndpointId !== undefined
-      ? input.webhookEndpointId
-      : existing?.externalEndpointId ?? null;
+    const externalEndpointId =
+      input.webhookEndpointId !== undefined
+        ? input.webhookEndpointId
+        : (existing?.externalEndpointId ?? null);
     const status = apiKeyEnc && webhookSecretEnc ? "CONNECTED" : "DISCONNECTED";
 
     await tx.paymentConnection.upsert({
-      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
       create: {
         merchantId,
         provider: PaymentProvider.STRIPE.database,
@@ -112,7 +136,10 @@ export async function connectStripe(
 }
 
 /** Clears the connection; deleting an endpoint remotely remains separate. */
-export async function disconnectStripe(ownerId: string, merchantId: string): Promise<void> {
+export async function disconnectStripe(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   await db.$transaction(async (tx) => {
     const merchants = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT ${SqlSchema.tables.Merchant.id}
@@ -145,10 +172,14 @@ export async function disconnectStripe(ownerId: string, merchantId: string): Pro
 // onboarding has a step for each.
 export async function getIntegrationStatus(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
+    where: {
+      merchantId,
+      provider: PaymentProvider.STRIPE.database,
+      merchant: { ownerId },
+    },
     select: { apiKeyEnc: true, webhookSecretEnc: true },
   });
   const stripeKey = Boolean(connection?.apiKeyEnc);
@@ -173,10 +204,14 @@ export type StripeKeyKind = "restricted" | "secret" | null;
  */
 export async function getStripeKeyKind(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<StripeKeyKind> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
+    where: {
+      merchantId,
+      provider: PaymentProvider.STRIPE.database,
+      merchant: { ownerId },
+    },
     select: { apiKeyEnc: true },
   });
   if (!connection?.apiKeyEnc) return null;
@@ -196,16 +231,26 @@ export async function getStripeKeyKind(
   return null;
 }
 
-export async function listMerchantsForOwner(
-  ownerId: string
-): Promise<
-  { id: string; slug: string; name: string; domain: string; onboardingCompletedAt: Date | null }[]
+export async function listMerchantsForOwner(ownerId: string): Promise<
+  {
+    id: string;
+    slug: string;
+    name: string;
+    domain: string;
+    onboardingCompletedAt: Date | null;
+  }[]
 > {
   return db.merchant.findMany({
     where: { ownerId },
     // onboardingCompletedAt so the product list can tell a product still being
     // set up from one that is running, without a second query per row.
-    select: { id: true, slug: true, name: true, domain: true, onboardingCompletedAt: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      domain: true,
+      onboardingCompletedAt: true,
+    },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -235,10 +280,14 @@ export type OwnedMerchant = {
  */
 export async function getStripeWebhookEndpointId(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<string | null> {
   const connection = await db.paymentConnection.findFirst({
-    where: { merchantId, provider: PaymentProvider.STRIPE.database, merchant: { ownerId } },
+    where: {
+      merchantId,
+      provider: PaymentProvider.STRIPE.database,
+      merchant: { ownerId },
+    },
     select: { externalEndpointId: true },
   });
   return connection?.externalEndpointId ?? null;
@@ -246,7 +295,7 @@ export async function getStripeWebhookEndpointId(
 
 export async function getMerchantForOwner(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<OwnedMerchant | null> {
   return db.merchant.findFirst({
     where: { id: merchantId, ownerId },
@@ -258,7 +307,7 @@ export async function getMerchantForOwner(
 // with. The URL carries the slug; everything below this call uses `.id`.
 export async function getMerchantForOwnerBySlug(
   ownerId: string,
-  slug: string
+  slug: string,
 ): Promise<OwnedMerchant | null> {
   return db.merchant.findFirst({
     where: { slug, ownerId },
@@ -278,7 +327,7 @@ const MERCHANT_FIELDS = {
 export async function updateMerchant(
   ownerId: string,
   merchantId: string,
-  input: MerchantDetailsInput
+  input: MerchantDetailsInput,
 ): Promise<void> {
   await assertOwns(ownerId, merchantId);
   await db.merchant.update({
@@ -291,12 +340,22 @@ export async function updateMerchant(
   });
 }
 
-export async function getMerchantByDomain(
-  domain: string
-): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
+export async function getMerchantByDomain(domain: string): Promise<{
+  id: string;
+  slug: string;
+  name: string;
+  domain: string;
+  websiteUrl: string;
+} | null> {
   return db.merchant.findUnique({
     where: { domain },
-    select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      domain: true,
+      websiteUrl: true,
+    },
   });
 }
 
@@ -306,7 +365,10 @@ export async function getMerchantByDomain(
  * the database cascades only the owned Affiliate/Program subtree and imported
  * archive when the final Merchant row is deleted.
  */
-export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
+export async function deleteMerchant(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   await assertOwns(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
   await db.$transaction(async (tx) => {
@@ -336,8 +398,11 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
 
 export async function getOnboardingState(
   ownerId: string,
-  merchantId: string
-): Promise<{ onboardingCompletedAt: Date | null; welcomeDismissedAt: Date | null }> {
+  merchantId: string,
+): Promise<{
+  onboardingCompletedAt: Date | null;
+  welcomeDismissedAt: Date | null;
+}> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { onboardingCompletedAt: true, welcomeDismissedAt: true },
@@ -348,7 +413,10 @@ export async function getOnboardingState(
 
 // Set once. Re-running onboarding to reconnect something must not make the
 // product look freshly finished again.
-export async function markOnboardingComplete(ownerId: string, merchantId: string): Promise<void> {
+export async function markOnboardingComplete(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   await assertOwns(ownerId, merchantId);
   await db.merchant.updateMany({
     where: { id: merchantId, onboardingCompletedAt: null },
@@ -356,11 +424,13 @@ export async function markOnboardingComplete(ownerId: string, merchantId: string
   });
 }
 
-export async function dismissWelcome(ownerId: string, merchantId: string): Promise<void> {
+export async function dismissWelcome(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   await assertOwns(ownerId, merchantId);
   await db.merchant.updateMany({
     where: { id: merchantId, welcomeDismissedAt: null },
     data: { welcomeDismissedAt: new Date() },
   });
 }
-

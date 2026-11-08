@@ -10,18 +10,27 @@ import { db } from "@/lib/db";
 
 // Only reached when recognising a referral from before 0.2.6.
 const stripeStub = vi.hoisted(() => ({
-  invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  invoices: {
+    retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
+  },
   subscriptions: {
-    list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [], has_more: false })),
+    list: vi.fn(async (_params: unknown): Promise<unknown> => ({
+      data: [],
+      has_more: false,
+    })),
     // Read when a legacy referral is recognised, for the products it bills.
     retrieve: vi.fn(async (id: string): Promise<unknown> => ({
       id,
-      items: { data: [{ id: "si_basic", price: { product: "prod_basic" } }], has_more: false },
+      items: {
+        data: [{ id: "si_basic", price: { product: "prod_basic" } }],
+        has_more: false,
+      },
     })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  const actual =
+    await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
@@ -60,10 +69,16 @@ describe("handleSubscriptionDeleted", () => {
     await clearAll();
     stripeStub.invoices.retrieve.mockReset();
     stripeStub.subscriptions.list.mockReset();
-    stripeStub.subscriptions.list.mockImplementation(async () => ({ data: [], has_more: false }));
+    stripeStub.subscriptions.list.mockImplementation(async () => ({
+      data: [],
+      has_more: false,
+    }));
 
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -72,7 +87,9 @@ describe("handleSubscriptionDeleted", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     const program = await db.program.create({
@@ -116,9 +133,14 @@ describe("handleSubscriptionDeleted", () => {
 
     await handleSubscriptionDeleted(merchant, deleted("sub_1"));
 
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId } });
+    const referred = await db.referredSubscription.findFirstOrThrow({
+      where: { clickId },
+    });
     expect(referred.cancelledAt).toBeInstanceOf(Date);
-    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeInstanceOf(Date);
+    expect(
+      (await db.click.findUniqueOrThrow({ where: { id: clickId } }))
+        .subscriptionCancelledAt,
+    ).toBeInstanceOf(Date);
   });
 
   it("keeps the click paying while another subscription it brought is still active", async () => {
@@ -127,7 +149,10 @@ describe("handleSubscriptionDeleted", () => {
 
     await handleSubscriptionDeleted(merchant, deleted("sub_1"));
 
-    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeNull();
+    expect(
+      (await db.click.findUniqueOrThrow({ where: { id: clickId } }))
+        .subscriptionCancelledAt,
+    ).toBeNull();
   });
 
   it("ignores an unreferred subscription of a referred customer", async () => {
@@ -135,7 +160,10 @@ describe("handleSubscriptionDeleted", () => {
 
     await handleSubscriptionDeleted(merchant, deleted("sub_unreferred"));
 
-    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeNull();
+    expect(
+      (await db.click.findUniqueOrThrow({ where: { id: clickId } }))
+        .subscriptionCancelledAt,
+    ).toBeNull();
   });
 
   it("ignores another product's subscription on a shared Stripe account", async () => {
@@ -144,22 +172,35 @@ describe("handleSubscriptionDeleted", () => {
 
     await handleSubscriptionDeleted(other, deleted("sub_1"));
 
-    expect((await db.referredSubscription.findFirstOrThrow({ where: { clickId } })).cancelledAt).toBeNull();
+    expect(
+      (await db.referredSubscription.findFirstOrThrow({ where: { clickId } }))
+        .cancelledAt,
+    ).toBeNull();
   });
 
   it("recognises and marks a referral from before this release when its cancellation is the first event seen", async () => {
     await seedLegacyClick(clickId, "cus_1");
     await seedInvoiceCommission(affiliateId, clickId, "in_first");
-    stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_first", "sub_1"));
+    stripeStub.invoices.retrieve.mockResolvedValueOnce(
+      retrievedInvoice("in_first", "sub_1"),
+    );
 
     await handleSubscriptionDeleted(merchant, deleted("sub_1"));
 
-    expect((await db.referredSubscription.findFirstOrThrow({ where: { clickId } })).cancelledAt).toBeInstanceOf(Date);
-    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeInstanceOf(Date);
+    expect(
+      (await db.referredSubscription.findFirstOrThrow({ where: { clickId } }))
+        .cancelledAt,
+    ).toBeInstanceOf(Date);
+    expect(
+      (await db.click.findUniqueOrThrow({ where: { id: clickId } }))
+        .subscriptionCancelledAt,
+    ).toBeInstanceOf(Date);
   });
 
   it("ignores a customer nobody referred, without asking Stripe", async () => {
-    await expect(handleSubscriptionDeleted(merchant, deleted("sub_x", "cus_unknown"))).resolves.toBeUndefined();
+    await expect(
+      handleSubscriptionDeleted(merchant, deleted("sub_x", "cus_unknown")),
+    ).resolves.toBeUndefined();
     expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
     expect(stripeStub.subscriptions.list).not.toHaveBeenCalled();
   });
@@ -181,7 +222,10 @@ describe("handleSubscriptionDeleted", () => {
         },
       });
 
-      expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 1 });
+      expect(await referralCounts(affiliateId)).toEqual({
+        total: 1,
+        active: 1,
+      });
     });
 
     it("does not count a click with a commission from a one-time purchase", async () => {
@@ -199,7 +243,10 @@ describe("handleSubscriptionDeleted", () => {
         },
       });
 
-      expect(await referralCounts(affiliateId)).toEqual({ total: 0, active: 0 });
+      expect(await referralCounts(affiliateId)).toEqual({
+        total: 0,
+        active: 0,
+      });
     });
 
     it("counts total 1 active 0 after the subscription is cancelled", async () => {
@@ -216,11 +263,17 @@ describe("handleSubscriptionDeleted", () => {
           payableAt: new Date(),
         },
       });
-      await seedReferredSubscription(merchant.id, clickId, "sub_1", { ref: "pi_1", at: new Date() });
+      await seedReferredSubscription(merchant.id, clickId, "sub_1", {
+        ref: "pi_1",
+        at: new Date(),
+      });
 
       await handleSubscriptionDeleted(merchant, deleted("sub_1"));
 
-      expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 0 });
+      expect(await referralCounts(affiliateId)).toEqual({
+        total: 1,
+        active: 0,
+      });
     });
 
     it("counts a click with no commission in neither total nor active", async () => {
@@ -233,7 +286,10 @@ describe("handleSubscriptionDeleted", () => {
         },
       });
 
-      expect(await referralCounts(affiliateId)).toEqual({ total: 0, active: 0 });
+      expect(await referralCounts(affiliateId)).toEqual({
+        total: 0,
+        active: 0,
+      });
     });
 
     it("does not count a referral confirmed as a self referral as still paying", async () => {
@@ -251,9 +307,15 @@ describe("handleSubscriptionDeleted", () => {
         },
       });
       await seedReferredSubscription(merchant.id, clickId, "sub_1");
-      await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+      await db.click.update({
+        where: { id: clickId },
+        data: { fraudConfirmedAt: new Date() },
+      });
 
-      expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 0 });
+      expect(await referralCounts(affiliateId)).toEqual({
+        total: 1,
+        active: 0,
+      });
     });
   });
 });

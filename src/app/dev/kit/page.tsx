@@ -45,7 +45,11 @@ import {
   type LedgerRow as AffiliateLedgerRow,
 } from "@/app/affiliates/dashboard/commissions/CommissionLedger";
 import { AffiliateSidebar } from "@/app/affiliates/dashboard/AffiliateSidebar";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const SCRIPT = `<script src="https://affiliates.instantgradient.com/track.js" async></script>`;
@@ -286,7 +290,10 @@ export default function Kit() {
             <EOverview />
           </EViewport>
         </Frame>
-        <Frame label="Affiliate overview, one-time program" show={show("e-overview-one-time")}>
+        <Frame
+          label="Affiliate overview, one-time program"
+          show={show("e-overview-one-time")}
+        >
           <EViewport>
             <EOverview recurring={false} />
           </EViewport>
@@ -314,7 +321,10 @@ export default function Kit() {
             <EPayouts empty />
           </EViewport>
         </Frame>
-        <Frame label="Affiliate new link dialog" show={only === "e-link-dialog"}>
+        <Frame
+          label="Affiliate new link dialog"
+          show={only === "e-link-dialog"}
+        >
           <ELinkDialog />
         </Frame>
         <Frame label="Affiliate shell" show={show("e-shell")}>
@@ -742,7 +752,10 @@ const D_SHEETS: Record<string, SheetCommission> = {
     stateLabel: "Paid 5 Sept 2026",
     clickLabel: "2 Aug 2026",
     linkLabel: "sarah · /pricing",
-    reference: { text: "in_1QzNoP6gBaNZqs4E", href: "https://dashboard.stripe.com" },
+    reference: {
+      text: "in_1QzNoP6gBaNZqs4E",
+      href: "https://dashboard.stripe.com",
+    },
     selfReferralConfirmed: true,
   },
 };
@@ -906,8 +919,17 @@ const E_SERIES = Array.from({ length: 30 }, (_, i) => {
     revenue: conversions * 120,
     signups: 0,
     amounts: (conversions > 0
-      ? { usd: { gross: conversions * 120, commission: conversions * 24, sales: conversions } }
-      : {}) as Record<string, { gross: number; commission: number; sales: number }>,
+      ? {
+          usd: {
+            gross: conversions * 120,
+            commission: conversions * 24,
+            sales: conversions,
+          },
+        }
+      : {}) as Record<
+      string,
+      { gross: number; commission: number; sales: number }
+    >,
   };
 });
 
@@ -1013,8 +1035,16 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
       recent={E_RECENT}
       series={E_SERIES}
       bucket="day"
-      current={{ clicks: 412, conversions: 46, amounts: { usd: { gross: 1104, commission: 1104, sales: 46 } } }}
-      previous={{ clicks: 366, conversions: 38, amounts: { usd: { gross: 912, commission: 912, sales: 38 } } }}
+      current={{
+        clicks: 412,
+        conversions: 46,
+        amounts: { usd: { gross: 1104, commission: 1104, sales: 46 } },
+      }}
+      previous={{
+        clicks: 366,
+        conversions: 38,
+        amounts: { usd: { gross: 912, commission: 912, sales: 38 } },
+      }}
       currency="usd"
       currencies={["usd"]}
       range="30d"
@@ -1164,9 +1194,7 @@ function ELedger() {
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="flex shrink-0 items-start justify-between gap-4">
-        <h1 className="text-[22px] font-medium tracking-tight">
-          Commissions
-        </h1>
+        <h1 className="text-[22px] font-medium tracking-tight">Commissions</h1>
         <Tabs value="all" className="hidden md:block">
           <TabsList variant="line">
             {[
@@ -1211,7 +1239,11 @@ function ELinkDialog() {
   return (
     // Controlled open, so a screenshot does not have to click a trigger.
     <div className="min-h-[460px]">
-      <LinkDialog websiteUrl="https://instantgradient.com" open onOpenChange={() => {}} />
+      <LinkDialog
+        websiteUrl="https://instantgradient.com"
+        open
+        onOpenChange={() => {}}
+      />
     </div>
   );
 }
@@ -1219,7 +1251,9 @@ function ELinkDialog() {
 function EShell() {
   return (
     <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius) bg-(--canvas) md:h-[760px]">
-      <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
+      <SidebarProvider
+        style={{ "--sidebar-width": "264px" } as React.CSSProperties}
+      >
         <AffiliateSidebar
           merchantName="InstantGradient"
           merchantSite="instantgradient.com"

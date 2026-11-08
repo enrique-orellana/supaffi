@@ -12,7 +12,9 @@ describe("authConfig session callback", () => {
     const result = await authConfig.callbacks!.session!({
       session,
       token,
-    } as Parameters<NonNullable<NonNullable<typeof authConfig.callbacks>["session"]>>[0]);
+    } as Parameters<
+      NonNullable<NonNullable<typeof authConfig.callbacks>["session"]>
+    >[0]);
 
     expect(result.user?.id).toBe("owner-id-123");
     expect(result.user?.email).toBe("owner@example.com");
@@ -28,7 +30,9 @@ describe("authConfig session callback", () => {
     const result = await authConfig.callbacks!.session!({
       session,
       token,
-    } as Parameters<NonNullable<NonNullable<typeof authConfig.callbacks>["session"]>>[0]);
+    } as Parameters<
+      NonNullable<NonNullable<typeof authConfig.callbacks>["session"]>
+    >[0]);
 
     expect(result.user?.role).toBe("affiliate");
   });
@@ -37,12 +41,18 @@ describe("authConfig session callback", () => {
 describe("authConfig jwt callback", () => {
   it("copies user.role onto token.role when a user is present (sign-in)", async () => {
     const token = { sub: "owner-id-123" };
-    const user = { id: "owner-id-123", email: "owner@example.com", role: "owner" };
+    const user = {
+      id: "owner-id-123",
+      email: "owner@example.com",
+      role: "owner",
+    };
 
     const result = await authConfig.callbacks!.jwt!({
       token,
       user,
-    } as Parameters<NonNullable<NonNullable<typeof authConfig.callbacks>["jwt"]>>[0]);
+    } as Parameters<
+      NonNullable<NonNullable<typeof authConfig.callbacks>["jwt"]>
+    >[0]);
 
     expect(result!.role).toBe("owner");
   });
@@ -52,7 +62,9 @@ describe("authConfig jwt callback", () => {
 
     const result = await authConfig.callbacks!.jwt!({
       token,
-    } as Parameters<NonNullable<NonNullable<typeof authConfig.callbacks>["jwt"]>>[0]);
+    } as Parameters<
+      NonNullable<NonNullable<typeof authConfig.callbacks>["jwt"]>
+    >[0]);
 
     expect(result!.role).toBe("owner");
   });

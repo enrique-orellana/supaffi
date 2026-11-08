@@ -14,7 +14,11 @@ const PROTECTED_ROUTES: ReadonlyArray<{
   loginPath: string;
 }> = [
   { prefix: "/dashboard", role: "owner", loginPath: "/login" },
-  { prefix: "/affiliates/dashboard", role: "affiliate", loginPath: "/affiliates/login" },
+  {
+    prefix: "/affiliates/dashboard",
+    role: "affiliate",
+    loginPath: "/affiliates/login",
+  },
   { prefix: "/onboarding", role: "owner", loginPath: "/login" },
 ];
 
@@ -22,7 +26,10 @@ const PROTECTED_ROUTES: ReadonlyArray<{
 // A mismatched role (e.g. an Owner session hitting /affiliates/dashboard)
 // redirects the same as no session at all — one shared session cookie
 // means a session always exists for *some* role, and that's not enough.
-export function resolveLoginRedirect(pathname: string, role: SessionRole): string | null {
+export function resolveLoginRedirect(
+  pathname: string,
+  role: SessionRole,
+): string | null {
   for (const route of PROTECTED_ROUTES) {
     if (pathname.startsWith(route.prefix) && role !== route.role) {
       return route.loginPath;
@@ -38,7 +45,9 @@ export function resolveLoginRedirect(pathname: string, role: SessionRole): strin
 const OWNER_PREFIXES = ["/login", "/dashboard", "/onboarding", "/setup"];
 
 function isOwnerPath(pathname: string): boolean {
-  return OWNER_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return OWNER_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 /**
@@ -50,9 +59,12 @@ function isOwnerPath(pathname: string): boolean {
  */
 export function resolveProductDomainRoute(
   pathname: string,
-  role: SessionRole = null
+  role: SessionRole = null,
 ): { redirect: string } | { notFound: true } | null {
-  if (pathname === "/") return { redirect: role === "affiliate" ? "/affiliates/dashboard" : "/affiliates" };
+  if (pathname === "/")
+    return {
+      redirect: role === "affiliate" ? "/affiliates/dashboard" : "/affiliates",
+    };
   if (isOwnerPath(pathname)) return { notFound: true };
   return null;
 }

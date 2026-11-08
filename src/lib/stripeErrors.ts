@@ -10,12 +10,18 @@
 
 type StripeLikeError = { type?: string; code?: string; statusCode?: number };
 
-const TRANSIENT_TYPES = ["StripeConnectionError", "StripeAPIError", "StripeRateLimitError"];
+const TRANSIENT_TYPES = [
+  "StripeConnectionError",
+  "StripeAPIError",
+  "StripeRateLimitError",
+];
 
 export function isTransientStripeError(err: unknown): boolean {
   const { type, statusCode } = (err ?? {}) as StripeLikeError;
   if (type && TRANSIENT_TYPES.includes(type)) return true;
-  return statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500);
+  return (
+    statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500)
+  );
 }
 
 /**

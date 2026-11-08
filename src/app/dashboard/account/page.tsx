@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { availableUpdate, installedVersion, updateCheckEnabled } from "@/lib/version";
+import {
+  availableUpdate,
+  installedVersion,
+  updateCheckEnabled,
+} from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmailForm, PasswordForm } from "./AccountForms";
 
@@ -50,7 +54,9 @@ export default async function AccountPage() {
           <div className="flex justify-between">
             <span>Update check</span>
             <span className="text-muted-foreground">
-              {updateCheckEnabled() ? "on. Set SUPAFFI_UPDATE_CHECK=off on the server to turn it off." : "off"}
+              {updateCheckEnabled()
+                ? "on. Set SUPAFFI_UPDATE_CHECK=off on the server to turn it off."
+                : "off"}
             </span>
           </div>
         </div>

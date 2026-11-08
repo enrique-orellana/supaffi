@@ -4,15 +4,19 @@ import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { getMerchantByDomain } from "@/lib/merchant";
-import { affiliatePasswordError, redeemAffiliateResetLink } from "@/lib/affiliatePassword";
+import {
+  affiliatePasswordError,
+  redeemAffiliateResetLink,
+} from "@/lib/affiliatePassword";
 import { ConcurrencyLimitError } from "@/lib/password";
 
-const INVALID_LINK = "This link has expired or was already used. Ask for a new one.";
+const INVALID_LINK =
+  "This link has expired or was already used. Ask for a new one.";
 
 export async function setAffiliatePassword(
   token: string,
   _prevState: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const password = String(formData.get("password") ?? "");
   const passwordError = affiliatePasswordError(password);
@@ -26,15 +30,21 @@ export async function setAffiliatePassword(
   try {
     redeemed = await redeemAffiliateResetLink(token, merchant.id, password);
   } catch (err) {
-    if (err instanceof ConcurrencyLimitError) return { error: "Busy right now. Try again in a moment." };
+    if (err instanceof ConcurrencyLimitError)
+      return { error: "Busy right now. Try again in a moment." };
     throw err;
   }
   if (!redeemed) return { error: INVALID_LINK };
 
   try {
-    await signIn("affiliate-password", { email: redeemed.email, password, redirectTo: "/affiliates/dashboard" });
+    await signIn("affiliate-password", {
+      email: redeemed.email,
+      password,
+      redirectTo: "/affiliates/dashboard",
+    });
   } catch (err) {
-    if (err instanceof AuthError) return { error: "Password saved. Log in to continue." };
+    if (err instanceof AuthError)
+      return { error: "Password saved. Log in to continue." };
     throw err; // Auth.js throws a redirect internally on success, must re-throw
   }
   return { error: "" };

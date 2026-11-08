@@ -10,6 +10,8 @@ describe("webhook event retention schema", () => {
     const rows = await db.$queryRaw<{ indexname: string }[]>`
       SELECT indexname FROM pg_indexes WHERE tablename = 'WebhookEvent'
     `;
-    expect(rows.map((row) => row.indexname)).toContain("WebhookEvent_merchantId_createdAt_idx");
+    expect(rows.map((row) => row.indexname)).toContain(
+      "WebhookEvent_merchantId_createdAt_idx",
+    );
   });
 });

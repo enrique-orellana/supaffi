@@ -10,7 +10,9 @@ import {
   Receipt,
   Settings,
   Users,
-  type LucideIcon, Wallet } from "lucide-react";
+  type LucideIcon,
+  Wallet,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -128,7 +130,12 @@ export function AppSidebar({
                   ? "waiting"
                   : undefined,
           },
-          { href: `${base}/settings`, icon: Settings, label: "Settings", badge: null },
+          {
+            href: `${base}/settings`,
+            icon: Settings,
+            label: "Settings",
+            badge: null,
+          },
         ]
       : [];
 
@@ -148,7 +155,9 @@ export function AppSidebar({
             <SidebarMenu className="gap-2">
               {nav.map((item) => {
                 const current =
-                  item.href === base ? pathname === base : pathname.startsWith(item.href);
+                  item.href === base
+                    ? pathname === base
+                    : pathname.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
@@ -160,7 +169,12 @@ export function AppSidebar({
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                     {item.badge !== null && (
-                      <SidebarMenuBadge className={cn(NAV_BADGE, "text-muted-foreground tabular-nums")}>
+                      <SidebarMenuBadge
+                        className={cn(
+                          NAV_BADGE,
+                          "text-muted-foreground tabular-nums",
+                        )}
+                      >
                         {item.badge}
                       </SidebarMenuBadge>
                     )}
@@ -171,7 +185,7 @@ export function AppSidebar({
                             "block size-2 rounded-[1px]",
                             item.dot === "ok"
                               ? "bg-status-success"
-                              : "border-2 border-status-warning"
+                              : "border-2 border-status-warning",
                           )}
                         />
                       </SidebarMenuBadge>

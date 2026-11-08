@@ -25,7 +25,12 @@ export function originFor(domain: string): string {
  * signup. Any other program gets its own signup page. A local address keeps
  * the long form: its root is the dashboard's.
  */
-export function signupLinkFor(domain: string, programSlug: string, defaultSlug: string | null): string {
-  if (programSlug === defaultSlug && !isLocalDomain(domain)) return originFor(domain);
+export function signupLinkFor(
+  domain: string,
+  programSlug: string,
+  defaultSlug: string | null,
+): string {
+  if (programSlug === defaultSlug && !isLocalDomain(domain))
+    return originFor(domain);
   return `${originFor(domain)}/affiliates/signup/${programSlug}`;
 }

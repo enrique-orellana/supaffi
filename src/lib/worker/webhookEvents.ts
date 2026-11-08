@@ -32,11 +32,16 @@ function defaultClient(secretKey: string): WebhookEndpointsClient {
  */
 export async function upgradeMerchantWebhookEvents(
   merchantId: string,
-  makeClient: MakeClient = defaultClient
+  makeClient: MakeClient = defaultClient,
 ): Promise<void> {
   try {
     const connection = await db.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId, provider: PaymentProvider.STRIPE.database } },
+      where: {
+        merchantId_provider: {
+          merchantId,
+          provider: PaymentProvider.STRIPE.database,
+        },
+      },
       select: {
         apiKeyEnc: true,
         webhookSecretEnc: true,
@@ -55,30 +60,39 @@ export async function upgradeMerchantWebhookEvents(
       return;
     }
 
-    const result = await ensureRequiredWebhookEvents(makeClient(decrypt(connection.apiKeyEnc)), {
-      endpointId: connection.externalEndpointId,
-      url: webhookEndpointUrl(connection.merchant.domain),
-    });
+    const result = await ensureRequiredWebhookEvents(
+      makeClient(decrypt(connection.apiKeyEnc)),
+      {
+        endpointId: connection.externalEndpointId,
+        url: webhookEndpointUrl(connection.merchant.domain),
+      },
+    );
 
     if (result.status === "updated") {
-      console.log(`[webhook-events] added missing events to the Stripe endpoint for merchant ${merchantId}`);
+      console.log(
+        `[webhook-events] added missing events to the Stripe endpoint for merchant ${merchantId}`,
+      );
     }
     if (result.status === "permission") {
       console.warn(
-        `[webhook-events] the Stripe key for merchant ${merchantId} cannot update its webhook endpoint. Replace the key in settings to fix it.`
+        `[webhook-events] the Stripe key for merchant ${merchantId} cannot update its webhook endpoint. Replace the key in settings to fix it.`,
       );
     }
     if (result.status === "missing") {
       console.warn(
-        `[webhook-events] the webhook endpoint for merchant ${merchantId} was not found in Stripe. Add the webhook again, then replace the secret, to fix it.`
+        `[webhook-events] the webhook endpoint for merchant ${merchantId} was not found in Stripe. Add the webhook again, then replace the secret, to fix it.`,
       );
     }
     if (result.status === "error") {
       // Tried again on the next start rather than retried here.
-      console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${result.detail}`);
+      console.error(
+        `[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${result.detail}`,
+      );
     }
   } catch (err) {
-    console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${loggableError(err)}`);
+    console.error(
+      `[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${loggableError(err)}`,
+    );
   }
 }
 
@@ -88,7 +102,9 @@ export async function upgradeMerchantWebhookEvents(
  * rather than a burst, and one call each with no retry, so an account that
  * keeps failing costs one request per start and nothing more.
  */
-export async function upgradeAllWebhookEvents(makeClient: MakeClient = defaultClient): Promise<void> {
+export async function upgradeAllWebhookEvents(
+  makeClient: MakeClient = defaultClient,
+): Promise<void> {
   let merchants: { merchantId: string }[];
   try {
     merchants = await db.paymentConnection.findMany({
@@ -101,7 +117,10 @@ export async function upgradeAllWebhookEvents(makeClient: MakeClient = defaultCl
       orderBy: { createdAt: "asc" },
     });
   } catch (err) {
-    console.error("[webhook-events] could not list products to check their Stripe endpoints", err);
+    console.error(
+      "[webhook-events] could not list products to check their Stripe endpoints",
+      err,
+    );
     return;
   }
   for (const connection of merchants) {

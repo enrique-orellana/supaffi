@@ -24,6 +24,16 @@ const STATUS_LABELS: Record<CommissionStatus, string> = {
 };
 
 /** A commission's state, the same badge on every owner screen that lists one. */
-export function StatusBadge({ status, className }: { status: CommissionStatus; className?: string }) {
-  return <Badge className={cn(STATUS_STYLES[status], className)}>{STATUS_LABELS[status]}</Badge>;
+export function StatusBadge({
+  status,
+  className,
+}: {
+  status: CommissionStatus;
+  className?: string;
+}) {
+  return (
+    <Badge className={cn(STATUS_STYLES[status], className)}>
+      {STATUS_LABELS[status]}
+    </Badge>
+  );
 }

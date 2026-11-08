@@ -4,7 +4,10 @@ import { useActionState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
+type Action = (
+  prev: { error: string },
+  formData: FormData,
+) => Promise<{ error: string }>;
 
 /** A secret to paste, its label, and the one button that stores it. */
 export function PasteField({

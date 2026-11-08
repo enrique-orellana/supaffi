@@ -77,14 +77,19 @@ export default async function ProgramsPage({
   const productRef = { id: merchant.id, slug: merchant.slug };
 
   // An id that names nothing opens nothing, rather than an empty form.
-  const editing = query.edit ? programs.find((p) => p.id === query.edit) ?? null : null;
+  const editing = query.edit
+    ? (programs.find((p) => p.id === query.edit) ?? null)
+    : null;
 
   return (
     <Page>
       <PageTitle
         title="Programs"
         actions={
-          <Button className="cursor-pointer" render={<Link href={`${base}?new=1`} />}>
+          <Button
+            className="cursor-pointer"
+            render={<Link href={`${base}?new=1`} />}
+          >
             <Plus data-icon="inline-start" /> New program
           </Button>
         }
@@ -102,7 +107,11 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
-            signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
+            signupLink={
+              p.signupOpen
+                ? signupLinkFor(merchant.domain, p.slug, defaultSlug)
+                : null
+            }
             editHref={`${base}?edit=${p.id}`}
           />
         ))}

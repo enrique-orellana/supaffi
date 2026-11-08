@@ -23,35 +23,71 @@ export type PaymentLinkSaleResult = {
 // site for the provider's hosted page, which this suite does not load: the
 // buyer's payment is made at the provider fake with what the link's address
 // carried.
-export async function paymentLinkSale(buyer: Page, input: { via: string; email: string; amount: number; cardFingerprint?: string }): Promise<PaymentLinkSaleResult> {
+export async function paymentLinkSale(
+  buyer: Page,
+  input: {
+    via: string;
+    email: string;
+    amount: number;
+    cardFingerprint?: string;
+  },
+): Promise<PaymentLinkSaleResult> {
   await buyer.goto(`https://shop.test/?via=${input.via}`);
-  const cookie = async () => (await buyer.context().cookies("https://shop.test")).find((c) => c.name === "__supaffi_referral");
+  const cookie = async () =>
+    (await buyer.context().cookies("https://shop.test")).find(
+      (c) => c.name === "__supaffi_referral",
+    );
   await expect.poll(async () => Boolean(await cookie())).toBe(true);
   const referral = decodeURIComponent((await cookie())!.value);
   const link = buyer.getByTestId("payment-link");
   await expect(link).toHaveAttribute("href", /client_reference_id=/);
   const href = (await link.getAttribute("href"))!;
   const clientReference = new URL(href).searchParams.get("client_reference_id");
-  const res = await buyer.request.post("http://127.0.0.1:12111/_test/checkout", {
-    data: { amount: input.amount, email: input.email, client_reference_id: clientReference, cardFingerprint: input.cardFingerprint },
-  });
-  return { href, referral, delivered: (await res.json()).deliveries.map((d: { status: number }) => d.status) };
+  const res = await buyer.request.post(
+    "http://127.0.0.1:12111/_test/checkout",
+    {
+      data: {
+        amount: input.amount,
+        email: input.email,
+        client_reference_id: clientReference,
+        cardFingerprint: input.cardFingerprint,
+      },
+    },
+  );
+  return {
+    href,
+    referral,
+    delivered: (await res.json()).deliveries.map(
+      (d: { status: number }) => d.status,
+    ),
+  };
 }
 
-export async function sale(buyer: Page, input: { via?: string; email: string }): Promise<SaleResult> {
-  const landing = input.via ? `https://shop.test/?via=${input.via}` : "https://shop.test/";
+export async function sale(
+  buyer: Page,
+  input: { via?: string; email: string },
+): Promise<SaleResult> {
+  const landing = input.via
+    ? `https://shop.test/?via=${input.via}`
+    : "https://shop.test/";
   await buyer.goto(landing);
   if (input.via) {
     // track.js has asked the app for a token and stored it first-party.
     await expect
-      .poll(async () => (await buyer.context().cookies("https://shop.test")).some((c) => c.name === "__supaffi_referral"))
+      .poll(async () =>
+        (await buyer.context().cookies("https://shop.test")).some(
+          (c) => c.name === "__supaffi_referral",
+        ),
+      )
       .toBe(true);
   }
   await buyer.getByLabel("Email").fill(input.email);
   await buyer.getByRole("button", { name: /Buy/ }).click();
   await buyer.getByRole("heading", { name: "Thanks" }).waitFor();
   return {
-    paymentIntent: (await buyer.getByTestId("payment-intent").textContent())!.trim(),
+    paymentIntent: (await buyer
+      .getByTestId("payment-intent")
+      .textContent())!.trim(),
     referral: (await buyer.getByTestId("referral").textContent())!.trim(),
     delivered: (await buyer.getByTestId("delivered").textContent())!
       .split(",")

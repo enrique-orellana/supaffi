@@ -76,7 +76,10 @@ function pairKey(email: string, address: string): string {
  * go on at all. Always allows a missing or private address, which is not a
  * visitor anyone can be told apart by.
  */
-export function reserveLoginRequest(address: string | null, now: number = Date.now()): boolean {
+export function reserveLoginRequest(
+  address: string | null,
+  now: number = Date.now(),
+): boolean {
   if (address === null || isPrivateAddress(address)) return true;
   return takeFromEach([[perClient, address]], now);
 }
@@ -91,14 +94,14 @@ export function reserveLoginRequest(address: string | null, now: number = Date.n
 export function reserveLoginAttempt(
   email: string,
   address: string,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): boolean {
   return takeFromEach(
     [
       [perAddress, pairKey(email, address)],
       [perEmail, normalize(email)],
     ],
-    now
+    now,
   );
 }
 

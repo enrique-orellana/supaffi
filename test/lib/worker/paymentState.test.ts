@@ -19,7 +19,12 @@ describe("commissionFieldsAtCreation", () => {
   const now = new Date("2026-09-13T12:00:00Z");
 
   it("starts pending at the full amount when nothing was refunded", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(0), now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(0),
+      now,
+    });
     expect(fields.amount.toString()).toBe("10");
     expect(fields.grossAmount.toString()).toBe("10");
     expect(fields.status).toBe("PENDING");
@@ -29,19 +34,34 @@ describe("commissionFieldsAtCreation", () => {
   });
 
   it("starts pending at the full amount when the charge could not be read", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: null, now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: null,
+      now,
+    });
     expect(fields.amount.toString()).toBe("10");
     expect(fields.status).toBe("PENDING");
     expect(fields.disputeOpenedAt).toBeNull();
   });
 
   it("starts flagged when a self referral was spotted", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: "card", charge: null, now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: "card",
+      charge: null,
+      now,
+    });
     expect(fields.status).toBe("FLAGGED");
   });
 
   it("starts reduced when part of the sale was already refunded, keeping the original as gross", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(2500), now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(2500),
+      now,
+    });
     expect(fields.amount.toString()).toBe("5");
     expect(fields.grossAmount.toString()).toBe("10");
     expect(fields.status).toBe("PENDING");
@@ -50,13 +70,23 @@ describe("commissionFieldsAtCreation", () => {
   });
 
   it("keeps a flag when a partial refund is folded in, as the refund handler does", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: "card", charge: snapshot(2500), now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: "card",
+      charge: snapshot(2500),
+      now,
+    });
     expect(fields.status).toBe("FLAGGED");
     expect(fields.amount.toString()).toBe("5");
   });
 
   it("starts voided when the whole sale was already refunded", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(5000), now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(5000),
+      now,
+    });
     expect(fields.status).toBe("VOIDED");
     expect(fields.voidReason).toBe("refund");
     expect(fields.voidedAt).toEqual(now);
@@ -65,7 +95,13 @@ describe("commissionFieldsAtCreation", () => {
 
   it("starts held when the sale is under an open dispute, or one that could not be read", () => {
     for (const dispute of ["open", "unknown"] as const) {
-      const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(0, true), dispute, now });
+      const fields = commissionFieldsAtCreation({
+        amount,
+        flagReason: null,
+        charge: snapshot(0, true),
+        dispute,
+        now,
+      });
       expect(fields.status).toBe("PENDING");
       expect(fields.disputeOpenedAt).toEqual(now);
       expect(fields.amount.toString()).toBe("10");
@@ -73,7 +109,13 @@ describe("commissionFieldsAtCreation", () => {
   });
 
   it("keeps a flag and a partial refund while holding", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: "card", charge: snapshot(2500, true), dispute: "open", now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: "card",
+      charge: snapshot(2500, true),
+      dispute: "open",
+      now,
+    });
     expect(fields.status).toBe("FLAGGED");
     expect(fields.amount.toString()).toBe("5");
     expect(fields.voidReason).toBe("partial refund");
@@ -81,7 +123,13 @@ describe("commissionFieldsAtCreation", () => {
   });
 
   it("starts voided as a chargeback when a dispute on the sale was already lost", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(0, true), dispute: "lost", now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(0, true),
+      dispute: "lost",
+      now,
+    });
     expect(fields.status).toBe("VOIDED");
     expect(fields.voidReason).toBe("chargeback");
     expect(fields.voidedAt).toEqual(now);
@@ -89,7 +137,13 @@ describe("commissionFieldsAtCreation", () => {
   });
 
   it("records a full refund as the cause even when a dispute was lost too", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(5000, true), dispute: "lost", now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(5000, true),
+      dispute: "lost",
+      now,
+    });
     expect(fields.status).toBe("VOIDED");
     expect(fields.voidReason).toBe("refund");
   });
@@ -98,14 +152,26 @@ describe("commissionFieldsAtCreation", () => {
     // Same 2500 refunded as the "starts reduced" case above, but this row's
     // referred share of the 5000 charge is only 2500: the whole referred
     // part came back, so it must void here rather than keep half.
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(2500), referredChargeMinor: 2500, now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(2500),
+      referredChargeMinor: 2500,
+      now,
+    });
     expect(fields.status).toBe("VOIDED");
     expect(fields.voidReason).toBe("refund");
     expect(fields.voidedAt).toEqual(now);
   });
 
   it("starts untouched when every dispute closed in the merchant's favour", () => {
-    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(0, true), dispute: "clear", now });
+    const fields = commissionFieldsAtCreation({
+      amount,
+      flagReason: null,
+      charge: snapshot(0, true),
+      dispute: "clear",
+      now,
+    });
     expect(fields.status).toBe("PENDING");
     expect(fields.disputeOpenedAt).toBeNull();
   });
@@ -116,21 +182,29 @@ describe("disputeStateAtCreation", () => {
     const list = vi.fn();
     const stripe = { disputes: { list } } as unknown as Stripe;
     expect(await disputeStateAtCreation(stripe, "pi_1", null)).toBeNull();
-    expect(await disputeStateAtCreation(stripe, null, snapshot(0, true))).toBeNull();
+    expect(
+      await disputeStateAtCreation(stripe, null, snapshot(0, true)),
+    ).toBeNull();
     expect(list).not.toHaveBeenCalled();
   });
 
   it("answers clear without a request when the charge was never disputed", async () => {
     const list = vi.fn();
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0))).toBe("clear");
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0))).toBe(
+      "clear",
+    );
     expect(list).not.toHaveBeenCalled();
   });
 
   it("lists the disputes when the charge was disputed", async () => {
-    const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "lost" }] }));
+    const list = vi.fn(async () => ({
+      data: [{ id: "dp_1", status: "lost" }],
+    }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("lost");
     expect(list).toHaveBeenCalledWith({ payment_intent: "pi_1", limit: 100 });
   });
 
@@ -141,35 +215,59 @@ describe("disputeStateAtCreation", () => {
     // never really disputed.
     const list = vi.fn(async () => ({ data: [] }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("unknown");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("unknown");
   });
 
   it("still reads a list settled entirely in the merchant's favour as clear", async () => {
     const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "won" }] }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("clear");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("clear");
   });
 
   it("reads a prevented dispute that blocked the chargeback as clear", async () => {
     const list = vi.fn(async () => ({
-      data: [{ id: "dp_1", status: "prevented", payment_method_details: { card: { case_type: "block" } } }],
+      data: [
+        {
+          id: "dp_1",
+          status: "prevented",
+          payment_method_details: { card: { case_type: "block" } },
+        },
+      ],
     }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("clear");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("clear");
   });
 
   it("reads a prevented dispute that refunded the cardholder as lost, at creation too", async () => {
     const list = vi.fn(async () => ({
-      data: [{ id: "dp_1", status: "prevented", payment_method_details: { card: { case_type: "resolution" } } }],
+      data: [
+        {
+          id: "dp_1",
+          status: "prevented",
+          payment_method_details: { card: { case_type: "resolution" } },
+        },
+      ],
     }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("lost");
   });
 
   it("reads a prevented dispute with no case type as lost, at creation too", async () => {
-    const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "prevented" }] }));
+    const list = vi.fn(async () => ({
+      data: [{ id: "dp_1", status: "prevented" }],
+    }));
     const stripe = { disputes: { list } } as unknown as Stripe;
-    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
+    expect(
+      await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true)),
+    ).toBe("lost");
   });
 });
 
@@ -182,41 +280,88 @@ describe("Stripe lookups", () => {
   });
 
   it("reads the refund off the payment's latest charge", async () => {
-    const retrieve = vi.fn(async () => ({ id: "pi_1", latest_charge: { id: "ch_1", amount: 5000, amount_refunded: 1200, disputed: true } }));
+    const retrieve = vi.fn(async () => ({
+      id: "pi_1",
+      latest_charge: {
+        id: "ch_1",
+        amount: 5000,
+        amount_refunded: 1200,
+        disputed: true,
+      },
+    }));
     const stripe = { paymentIntents: { retrieve } } as unknown as Stripe;
 
-    expect(await latestChargeFor(stripe, "pi_1")).toEqual({ amount: 5000, amountRefunded: 1200, disputed: true });
-    expect(retrieve).toHaveBeenCalledWith("pi_1", { expand: ["latest_charge"] });
+    expect(await latestChargeFor(stripe, "pi_1")).toEqual({
+      amount: 5000,
+      amountRefunded: 1200,
+      disputed: true,
+    });
+    expect(retrieve).toHaveBeenCalledWith("pi_1", {
+      expand: ["latest_charge"],
+    });
   });
 
   // A key without Charges read is not guaranteed to get a permission error:
   // Stripe can answer with an invalid request instead. The lookup must not
   // depend on which, so both shapes are tried.
   it.each([
-    Object.assign(new Error("permission"), { type: "StripePermissionError", statusCode: 403 }),
-    Object.assign(new Error("invalid request"), { type: "StripeInvalidRequestError", statusCode: 400 }),
-  ])("answers unknown, without throwing, whatever error the lookup fails with (%s)", async (failure) => {
-    const stripe = { paymentIntents: { retrieve: vi.fn(async () => { throw failure; }) } } as unknown as Stripe;
+    Object.assign(new Error("permission"), {
+      type: "StripePermissionError",
+      statusCode: 403,
+    }),
+    Object.assign(new Error("invalid request"), {
+      type: "StripeInvalidRequestError",
+      statusCode: 400,
+    }),
+  ])(
+    "answers unknown, without throwing, whatever error the lookup fails with (%s)",
+    async (failure) => {
+      const stripe = {
+        paymentIntents: {
+          retrieve: vi.fn(async () => {
+            throw failure;
+          }),
+        },
+      } as unknown as Stripe;
 
-    expect(await latestChargeFor(stripe, "pi_1")).toBeNull();
-  });
+      expect(await latestChargeFor(stripe, "pi_1")).toBeNull();
+    },
+  );
 
   it("answers unknown when Stripe returns the charge unexpanded", async () => {
-    const stripe = { paymentIntents: { retrieve: vi.fn(async () => ({ id: "pi_1", latest_charge: "ch_1" })) } } as unknown as Stripe;
+    const stripe = {
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({ id: "pi_1", latest_charge: "ch_1" })),
+      },
+    } as unknown as Stripe;
     expect(await latestChargeFor(stripe, "pi_1")).toBeNull();
   });
 
   it("finds the payment behind a paid invoice", async () => {
-    const list = vi.fn(async () => ({ data: [{ payment: { type: "payment_intent", payment_intent: "pi_2" } }] }));
+    const list = vi.fn(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_2" } }],
+    }));
     const stripe = { invoicePayments: { list } } as unknown as Stripe;
 
     expect(await paymentIntentForInvoice(stripe, "in_1")).toBe("pi_2");
-    expect(list).toHaveBeenCalledWith({ invoice: "in_1", status: "paid", limit: 1 });
+    expect(list).toHaveBeenCalledWith({
+      invoice: "in_1",
+      status: "paid",
+      limit: 1,
+    });
   });
 
   it("answers unknown for an invoice with no payment, or when the lookup fails", async () => {
-    const empty = { invoicePayments: { list: vi.fn(async () => ({ data: [] })) } } as unknown as Stripe;
-    const failing = { invoicePayments: { list: vi.fn(async () => { throw new Error("down"); }) } } as unknown as Stripe;
+    const empty = {
+      invoicePayments: { list: vi.fn(async () => ({ data: [] })) },
+    } as unknown as Stripe;
+    const failing = {
+      invoicePayments: {
+        list: vi.fn(async () => {
+          throw new Error("down");
+        }),
+      },
+    } as unknown as Stripe;
 
     expect(await paymentIntentForInvoice(empty, "in_1")).toBeNull();
     expect(await paymentIntentForInvoice(failing, "in_1")).toBeNull();

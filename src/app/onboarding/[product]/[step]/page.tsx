@@ -1,6 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { backToDashboardHref, isStepId, normalizeStepId, stepPath, stepStates, type StepId } from "@/lib/onboarding";
+import {
+  backToDashboardHref,
+  isStepId,
+  normalizeStepId,
+  stepPath,
+  stepStates,
+  type StepId,
+} from "@/lib/onboarding";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { Rail } from "../../Rail";
@@ -11,7 +18,11 @@ import { Payments } from "../steps/Payments";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
 
-export default async function StepPage({ params }: { params: Promise<{ product: string; step: string }> }) {
+export default async function StepPage({
+  params,
+}: {
+  params: Promise<{ product: string; step: string }>;
+}) {
   const { product, step } = await params;
   // The email step is gone. A bookmark to it lands on the step that followed.
   if (step === "email") redirect(stepPath(product, "terms"));
@@ -24,7 +35,11 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
 
   // Only this step's own section is re-run; the rest of the rail is whatever
   // the last run found, which is what makes a 15 second poll cheap.
-  const checks = await loadChecks(context.ownerId, context.merchant.id, currentStep);
+  const checks = await loadChecks(
+    context.ownerId,
+    context.merchant.id,
+    currentStep,
+  );
   const ctx: Ctx = { ...context, checks };
 
   // The rail is rendered here, not by the layout above. A layout is not
@@ -40,11 +55,17 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
     // never resolve, the rail does not hold the step open for it.
     dnsUnavailable: isDevInstance() || isLocalDomain(ctx.merchant.domain),
   });
-  const others = (await listMerchantsForOwner(ctx.ownerId)).filter((m) => m.id !== ctx.merchant.id);
+  const others = (await listMerchantsForOwner(ctx.ownerId)).filter(
+    (m) => m.id !== ctx.merchant.id,
+  );
 
   return (
     <>
-      <Rail steps={steps} productSlug={ctx.merchant.slug} backHref={backToDashboardHref(others)} />
+      <Rail
+        steps={steps}
+        productSlug={ctx.merchant.slug}
+        backHref={backToDashboardHref(others)}
+      />
       {stepBody(currentStep, ctx)}
     </>
   );

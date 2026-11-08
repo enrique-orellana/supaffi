@@ -55,7 +55,13 @@ function Field({
   );
 }
 
-function Result({ state, done }: { state: { error: string; done: boolean }; done: string }) {
+function Result({
+  state,
+  done,
+}: {
+  state: { error: string; done: boolean };
+  done: string;
+}) {
   if (state.error) {
     return (
       <p role="alert" className="text-sm text-status-danger">
@@ -63,7 +69,8 @@ function Result({ state, done }: { state: { error: string; done: boolean }; done
       </p>
     );
   }
-  if (state.done) return <p className="text-sm text-muted-foreground">{done}</p>;
+  if (state.done)
+    return <p className="text-sm text-muted-foreground">{done}</p>;
   return null;
 }
 
@@ -73,7 +80,13 @@ export function EmailForm({ email }: { email: string }) {
   return (
     <Section title="Email">
       <form action={action} className="flex flex-col gap-4">
-        <Field id="email" label="New email" type="email" autoComplete="email" defaultValue={email} />
+        <Field
+          id="email"
+          label="New email"
+          type="email"
+          autoComplete="email"
+          defaultValue={email}
+        />
         <Field
           id="password"
           label="Current password"
@@ -82,7 +95,12 @@ export function EmailForm({ email }: { email: string }) {
         />
         <Result state={state} done="Takes effect next time you log in." />
         <div>
-          <Button type="submit" size="sm" className="cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            size="sm"
+            className="cursor-pointer"
+            disabled={pending}
+          >
             {pending ? "Saving" : "Change email"}
           </Button>
         </div>
@@ -110,9 +128,17 @@ export function PasswordForm() {
           autoComplete="new-password"
           minLength={MIN_PASSWORD_LENGTH}
         />
-        <Result state={state} done="Password changed. You will be asked to log in again." />
+        <Result
+          state={state}
+          done="Password changed. You will be asked to log in again."
+        />
         <div>
-          <Button type="submit" size="sm" className="cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            size="sm"
+            className="cursor-pointer"
+            disabled={pending}
+          >
             {pending ? "Saving" : "Change password"}
           </Button>
         </div>

@@ -24,14 +24,14 @@ describe("checkSelfReferralEmail", () => {
   it("flags a match, keyed with the raw buyer email and the affiliate's stored email", () => {
     const affiliate = affiliateFixture({ email: "sarah@example.com" });
     expect(checkSelfReferralEmail(affiliate, "sarah@example.com")).toBe(
-      "email:sarah@example.com sarah@example.com"
+      "email:sarah@example.com sarah@example.com",
     );
   });
 
   it("matches case-insensitively but keeps the raw buyer email in the token", () => {
     const affiliate = affiliateFixture({ email: "sarah@example.com" });
     expect(checkSelfReferralEmail(affiliate, "Sarah@Example.com")).toBe(
-      "email:Sarah@Example.com sarah@example.com"
+      "email:Sarah@Example.com sarah@example.com",
     );
   });
 
@@ -57,7 +57,9 @@ describe("checkPaymentMethodOverlap", () => {
       },
       paymentMethods: {
         list: vi.fn(async ({ customer }: { customer: string }) => ({
-          data: (opts.fingerprintsByCustomer[customer] ?? []).map((fp) => ({ card: { fingerprint: fp } })),
+          data: (opts.fingerprintsByCustomer[customer] ?? []).map((fp) => ({
+            card: { fingerprint: fp },
+          })),
         })),
       },
     };
@@ -66,7 +68,14 @@ describe("checkPaymentMethodOverlap", () => {
   it("returns null when there is no buyer fingerprint to check", async () => {
     const affiliate = affiliateFixture();
     const stripe = stripeStub({ customers: [], fingerprintsByCustomer: {} });
-    expect(await checkPaymentMethodOverlap(stripe as never, affiliate, null, "cus_buyer")).toBeNull();
+    expect(
+      await checkPaymentMethodOverlap(
+        stripe as never,
+        affiliate,
+        null,
+        "cus_buyer",
+      ),
+    ).toBeNull();
     expect(stripe.customers.list).not.toHaveBeenCalled();
   });
 
@@ -76,7 +85,12 @@ describe("checkPaymentMethodOverlap", () => {
       customers: [{ id: "cus_affiliate" }],
       fingerprintsByCustomer: { cus_affiliate: ["fp_shared"] },
     });
-    const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
+    const result = await checkPaymentMethodOverlap(
+      stripe as never,
+      affiliate,
+      "fp_shared",
+      "cus_buyer",
+    );
     expect(result).toBe("card");
   });
 
@@ -86,7 +100,12 @@ describe("checkPaymentMethodOverlap", () => {
       customers: [{ id: "cus_buyer" }],
       fingerprintsByCustomer: { cus_buyer: ["fp_shared"] },
     });
-    const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
+    const result = await checkPaymentMethodOverlap(
+      stripe as never,
+      affiliate,
+      "fp_shared",
+      "cus_buyer",
+    );
     expect(result).toBeNull();
   });
 
@@ -96,30 +115,60 @@ describe("checkPaymentMethodOverlap", () => {
       customers: [{ id: "cus_affiliate" }],
       fingerprintsByCustomer: { cus_affiliate: ["fp_other"] },
     });
-    const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
+    const result = await checkPaymentMethodOverlap(
+      stripe as never,
+      affiliate,
+      "fp_shared",
+      "cus_buyer",
+    );
     expect(result).toBeNull();
   });
 
   it("returns null and does not throw when the key cannot read the affiliate's cards", async () => {
     const affiliate = affiliateFixture();
     const stripe = {
-      customers: { list: vi.fn(async () => { throw Object.assign(new Error("no access"), { type: "StripePermissionError", statusCode: 403 }); }) },
+      customers: {
+        list: vi.fn(async () => {
+          throw Object.assign(new Error("no access"), {
+            type: "StripePermissionError",
+            statusCode: 403,
+          });
+        }),
+      },
       paymentMethods: { list: vi.fn() },
     };
-    const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
+    const result = await checkPaymentMethodOverlap(
+      stripe as never,
+      affiliate,
+      "fp_shared",
+      "cus_buyer",
+    );
     expect(result).toBeNull();
   });
 });
 
 describe("resolveInvoiceFingerprint", () => {
   it("reads the card behind the payment that paid the invoice", async () => {
-    const list = vi.fn(async () => ({ data: [{ payment: { type: "payment_intent", payment_intent: "pi_1" } }] }));
-    const retrieve = vi.fn(async () => ({ id: "pi_1", payment_method: { id: "pm_1", card: { fingerprint: "fp_1" } } }));
+    const list = vi.fn(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_1" } }],
+    }));
+    const retrieve = vi.fn(async () => ({
+      id: "pi_1",
+      payment_method: { id: "pm_1", card: { fingerprint: "fp_1" } },
+    }));
     const stripe = { invoicePayments: { list }, paymentIntents: { retrieve } };
 
-    expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBe("fp_1");
-    expect(list).toHaveBeenCalledWith({ invoice: "in_1", status: "paid", limit: 1 });
-    expect(retrieve).toHaveBeenCalledWith("pi_1", { expand: ["payment_method"] });
+    expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBe(
+      "fp_1",
+    );
+    expect(list).toHaveBeenCalledWith({
+      invoice: "in_1",
+      status: "paid",
+      limit: 1,
+    });
+    expect(retrieve).toHaveBeenCalledWith("pi_1", {
+      expand: ["payment_method"],
+    });
   });
 
   it("returns null when the invoice has no payment on record", async () => {
@@ -134,11 +183,20 @@ describe("resolveInvoiceFingerprint", () => {
   it("returns null and does not throw when the key cannot read the payment", async () => {
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     const stripe = {
-      invoicePayments: { list: vi.fn(async () => { throw Object.assign(new Error("no access"), { type: "StripePermissionError", statusCode: 403 }); }) },
+      invoicePayments: {
+        list: vi.fn(async () => {
+          throw Object.assign(new Error("no access"), {
+            type: "StripePermissionError",
+            statusCode: 403,
+          });
+        }),
+      },
       paymentIntents: { retrieve: vi.fn() },
     };
     try {
-      expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBeNull();
+      expect(
+        await resolveInvoiceFingerprint(stripe as never, "in_1"),
+      ).toBeNull();
       expect(warnings).toHaveBeenCalledTimes(1);
       expect(warnings.mock.calls[0][0]).toContain("in_1");
     } finally {

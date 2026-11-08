@@ -16,7 +16,13 @@ import {
 } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { signupLinkFor } from "@/lib/url";
-import { formatCount, formatMoney, money, moneyHint, prefer } from "@/lib/format";
+import {
+  formatCount,
+  formatMoney,
+  money,
+  moneyHint,
+  prefer,
+} from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { Light } from "@/components/dashboard/Light";
@@ -66,7 +72,9 @@ export default async function ProductOverviewPage({
 
   if (!onboarding.onboardingCompletedAt) {
     const next = resumeStep(setup, null);
-    redirect(next ? stepPath(merchant.slug, next) : `/onboarding/${merchant.slug}`);
+    redirect(
+      next ? stepPath(merchant.slug, next) : `/onboarding/${merchant.slug}`,
+    );
   }
 
   const window = resolveRange(range, new Date(), merchant.createdAt);
@@ -81,30 +89,54 @@ export default async function ProductOverviewPage({
   // lines on a ledger.
   const currency = pickCurrency(metrics.currencies, query.currency);
   const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
-  const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
+  const empty =
+    metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
   const signupLink = setup.firstProgramSlug
-    ? signupLinkFor(merchant.domain, setup.firstProgramSlug, setup.firstProgramSlug)
+    ? signupLinkFor(
+        merchant.domain,
+        setup.firstProgramSlug,
+        setup.firstProgramSlug,
+      )
     : null;
 
   // The banner onboarding hands over. It stays until somebody signs up or the
   // Owner dismisses it: a screen of zeroes with no next action is what it
   // exists to prevent.
   const showWelcome =
-    signupLink !== null && !onboarding.welcomeDismissedAt && setup.affiliateCount === 0;
+    signupLink !== null &&
+    !onboarding.welcomeDismissedAt &&
+    setup.affiliateCount === 0;
 
   // What the tiles compare against, said the way the picker says it, so
   // "vs last 30 days" under a figure is the same words as the choice above.
-  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^today$/, "yesterday").replace(/^yesterday$/, "the day before");
-  const revenueNow = currency ? (metrics.current.amounts[currency]?.gross ?? 0) : 0;
-  const revenueBefore = currency ? metrics.previous?.amounts[currency]?.gross : null;
+  const against =
+    range === "all"
+      ? ""
+      : rangeLabel(range)
+          .toLowerCase()
+          .replace(/^last /, "previous ")
+          .replace(/^this /, "previous ")
+          .replace(/^today$/, "yesterday")
+          .replace(/^yesterday$/, "the day before");
+  const revenueNow = currency
+    ? (metrics.current.amounts[currency]?.gross ?? 0)
+    : 0;
+  const revenueBefore = currency
+    ? metrics.previous?.amounts[currency]?.gross
+    : null;
   const delta = (now: number, before: number | null | undefined) =>
-    range === "all" ? undefined : { percent: change(now, before ?? 0), against };
+    range === "all"
+      ? undefined
+      : { percent: change(now, before ?? 0), against };
 
   const attention = [
     payableTotal > 0 && {
       icon: Wallet,
-      title: payableTotal === 1 ? "1 commission is payable" : `${formatCount(payableTotal)} commissions are payable`,
+      title:
+        payableTotal === 1
+          ? "1 commission is payable"
+          : `${formatCount(payableTotal)} commissions are payable`,
       detail: "Pay them and mark them paid",
       href: `/dashboard/products/${merchant.slug}/payouts`,
     },
@@ -122,13 +154,13 @@ export default async function ProductOverviewPage({
 
   return (
     <Page>
-      <PageTitle
-        title="Overview"
-        actions={<RangePicker value={range} />}
-      />
+      <PageTitle title="Overview" actions={<RangePicker value={range} />} />
       {celebrate && <TrackingVerified merchantId={merchant.id} />}
       {showWelcome && (
-        <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={signupLink} />
+        <Welcome
+          product={{ id: merchant.id, slug: merchant.slug }}
+          link={signupLink}
+        />
       )}
 
       <Tiles>
@@ -147,7 +179,11 @@ export default async function ProductOverviewPage({
         <StatTile
           label="Revenue"
           value={currency ? formatMoney(revenueNow, currency) : "0.00"}
-          series={currency ? metrics.series.map((d) => d.amounts[currency]?.gross ?? 0) : undefined}
+          series={
+            currency
+              ? metrics.series.map((d) => d.amounts[currency]?.gross ?? 0)
+              : undefined
+          }
           delta={currency ? delta(revenueNow, revenueBefore) : undefined}
         />
         <StatTile
@@ -166,7 +202,12 @@ export default async function ProductOverviewPage({
         <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
           <Section
             title="Clicks and revenue"
-            actions={<CurrencyPicker value={currency ?? ""} options={metrics.currencies} />}
+            actions={
+              <CurrencyPicker
+                value={currency ?? ""}
+                options={metrics.currencies}
+              />
+            }
             className="min-h-[300px]"
             fill
           >
@@ -193,9 +234,17 @@ export default async function ProductOverviewPage({
       {empty && (
         <Section>
           <div className="flex items-center gap-3 text-sm">
-            <Light result={{ ok: setup.trackingStatus !== "not-started", detail: "" }} label="Tracking" />
+            <Light
+              result={{
+                ok: setup.trackingStatus !== "not-started",
+                detail: "",
+              }}
+              label="Tracking"
+            />
             <span className="text-muted-foreground">
-              {setup.trackingStatus === "not-started" ? "no clicks yet" : "waiting for a first sale"}
+              {setup.trackingStatus === "not-started"
+                ? "no clicks yet"
+                : "waiting for a first sale"}
             </span>
           </div>
         </Section>

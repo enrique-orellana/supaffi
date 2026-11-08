@@ -41,11 +41,16 @@ export function invoiceLine(opts: LineOptions): Stripe.InvoiceLineItem {
   const source = opts.source ?? "subscription_item";
   const proration = opts.proration ?? false;
   const subscription =
-    opts.subscription !== undefined ? opts.subscription : source === "subscription_item" ? LINE_SUBSCRIPTION_ID : null;
+    opts.subscription !== undefined
+      ? opts.subscription
+      : source === "subscription_item"
+        ? LINE_SUBSCRIPTION_ID
+        : null;
 
   let parent: unknown;
   if (source === "none") parent = null;
-  else if (source === "unknown") parent = { type: "license_fee_subscription_details" };
+  else if (source === "unknown")
+    parent = { type: "license_fee_subscription_details" };
   else if (source === "subscription_item") {
     parent = {
       type: "subscription_item_details",
@@ -62,7 +67,12 @@ export function invoiceLine(opts: LineOptions): Stripe.InvoiceLineItem {
     parent = {
       type: "invoice_item_details",
       subscription_item_details: null,
-      invoice_item_details: { invoice_item: "ii_one_off", subscription, proration, proration_details: null },
+      invoice_item_details: {
+        invoice_item: "ii_one_off",
+        subscription,
+        proration,
+        proration_details: null,
+      },
     };
   }
 
@@ -76,7 +86,11 @@ export function invoiceLine(opts: LineOptions): Stripe.InvoiceLineItem {
     currency: "eur",
     discount_amounts: discount ? [discountEntry] : [],
     pretax_credit_amounts:
-      opts.creditsIn === "discount_amounts_only" ? null : discount ? [{ ...discountEntry, type: "discount" }] : [],
+      opts.creditsIn === "discount_amounts_only"
+        ? null
+        : discount
+          ? [{ ...discountEntry, type: "discount" }]
+          : [],
     parent,
     pricing:
       opts.product === null
@@ -84,7 +98,10 @@ export function invoiceLine(opts: LineOptions): Stripe.InvoiceLineItem {
         : {
             type: "price_details",
             unit_amount_decimal: null,
-            price_details: { price: "price_basic", product: opts.product ?? PRODUCT_ID },
+            price_details: {
+              price: "price_basic",
+              product: opts.product ?? PRODUCT_ID,
+            },
           },
     taxes: [
       ...(opts.inclusiveTax ? [tax(opts.inclusiveTax, "inclusive")] : []),

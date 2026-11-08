@@ -5,12 +5,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // one failing product never stops the next.
 const findUnique = vi.fn();
 const findMany = vi.fn();
-vi.mock("@/lib/db", () => ({ db: { paymentConnection: { findUnique, findMany } } }));
-vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => `plain:${value}` }));
+vi.mock("@/lib/db", () => ({
+  db: { paymentConnection: { findUnique, findMany } },
+}));
+vi.mock("@/lib/crypto", () => ({
+  decrypt: (value: string) => `plain:${value}`,
+}));
 
-const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents } = await import("@/lib/worker/webhookEvents");
+const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents } =
+  await import("@/lib/worker/webhookEvents");
 
-const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refunded", "customer.subscription.deleted"];
+const OLD_EVENTS = [
+  "checkout.session.completed",
+  "invoice.paid",
+  "charge.refunded",
+  "customer.subscription.deleted",
+];
 
 function connection(merchantId: string, extra: Record<string, unknown> = {}) {
   return {
@@ -35,10 +45,17 @@ describe("upgradeAllWebhookEvents", () => {
 
   it("upgrades each product in turn with its own key and warns only about a real problem", async () => {
     const rows = { a: connection("a"), b: connection("b"), c: connection("c") };
-    findMany.mockResolvedValue([{ merchantId: "a" }, { merchantId: "b" }, { merchantId: "c" }]);
+    findMany.mockResolvedValue([
+      { merchantId: "a" },
+      { merchantId: "b" },
+      { merchantId: "c" },
+    ]);
     findUnique.mockImplementation(
-      async ({ where }: { where: { merchantId_provider: { merchantId: keyof typeof rows } } }) =>
-        rows[where.merchantId_provider.merchantId]
+      async ({
+        where,
+      }: {
+        where: { merchantId_provider: { merchantId: keyof typeof rows } };
+      }) => rows[where.merchantId_provider.merchantId],
     );
 
     const keys: string[] = [];
@@ -47,12 +64,18 @@ describe("upgradeAllWebhookEvents", () => {
       return {
         webhookEndpoints: {
           retrieve: async (id: string) => {
-            if (key === "plain:key-b") throw Object.assign(new Error("no"), { type: "StripeConnectionError" });
+            if (key === "plain:key-b")
+              throw Object.assign(new Error("no"), {
+                type: "StripeConnectionError",
+              });
             return { id, url: "", enabled_events: OLD_EVENTS };
           },
           list: async () => ({ data: [] }),
           update: async () => {
-            if (key === "plain:key-c") throw Object.assign(new Error("no"), { type: "StripePermissionError" });
+            if (key === "plain:key-c")
+              throw Object.assign(new Error("no"), {
+                type: "StripePermissionError",
+              });
             return {};
           },
         },
@@ -64,17 +87,27 @@ describe("upgradeAllWebhookEvents", () => {
     expect(keys).toEqual(["plain:key-a", "plain:key-b", "plain:key-c"]);
     // A network failure says nothing about the endpoint, so it is not warned about.
     expect(console.warn).toHaveBeenCalledTimes(1);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("merchant c"));
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Replace the key in settings"));
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("merchant c"),
+    );
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Replace the key in settings"),
+    );
   });
 
   it("never throws when the product list cannot be read", async () => {
     findMany.mockRejectedValue(new Error("database down"));
-    await expect(upgradeAllWebhookEvents(() => { throw new Error("should not be called"); })).resolves.toBeUndefined();
+    await expect(
+      upgradeAllWebhookEvents(() => {
+        throw new Error("should not be called");
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("skips a product on a local address", async () => {
-    findUnique.mockResolvedValue(connection("a", { merchant: { domain: "shop.localhost:3000" } }));
+    findUnique.mockResolvedValue(
+      connection("a", { merchant: { domain: "shop.localhost:3000" } }),
+    );
     const makeClient = vi.fn();
     await upgradeMerchantWebhookEvents("a", makeClient);
     expect(makeClient).not.toHaveBeenCalled();
@@ -86,22 +119,33 @@ describe("upgradeAllWebhookEvents", () => {
     await upgradeMerchantWebhookEvents("a", () => ({
       webhookEndpoints: {
         retrieve: async () => {
-          throw Object.assign(new Error("no"), { code: "resource_missing", statusCode: 404 });
+          throw Object.assign(new Error("no"), {
+            code: "resource_missing",
+            statusCode: 404,
+          });
         },
         list: async () => ({ data: [] }),
         update: async () => ({}),
       },
     }));
     expect(console.warn).toHaveBeenCalledTimes(1);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("merchant a"));
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Add the webhook again"));
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("merchant a"),
+    );
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Add the webhook again"),
+    );
   });
 
   it("does not warn once the endpoint already has every event", async () => {
     findUnique.mockResolvedValue(connection("a"));
     await upgradeMerchantWebhookEvents("a", () => ({
       webhookEndpoints: {
-        retrieve: async (id: string) => ({ id, url: "", enabled_events: ["*"] }),
+        retrieve: async (id: string) => ({
+          id,
+          url: "",
+          enabled_events: ["*"],
+        }),
         list: async () => ({ data: [] }),
         update: async () => ({}),
       },

@@ -5,9 +5,9 @@ const BASE = "/dashboard/products/acme/commissions";
 
 describe("safeListHref", () => {
   it("keeps the list the owner was on, query and all", () => {
-    expect(safeListHref(`${BASE}?status=PAYABLE&affiliate=abc&page=2`, BASE)).toBe(
-      `${BASE}?status=PAYABLE&affiliate=abc&page=2`
-    );
+    expect(
+      safeListHref(`${BASE}?status=PAYABLE&affiliate=abc&page=2`, BASE),
+    ).toBe(`${BASE}?status=PAYABLE&affiliate=abc&page=2`);
   });
 
   it("keeps a bare list href", () => {
@@ -28,7 +28,9 @@ describe("safeListHref", () => {
   });
 
   it("falls back on another product's ledger", () => {
-    expect(safeListHref("/dashboard/products/other/commissions", BASE)).toBe(BASE);
+    expect(safeListHref("/dashboard/products/other/commissions", BASE)).toBe(
+      BASE,
+    );
   });
 
   it("falls back on a path that only starts with the ledger", () => {

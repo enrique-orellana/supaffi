@@ -333,7 +333,10 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     text-wrap: balance;
   }
   p {
@@ -352,35 +355,63 @@
 --------------------------------------------------------------------------- */
 
 @keyframes supaffi-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Plays on the row that just flipped, once. The tint fades out rather than
    in, so the row is already correct when the animation starts and the flash
    is pure notification. */
 @keyframes supaffi-flash {
-  from { background-color: var(--status-success-bg); }
-  to { background-color: transparent; }
+  from {
+    background-color: var(--status-success-bg);
+  }
+  to {
+    background-color: transparent;
+  }
 }
 
 /* The checkmark draws itself. stroke-dashoffset is the only property that
    gets a tick to appear as a stroke rather than as a whole glyph. */
 @keyframes supaffi-draw {
-  from { stroke-dashoffset: 16; }
-  to { stroke-dashoffset: 0; }
+  from {
+    stroke-dashoffset: 16;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
-.supaffi-pulse { animation: supaffi-pulse 1.8s var(--ease-in-out) infinite; }
-.supaffi-flash { animation: supaffi-flash 400ms var(--ease-out) 1; }
-.supaffi-draw { stroke-dasharray: 16; animation: supaffi-draw 280ms var(--ease-out) 1 both; }
+.supaffi-pulse {
+  animation: supaffi-pulse 1.8s var(--ease-in-out) infinite;
+}
+.supaffi-flash {
+  animation: supaffi-flash 400ms var(--ease-out) 1;
+}
+.supaffi-draw {
+  stroke-dasharray: 16;
+  animation: supaffi-draw 280ms var(--ease-out) 1 both;
+}
 
 @media (prefers-reduced-motion: reduce) {
   /* Fewer and gentler, not zero. The colour change survives because it is
      what carries the meaning; the movement and the looping do not. */
-  .supaffi-pulse { animation: none; opacity: 0.7; }
-  .supaffi-flash { animation: none; }
-  .supaffi-draw { animation: none; stroke-dasharray: none; }
+  .supaffi-pulse {
+    animation: none;
+    opacity: 0.7;
+  }
+  .supaffi-flash {
+    animation: none;
+  }
+  .supaffi-draw {
+    animation: none;
+    stroke-dasharray: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -402,13 +433,15 @@
     opacity: 1;
   }
   100% {
-    transform: translate3d(var(--confetti-dx), var(--confetti-dy), 0) rotate(var(--confetti-spin));
+    transform: translate3d(var(--confetti-dx), var(--confetti-dy), 0)
+      rotate(var(--confetti-spin));
     opacity: 0;
   }
 }
 
 .supaffi-confetti {
-  animation: supaffi-confetti var(--confetti-duration) linear var(--confetti-delay) 1 both;
+  animation: supaffi-confetti var(--confetti-duration) linear
+    var(--confetti-delay) 1 both;
 }
 
 /* The modal the confetti falls over. Scale from 0.96 rather than from
@@ -426,8 +459,12 @@
 }
 
 @keyframes supaffi-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* A panel that was not on the screen a moment ago: the checks, once a key
@@ -444,16 +481,26 @@
   }
 }
 
-.supaffi-modal-in { animation: supaffi-modal-in 220ms var(--ease-out) 1 both; }
-.supaffi-fade-in { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
-.supaffi-reveal { animation: supaffi-reveal 260ms var(--ease-out) 1 both; }
+.supaffi-modal-in {
+  animation: supaffi-modal-in 220ms var(--ease-out) 1 both;
+}
+.supaffi-fade-in {
+  animation: supaffi-fade-in 200ms var(--ease-out) 1 both;
+}
+.supaffi-reveal {
+  animation: supaffi-reveal 260ms var(--ease-out) 1 both;
+}
 
 /* A bar arriving. An animation rather than a transition, because the stagger
    lives in its delay: as a transition delay it stayed on the element and
    every later change, a hover among them, waited that long to start. */
 @keyframes supaffi-bar-grow {
-  from { transform: scaleY(0); }
-  to { transform: scaleY(1); }
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
 }
 
 .supaffi-bar {
@@ -463,8 +510,12 @@
 }
 
 @keyframes supaffi-line-draw {
-  from { stroke-dashoffset: 1; }
-  to { stroke-dashoffset: 0; }
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .supaffi-line {
@@ -473,8 +524,12 @@
 }
 
 @keyframes supaffi-area-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .supaffi-area {
@@ -501,12 +556,24 @@
 @media (prefers-reduced-motion: reduce) {
   /* No confetti at all: it is forty things moving at once and there is no
      gentler version of that. The mark still arrives, just without the pop. */
-  .supaffi-confetti { display: none; }
-  .supaffi-pop { animation: none; }
+  .supaffi-confetti {
+    display: none;
+  }
+  .supaffi-pop {
+    animation: none;
+  }
   /* The modal still fades, because appearing instantly over a blurred page is
      jarring in its own right. Only the movement goes. */
-  .supaffi-modal-in { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
+  .supaffi-modal-in {
+    animation: supaffi-fade-in 200ms var(--ease-out) 1 both;
+  }
   /* The rise goes, the fade stays: appearing instantly is its own jolt. */
-  .supaffi-reveal { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
-  .supaffi-bar, .supaffi-line, .supaffi-area { animation: none; }
+  .supaffi-reveal {
+    animation: supaffi-fade-in 200ms var(--ease-out) 1 both;
+  }
+  .supaffi-bar,
+  .supaffi-line,
+  .supaffi-area {
+    animation: none;
+  }
 }

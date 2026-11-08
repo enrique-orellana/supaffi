@@ -47,7 +47,12 @@ export function LinkDialog({
   onOpenChange,
 }: {
   websiteUrl: string;
-  link?: { id: string; code: string; destinationPath: string | null; isPrimary: boolean };
+  link?: {
+    id: string;
+    code: string;
+    destinationPath: string | null;
+    isPrimary: boolean;
+  };
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -64,7 +69,8 @@ export function LinkDialog({
   // Normalized the way validateLinkInput normalizes, so retyping the same code
   // in a different case is not a change and does not raise the warning.
   const normalized = code.trim().toLowerCase();
-  const codeChanged = link !== undefined && normalized !== link.code.trim().toLowerCase();
+  const codeChanged =
+    link !== undefined && normalized !== link.code.trim().toLowerCase();
 
   function setOpen(next: boolean) {
     // A cancelled edit must not leave its draft behind for the next open, and
@@ -83,9 +89,14 @@ export function LinkDialog({
   // if it were fine, so it falls back to the site root instead. The code is
   // stood in with a placeholder that always passes, so a code-only problem
   // does not also blank out a valid destination.
-  const destinationValidation = validateLinkInput({ code: "placeholder", destinationPath: destination });
+  const destinationValidation = validateLinkInput({
+    code: "placeholder",
+    destinationPath: destination,
+  });
   const previewDestination =
-    destinationValidation.error === null ? destinationValidation.destinationPath : null;
+    destinationValidation.error === null
+      ? destinationValidation.destinationPath
+      : null;
 
   const preview = linkUrl(websiteUrl, {
     code: normalized || "your-code",
@@ -160,7 +171,9 @@ export function LinkDialog({
               autoCapitalize="off"
               spellCheck={false}
             />
-            <p className="text-xs text-muted-foreground">Blank is the site root.</p>
+            <p className="text-xs text-muted-foreground">
+              Blank is the site root.
+            </p>
           </div>
 
           <p className="truncate rounded-(--radius) bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
@@ -175,20 +188,34 @@ export function LinkDialog({
 
           {codeChanged && (
             <p className="rounded-(--radius) bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
-              Anyone who already has your old link will stop earning you commission. Clicks
-              already recorded are safe.
+              Anyone who already has your old link will stop earning you
+              commission. Clicks already recorded are safe.
             </p>
           )}
 
           <DialogFooter>
             <DialogClose
-              render={<Button type="button" variant="outline" className="cursor-pointer" />}
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="cursor-pointer"
+                />
+              }
               disabled={isPending}
             >
               Cancel
             </DialogClose>
-            <Button type="submit" className="cursor-pointer" disabled={isPending}>
-              {!editing ? "Create link" : codeChanged ? "Change code" : "Save changes"}
+            <Button
+              type="submit"
+              className="cursor-pointer"
+              disabled={isPending}
+            >
+              {!editing
+                ? "Create link"
+                : codeChanged
+                  ? "Change code"
+                  : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

@@ -59,32 +59,37 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
+
+      - run: corepack enable
 
       # Lifecycle scripts off. Both Shai-Hulud waves worked by having a
       # dependency's install script read the runner's token, and this job holds
       # one. The only script we actually need is prisma generate, run
       # explicitly below where it is visible.
-      - run: npm ci --ignore-scripts
-      - run: npx prisma generate
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec prisma generate
 
       - name: Apply migrations
-        run: npx prisma migrate deploy
+        run: pnpm exec prisma migrate deploy
 
       # The database the migrations just built has to match the schema. If it
       # does not, a schema change shipped without its migration, and every
       # install would start on code that expects columns it does not have.
       - name: Check for a missing migration
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: pnpm exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: pnpm run typecheck
+
+      - name: Format check
+        run: pnpm run format:check
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
       - name: Build
-        run: npm run build
+        run: pnpm run build

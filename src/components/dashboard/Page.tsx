@@ -10,24 +10,53 @@ export function Page({ children }: { children: ReactNode }) {
   // Built to fit only where there is room to fit into. On a phone the
   // sections stack and the page scrolls; forcing the fit there squeezed the
   // chart under the card below it.
-  return <div className="flex min-h-0 w-full flex-col gap-6 lg:h-full">{children}</div>;
+  return (
+    <div className="flex min-h-0 w-full flex-col gap-6 lg:h-full">
+      {children}
+    </div>
+  );
 }
 
-export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
+export function PageTitle({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-4">
       <div className="flex flex-col gap-0.5">
-        <h1 className="text-[22px] font-medium tracking-tight text-balance">{title}</h1>
-        {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
+        <h1 className="text-[22px] font-medium tracking-tight text-balance">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-[13px] text-muted-foreground">{subtitle}</p>
+        )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      )}
     </header>
   );
 }
 
-export function Tiles({ children, columns = 4 }: { children: ReactNode; columns?: 3 | 4 }) {
+export function Tiles({
+  children,
+  columns = 4,
+}: {
+  children: ReactNode;
+  columns?: 3 | 4;
+}) {
   return (
-    <div className={cn("grid shrink-0 grid-cols-2 gap-3", columns === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4")}>
+    <div
+      className={cn(
+        "grid shrink-0 grid-cols-2 gap-3",
+        columns === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4",
+      )}
+    >
       {children}
     </div>
   );
@@ -57,7 +86,7 @@ export function Section({
       className={cn(
         "flex flex-col rounded-(--radius) border border-border bg-elevated",
         (scroll || fill) && "min-h-0 flex-1",
-        className
+        className,
       )}
     >
       {(title || actions) && (
@@ -71,7 +100,7 @@ export function Section({
           !flush && "px-5 pb-5",
           !flush && !title && !actions && "pt-5",
           (scroll || fill) && "flex min-h-0 flex-1 flex-col",
-          scroll && "overflow-auto"
+          scroll && "overflow-auto",
         )}
       >
         {children}

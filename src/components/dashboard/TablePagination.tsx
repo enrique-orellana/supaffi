@@ -59,11 +59,14 @@ export function TablePagination({
                 </PaginationItem>
               ) : (
                 <PaginationItem key={p}>
-                  <PaginationLink render={<Link href={hrefFor(p)} />} isActive={p === page}>
+                  <PaginationLink
+                    render={<Link href={hrefFor(p)} />}
+                    isActive={p === page}
+                  >
                     {p}
                   </PaginationLink>
                 </PaginationItem>
-              )
+              ),
             )}
             <PaginationItem>
               <PaginationNext

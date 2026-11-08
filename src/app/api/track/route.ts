@@ -44,93 +44,127 @@ export async function GET(req: NextRequest) {
   // would contradict what they were told. Retiring it still keeps the code
   // from ever resolving for someone else.
   const legacyValues = [...req.nextUrl.searchParams.entries()]
-    .filter(([parameter]) => parameter.toLowerCase() !== REFERRAL_QUERY_PARAM.toLowerCase() && parameter.toLowerCase() !== "token")
-    .map(([parameter, value]) => ({ parameter: parameter.toLowerCase(), value: value.toLowerCase() }));
+    .filter(
+      ([parameter]) =>
+        parameter.toLowerCase() !== REFERRAL_QUERY_PARAM.toLowerCase() &&
+        parameter.toLowerCase() !== "token",
+    )
+    .map(([parameter, value]) => ({
+      parameter: parameter.toLowerCase(),
+      value: value.toLowerCase(),
+    }));
   const [directCandidates, legacyCandidates] = await Promise.all([
-    referralCode ? db.affiliateLink.findMany({
-      where: { merchantId: merchant.id, OR: [{ code: referralCode }, { legacyAliases: { has: referralCode } }] },
-      select: {
-        id: true,
-        code: true,
-        legacyAliases: true,
-        legacyQueryParamAliases: true,
-        importSourceIdentity: true,
-        activeFrom: true,
-        activeUntil: true,
-        commissionRateOverride: true,
-        commissionDurationTypeOverride: true,
-        commissionDurationMonthsOverride: true,
-        attributionWindowDaysOverride: true,
-        holdingPeriodDaysOverride: true,
-        affiliate: {
+    referralCode
+      ? db.affiliateLink.findMany({
+          where: {
+            merchantId: merchant.id,
+            OR: [
+              { code: referralCode },
+              { legacyAliases: { has: referralCode } },
+            ],
+          },
           select: {
             id: true,
-            customCommissionRate: true,
-            program: {
+            code: true,
+            legacyAliases: true,
+            legacyQueryParamAliases: true,
+            importSourceIdentity: true,
+            activeFrom: true,
+            activeUntil: true,
+            commissionRateOverride: true,
+            commissionDurationTypeOverride: true,
+            commissionDurationMonthsOverride: true,
+            attributionWindowDaysOverride: true,
+            holdingPeriodDaysOverride: true,
+            affiliate: {
               select: {
-                defaultCommissionRate: true,
-                commissionDurationType: true,
-                commissionDurationMonths: true,
-                attributionWindowDays: true,
-                holdingPeriodDays: true,
+                id: true,
+                customCommissionRate: true,
+                program: {
+                  select: {
+                    defaultCommissionRate: true,
+                    commissionDurationType: true,
+                    commissionDurationMonths: true,
+                    attributionWindowDays: true,
+                    holdingPeriodDays: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-    }) : Promise.resolve([]),
-    legacyValues.length ? db.affiliateLink.findMany({
-      where: {
-        merchantId: merchant.id,
-        importSourceIdentity: { not: null },
-        OR: legacyValues.map(({ parameter, value }) => ({ legacyQueryParamAliases: { has: parameter }, legacyAliases: { has: value } })),
-      },
-      select: {
-        id: true,
-        code: true,
-        legacyAliases: true,
-        legacyQueryParamAliases: true,
-        importSourceIdentity: true,
-        activeFrom: true,
-        activeUntil: true,
-        commissionRateOverride: true,
-        commissionDurationTypeOverride: true,
-        commissionDurationMonthsOverride: true,
-        attributionWindowDaysOverride: true,
-        holdingPeriodDaysOverride: true,
-        affiliate: {
+        })
+      : Promise.resolve([]),
+    legacyValues.length
+      ? db.affiliateLink.findMany({
+          where: {
+            merchantId: merchant.id,
+            importSourceIdentity: { not: null },
+            OR: legacyValues.map(({ parameter, value }) => ({
+              legacyQueryParamAliases: { has: parameter },
+              legacyAliases: { has: value },
+            })),
+          },
           select: {
             id: true,
-            customCommissionRate: true,
-            program: {
+            code: true,
+            legacyAliases: true,
+            legacyQueryParamAliases: true,
+            importSourceIdentity: true,
+            activeFrom: true,
+            activeUntil: true,
+            commissionRateOverride: true,
+            commissionDurationTypeOverride: true,
+            commissionDurationMonthsOverride: true,
+            attributionWindowDaysOverride: true,
+            holdingPeriodDaysOverride: true,
+            affiliate: {
               select: {
-                defaultCommissionRate: true,
-                commissionDurationType: true,
-                commissionDurationMonths: true,
-                attributionWindowDays: true,
-                holdingPeriodDays: true,
+                id: true,
+                customCommissionRate: true,
+                program: {
+                  select: {
+                    defaultCommissionRate: true,
+                    commissionDurationType: true,
+                    commissionDurationMonths: true,
+                    attributionWindowDays: true,
+                    holdingPeriodDays: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-    }) : Promise.resolve([]),
+        })
+      : Promise.resolve([]),
   ]);
-  type Candidate = (typeof directCandidates)[number] | (typeof legacyCandidates)[number];
+  type Candidate =
+    (typeof directCandidates)[number] | (typeof legacyCandidates)[number];
   const matchingById = new Map<string, Candidate>();
   for (const candidate of directCandidates) {
-    if (referralCode && (candidate.code === referralCode || (candidate.importSourceIdentity !== null && candidate.legacyAliases.includes(referralCode)))) {
+    if (
+      referralCode &&
+      (candidate.code === referralCode ||
+        (candidate.importSourceIdentity !== null &&
+          candidate.legacyAliases.includes(referralCode)))
+    ) {
       matchingById.set(candidate.id, candidate);
     }
   }
   for (const candidate of legacyCandidates) {
     if (candidate.importSourceIdentity === null) continue;
-    const matches = legacyValues.some(({ parameter, value }) => candidate.legacyQueryParamAliases.includes(parameter) && candidate.legacyAliases.includes(value));
+    const matches = legacyValues.some(
+      ({ parameter, value }) =>
+        candidate.legacyQueryParamAliases.includes(parameter) &&
+        candidate.legacyAliases.includes(value),
+    );
     if (matches) matchingById.set(candidate.id, candidate);
   }
   const matching = [...matchingById.values()];
   const link = matching.length === 1 ? matching[0] : null;
-  if (!link || (link.activeFrom && link.activeFrom > new Date()) || (link.activeUntil && link.activeUntil < new Date())) {
+  if (
+    !link ||
+    (link.activeFrom && link.activeFrom > new Date()) ||
+    (link.activeUntil && link.activeUntil < new Date())
+  ) {
     return new NextResponse(null, { status: 404 });
   }
 
@@ -160,28 +194,35 @@ export async function GET(req: NextRequest) {
   // with no X-Forwarded-For), and every visitor would then share one key and
   // be throttled together.
   const address = clientAddress(req.headers);
-  const throttled = address !== null && !isPrivateAddress(address) ? address : null;
+  const throttled =
+    address !== null && !isPrivateAddress(address) ? address : null;
   if (throttled && isClickLimited(throttled)) {
     return new NextResponse(null, { status: 429, headers: CORS });
   }
 
   const referralToken = randomUUID();
   const createdAt = new Date();
-  const attributionWindowDays = link.attributionWindowDaysOverride ?? link.affiliate.program.attributionWindowDays;
+  const attributionWindowDays =
+    link.attributionWindowDaysOverride ??
+    link.affiliate.program.attributionWindowDays;
   const commissionRateSnapshot =
     link.commissionRateOverride ??
     link.affiliate.customCommissionRate ??
     link.affiliate.program.defaultCommissionRate;
   const commissionDurationTypeSnapshot =
-    link.commissionDurationTypeOverride ?? link.affiliate.program.commissionDurationType;
-  const commissionDurationMonthsSnapshot = commissionDurationTypeSnapshot === "FIXED_MONTHS"
-    ? link.commissionDurationTypeOverride === "FIXED_MONTHS"
-      ? link.commissionDurationMonthsOverride
-      : link.affiliate.program.commissionDurationMonths
-    : null;
+    link.commissionDurationTypeOverride ??
+    link.affiliate.program.commissionDurationType;
+  const commissionDurationMonthsSnapshot =
+    commissionDurationTypeSnapshot === "FIXED_MONTHS"
+      ? link.commissionDurationTypeOverride === "FIXED_MONTHS"
+        ? link.commissionDurationMonthsOverride
+        : link.affiliate.program.commissionDurationMonths
+      : null;
   const holdingPeriodDaysSnapshot =
     link.holdingPeriodDaysOverride ?? link.affiliate.program.holdingPeriodDays;
-  const expiresAt = new Date(createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(
+    createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000,
+  );
 
   if (throttled) rememberClick(throttled);
   await db.click.create({

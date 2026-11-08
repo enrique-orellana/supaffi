@@ -11,7 +11,10 @@ const MAX_BYTES = 2 * 1024 * 1024;
  * `response.text()` when the runtime gives no readable stream body, cut to
  * the same cap so no path returns more than `capBytes`.
  */
-async function readCapped(response: Response, capBytes: number): Promise<string> {
+async function readCapped(
+  response: Response,
+  capBytes: number,
+): Promise<string> {
   if (!response.body) return (await response.text()).slice(0, capBytes);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -47,7 +50,7 @@ async function readCapped(response: Response, capBytes: number): Promise<string>
 export async function scriptFound(
   websiteUrl: string,
   trackingDomain: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
 ): Promise<CheckResult> {
   let url: URL;
   try {
@@ -74,7 +77,10 @@ export async function scriptFound(
   }
 
   const escaped = trackingDomain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const tag = new RegExp(`<script[^>]*src\\s*=\\s*["']https?://${escaped}/track\\.js["'][^>]*>`, "i");
+  const tag = new RegExp(
+    `<script[^>]*src\\s*=\\s*["']https?://${escaped}/track\\.js["'][^>]*>`,
+    "i",
+  );
   return tag.test(html)
     ? { ok: true, detail: `Found on ${url.hostname}` }
     : { ok: false, detail: `Not found on ${url.hostname}` };

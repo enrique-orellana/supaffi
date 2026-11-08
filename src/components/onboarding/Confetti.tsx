@@ -12,7 +12,13 @@ const COUNT = 44;
 
 // Green leads, because this is the app's first win. The rest are there so it
 // reads as confetti rather than as a progress bar exploding.
-const COLORS = ["var(--status-success)", "#4ade80", "var(--accent-400)", "var(--accent-600)", "#fbbf24"];
+const COLORS = [
+  "var(--status-success)",
+  "#4ade80",
+  "var(--accent-400)",
+  "var(--accent-600)",
+  "#fbbf24",
+];
 
 /** Bit-mixed integer hash. Identical on every engine, unlike Math.sin tricks. */
 function noise(index: number, salt: number): number {
@@ -26,7 +32,10 @@ export function Confetti() {
     // Covers the viewport. The previous version clipped itself out of
     // existence: it was a zero-height box with overflow hidden, so every
     // particle was cropped away on the frame it was created.
-    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden" aria-hidden>
+    <div
+      className="pointer-events-none fixed inset-0 z-50 overflow-hidden"
+      aria-hidden
+    >
       {Array.from({ length: COUNT }, (_, i) => {
         const left = noise(i, 1) * 100;
         const drift = (noise(i, 2) - 0.5) * 320;

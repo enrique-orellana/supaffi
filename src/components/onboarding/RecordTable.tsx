@@ -38,7 +38,9 @@ function Row({ record }: { record: RecordRow }) {
 
   return (
     <div className="group flex h-11 items-center gap-4 px-4 transition-colors duration-100 ease-(--ease-out) hover:bg-neutral-50">
-      <dt className="w-18 shrink-0 text-[13px] text-muted-foreground">{record.label}</dt>
+      <dt className="w-18 shrink-0 text-[13px] text-muted-foreground">
+        {record.label}
+      </dt>
       <dd className="flex min-w-0 flex-1 items-center gap-2">
         {record.value === null ? (
           <span
@@ -50,7 +52,9 @@ function Row({ record }: { record: RecordRow }) {
             {record.value}
           </span>
         ) : (
-          <span className="min-w-0 truncate font-mono text-[13px] text-neutral-800">{record.value}</span>
+          <span className="min-w-0 truncate font-mono text-[13px] text-neutral-800">
+            {record.value}
+          </span>
         )}
         {canCopy && (
           <button
@@ -60,10 +64,14 @@ function Row({ record }: { record: RecordRow }) {
             className={cn(
               "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-(--radius) text-neutral-500",
               "opacity-0 transition-[opacity,color,background-color] duration-100 ease-(--ease-out)",
-              "group-hover:opacity-100 hover:bg-neutral-200 hover:text-neutral-900 focus-visible:opacity-100"
+              "group-hover:opacity-100 hover:bg-neutral-200 hover:text-neutral-900 focus-visible:opacity-100",
             )}
           >
-            {copied ? <Check className="size-3.5 text-status-success" /> : <Copy className="size-3.5" />}
+            {copied ? (
+              <Check className="size-3.5 text-status-success" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
           </button>
         )}
       </dd>

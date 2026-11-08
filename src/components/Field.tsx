@@ -5,7 +5,15 @@ import { Label } from "@/components/ui/label";
  * A label above its control: the one field layout every form uses, from
  * setup and login to onboarding and the program editor.
  */
-export function Field({ label, htmlFor, children }: { label: ReactNode; htmlFor?: string; children: ReactNode }) {
+export function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: ReactNode;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>

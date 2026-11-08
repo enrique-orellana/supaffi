@@ -18,7 +18,9 @@ import type { Ctx } from "../checks";
 export async function Tracking({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   const product = { id: merchant.id, slug: merchant.slug };
-  const trackingGuides = listPaymentTrackingGuides(ctx.setup.connectedPaymentProviders);
+  const trackingGuides = listPaymentTrackingGuides(
+    ctx.setup.connectedPaymentProviders,
+  );
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
@@ -27,7 +29,9 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
   // Finishing happens on this screen, so the reward does too. The step stays
   // rendered behind the glass rather than being replaced by a new page.
   const program = ctx.onboardingCompletedAt
-    ? (await listProgramsForMerchant(ctx.ownerId, merchant.id)).find((p) => p.signupOpen)
+    ? (await listProgramsForMerchant(ctx.ownerId, merchant.id)).find(
+        (p) => p.signupOpen,
+      )
     : undefined;
 
   return (
@@ -36,7 +40,12 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
       title="Put the tracking script on your site"
       lede="Paste this in the head of every page an affiliate link can land on."
       action={
-        <form action={finishOnboardingAction.bind(null, { id: merchant.id, slug: merchant.slug })}>
+        <form
+          action={finishOnboardingAction.bind(null, {
+            id: merchant.id,
+            slug: merchant.slug,
+          })}
+        >
           <Button type="submit" size="lg">
             Finish
           </Button>
@@ -47,7 +56,10 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
       <CodeBlock
         title="Tracking script"
         code={scriptTag}
-        prompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+        prompt={trackingScriptPrompt({
+          websiteUrl: merchant.websiteUrl,
+          scriptTag,
+        })}
       />
       <TaskCard>
         <TaskCardSection sunken>

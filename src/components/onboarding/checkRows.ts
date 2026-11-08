@@ -44,7 +44,10 @@ export type CheckRow = {
  * That coupling is by literal, so `test/components/onboarding/checkState.test.ts`
  * pins it: rename a detail there and the test says so.
  */
-export function checkState(result: CheckResult, pendingWhen: (detail: string) => boolean): CheckState {
+export function checkState(
+  result: CheckResult,
+  pendingWhen: (detail: string) => boolean,
+): CheckState {
   if (result.ok) return "ok";
   // Nobody has looked yet: the screen rendered before its checks did. Always
   // a wait, whatever the check, and never a cross.
@@ -64,7 +67,9 @@ export const dnsPending = (detail: string) => detail.startsWith("No record");
  * red cross here sends the Owner looking for a job that does not exist.
  */
 export const certificatePending = (detail: string) =>
-  detail.startsWith("Being set up") || detail.startsWith("Waiting") || detail === "Nothing answered";
+  detail.startsWith("Being set up") ||
+  detail.startsWith("Waiting") ||
+  detail === "Nothing answered";
 
 /**
  * `stripeKeyWorks`: nothing stored, or Stripe never answered. A key Stripe
@@ -78,9 +83,14 @@ export const stripeKeyPending = (detail: string) =>
  * the tracking step is the state every owner arrives in, before they have
  * pasted anything. A site that could not be loaded at all is a failure.
  */
-export const trackingPending = (detail: string) => detail.startsWith("Not found");
+export const trackingPending = (detail: string) =>
+  detail.startsWith("Not found");
 
-type DnsChecks = { resolves: CheckResult; https: CheckResult; certificate: CheckResult };
+type DnsChecks = {
+  resolves: CheckResult;
+  https: CheckResult;
+  certificate: CheckResult;
+};
 
 /**
  * The subdomain's two rows, in one place because the onboarding step and the

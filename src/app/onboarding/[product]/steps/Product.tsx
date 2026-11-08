@@ -2,9 +2,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { EditableField } from "@/components/onboarding/EditableField";
 import { StepShell } from "@/components/onboarding/StepShell";
-import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
+import {
+  TaskCard,
+  TaskCardHeader,
+  TaskCardSection,
+} from "@/components/onboarding/TaskCard";
 import { displayStep, nextStep, stepPath } from "@/lib/onboarding";
-import { updateProductNameAction, updateProductWebsiteAction } from "../actions";
+import {
+  updateProductNameAction,
+  updateProductWebsiteAction,
+} from "../actions";
 import type { Ctx } from "../checks";
 
 /**
@@ -24,7 +31,10 @@ export function Product({ ctx }: { ctx: Ctx }) {
       step={displayStep("product")}
       title="What are you promoting?"
       action={
-        <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>
+        <Button
+          size="lg"
+          render={<Link href={stepPath(merchant.slug, next)} />}
+        >
           Continue
         </Button>
       }
@@ -32,11 +42,22 @@ export function Product({ ctx }: { ctx: Ctx }) {
       <TaskCard>
         <TaskCardHeader title="Name" />
         <TaskCardSection>
-          <EditableField value={merchant.name} action={updateProductNameAction.bind(null, product)} label="Product name" mono={false} bare />
+          <EditableField
+            value={merchant.name}
+            action={updateProductNameAction.bind(null, product)}
+            label="Product name"
+            mono={false}
+            bare
+          />
         </TaskCardSection>
         <TaskCardHeader title="Website" />
         <TaskCardSection>
-          <EditableField value={merchant.websiteUrl} action={updateProductWebsiteAction.bind(null, product)} label="Website" bare />
+          <EditableField
+            value={merchant.websiteUrl}
+            action={updateProductWebsiteAction.bind(null, product)}
+            label="Website"
+            bare
+          />
         </TaskCardSection>
       </TaskCard>
     </StepShell>

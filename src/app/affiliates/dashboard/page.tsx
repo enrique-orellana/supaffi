@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { requireAffiliate } from "@/lib/affiliateAuth";
-import { getAffiliateMetrics, pickCurrency, rangeFromQuery, type CurrencyTotal } from "@/lib/analytics";
+import {
+  getAffiliateMetrics,
+  pickCurrency,
+  rangeFromQuery,
+  type CurrencyTotal,
+} from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";
 import { termsLine } from "@/lib/format";
@@ -26,7 +31,8 @@ function addTotals(...lists: CurrencyTotal[][]): CurrencyTotal[] {
     for (const entry of list) {
       minor.set(
         entry.currency,
-        (minor.get(entry.currency) ?? 0) + Math.round(Number(entry.total) * 100)
+        (minor.get(entry.currency) ?? 0) +
+          Math.round(Number(entry.total) * 100),
       );
     }
   }
@@ -47,7 +53,10 @@ export default async function AffiliateOverviewPage({
   const [metrics, links, commissions, referrals, program] = await Promise.all([
     getAffiliateMetrics(affiliateId, range),
     listLinksWithStats(affiliateId),
-    listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
+    listAffiliateCommissions(affiliateId, {
+      page: 1,
+      pageSize: RECENT_COMMISSIONS,
+    }),
     referralCounts(affiliateId),
     // The terms line, and the retention card: on a one-time program nobody
     // is "still paying", so that card is not shown.
@@ -78,7 +87,10 @@ export default async function AffiliateOverviewPage({
       terms={
         program
           ? termsLine({
-              rate: Number(program.customCommissionRate ?? program.program.defaultCommissionRate),
+              rate: Number(
+                program.customCommissionRate ??
+                  program.program.defaultCommissionRate,
+              ),
               durationType: program.program.commissionDurationType,
               durationMonths: program.program.commissionDurationMonths,
               attributionWindowDays: program.program.attributionWindowDays,
@@ -101,7 +113,10 @@ export default async function AffiliateOverviewPage({
       payable={metrics.payable}
       paid={metrics.paid}
       referrals={referrals}
-      recurring={program?.program.commissionDurationType !== "ONE_TIME" && referrals.total > 0}
+      recurring={
+        program?.program.commissionDurationType !== "ONE_TIME" &&
+        referrals.total > 0
+      }
     />
   );
 }

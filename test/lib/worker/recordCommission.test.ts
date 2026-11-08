@@ -5,11 +5,20 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
-import { clearReferralTables, seedMerchant, seedOwner, seedReferral } from "./referralFixtures";
+import {
+  clearReferralTables,
+  seedMerchant,
+  seedOwner,
+  seedReferral,
+} from "./referralFixtures";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-function commissionData(affiliateId: string, clickId: string, stripePaymentRef: string) {
+function commissionData(
+  affiliateId: string,
+  clickId: string,
+  stripePaymentRef: string,
+) {
   return {
     affiliateId,
     clickId,
@@ -40,15 +49,26 @@ describe("createCommissionUnlessSelfReferral", () => {
   it("writes the commission on a referral nobody confirmed", async () => {
     const { affiliate, click } = await referral();
 
-    expect(await createCommissionUnlessSelfReferral({ data: commissionData(affiliate.id, click.id, "in_1") })).toBe(true);
+    expect(
+      await createCommissionUnlessSelfReferral({
+        data: commissionData(affiliate.id, click.id, "in_1"),
+      }),
+    ).toBe(true);
     expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
   });
 
   it("writes nothing on a referral confirmed as a self referral", async () => {
     const { affiliate, click } = await referral();
-    await db.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+    await db.click.update({
+      where: { id: click.id },
+      data: { fraudConfirmedAt: new Date() },
+    });
 
-    expect(await createCommissionUnlessSelfReferral({ data: commissionData(affiliate.id, click.id, "in_1") })).toBe(false);
+    expect(
+      await createCommissionUnlessSelfReferral({
+        data: commissionData(affiliate.id, click.id, "in_1"),
+      }),
+    ).toBe(false);
     expect(await db.commission.count()).toBe(0);
   });
 
@@ -59,10 +79,15 @@ describe("createCommissionUnlessSelfReferral", () => {
     await db.$transaction(async (tx) => {
       // What confirmCommissionFraud holds while it voids and marks the click.
       await tx.$queryRaw`SELECT id FROM "Click" WHERE id = ${click.id} FOR UPDATE`;
-      writing = createCommissionUnlessSelfReferral({ data: commissionData(affiliate.id, click.id, "in_1") });
+      writing = createCommissionUnlessSelfReferral({
+        data: commissionData(affiliate.id, click.id, "in_1"),
+      });
       // Long enough for the write to reach the click and wait on it.
       await new Promise((resolve) => setTimeout(resolve, 200));
-      await tx.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+      await tx.click.update({
+        where: { id: click.id },
+        data: { fraudConfirmedAt: new Date() },
+      });
     });
 
     expect(await writing).toBe(false);
@@ -71,11 +96,13 @@ describe("createCommissionUnlessSelfReferral", () => {
 
   it("still reports a redelivered payment as the unique constraint error its callers expect", async () => {
     const { affiliate, click } = await referral();
-    await createCommissionUnlessSelfReferral({ data: commissionData(affiliate.id, click.id, "in_1") });
+    await createCommissionUnlessSelfReferral({
+      data: commissionData(affiliate.id, click.id, "in_1"),
+    });
 
-    const err = await createCommissionUnlessSelfReferral({ data: commissionData(affiliate.id, click.id, "in_1") }).catch(
-      (e: unknown) => e
-    );
+    const err = await createCommissionUnlessSelfReferral({
+      data: commissionData(affiliate.id, click.id, "in_1"),
+    }).catch((e: unknown) => e);
     expect(isUniqueConstraintError(err)).toBe(true);
     expect(await db.commission.count()).toBe(1);
   });

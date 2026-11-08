@@ -52,14 +52,19 @@ function refusalCode(error: string): string {
 function back(
   product: { slug: string },
   listHref: string,
-  outcome?: { error?: string; skipped?: number; already?: Record<string, string> }
+  outcome?: {
+    error?: string;
+    skipped?: number;
+    already?: Record<string, string>;
+  },
 ): never {
   const list = `/dashboard/products/${product.slug}/commissions`;
   const target = safeListHref(listHref, list);
   const params = new URLSearchParams();
   if (outcome?.error) params.set("error", outcome.error);
   if (outcome?.skipped) params.set("skipped", String(outcome.skipped));
-  for (const [key, value] of Object.entries(outcome?.already ?? {})) params.set(key, value);
+  for (const [key, value] of Object.entries(outcome?.already ?? {}))
+    params.set(key, value);
   const search = params.toString();
   const query = search ? `${target.includes("?") ? "&" : "?"}${search}` : "";
   revalidatePath("/dashboard", "layout");
@@ -75,22 +80,27 @@ export async function markPaidAction(
   listHref: string,
   product: { id: string; slug: string },
   shown: ShownCommission[],
-  renderedAt: string
+  renderedAt: string,
 ): Promise<void> {
-  const result = await markCommissionsPaid(await owner(), product.id, shown, renderedAt);
+  const result = await markCommissionsPaid(
+    await owner(),
+    product.id,
+    shown,
+    renderedAt,
+  );
   back(
     product,
     listHref,
     "error" in result
       ? { error: refusalCode(result.error) }
-      : { skipped: result.skipped, already: alreadyPaidParams(result) }
+      : { skipped: result.skipped, already: alreadyPaidParams(result) },
   );
 }
 
 export async function confirmFraudAction(
   listHref: string,
   product: { id: string; slug: string },
-  id: string
+  id: string,
 ): Promise<void> {
   await confirmCommissionFraud(await owner(), product.id, id);
   back(product, listHref);
@@ -99,7 +109,7 @@ export async function confirmFraudAction(
 export async function dismissFlagAction(
   listHref: string,
   product: { id: string; slug: string },
-  id: string
+  id: string,
 ): Promise<void> {
   await dismissCommissionFlag(await owner(), product.id, id);
   back(product, listHref);
@@ -109,11 +119,14 @@ export async function voidAction(
   listHref: string,
   product: { id: string; slug: string },
   id: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<void> {
   // Capped: the reason is read back months later in a table cell, and the
   // field is a free text input on a page anybody with the session can post to.
-  const reason = String(formData.get("reason") ?? "").trim().slice(0, 200) || "voided by owner";
+  const reason =
+    String(formData.get("reason") ?? "")
+      .trim()
+      .slice(0, 200) || "voided by owner";
   await voidCommission(await owner(), product.id, id, reason);
   back(product, listHref);
 }

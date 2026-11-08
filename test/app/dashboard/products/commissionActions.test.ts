@@ -24,7 +24,12 @@ const LIST = "/dashboard/products/acme/commissions?status=PAYABLE";
 
 async function target(): Promise<string> {
   try {
-    await markPaidAction(LIST, PRODUCT, [{ id: "c1", amount: "10.00" }], new Date().toISOString());
+    await markPaidAction(
+      LIST,
+      PRODUCT,
+      [{ id: "c1", amount: "10.00" }],
+      new Date().toISOString(),
+    );
   } catch (error) {
     return (error as Error).message.replace("redirect:", "");
   }
@@ -40,7 +45,11 @@ describe("markPaidAction", () => {
   });
 
   it("reports a row that was already paid, with when", async () => {
-    markMock.mockResolvedValue({ count: 0, skipped: 0, alreadyPaid: { count: 1, paidAt: new Date(1_700_000_000_000) } });
+    markMock.mockResolvedValue({
+      count: 0,
+      skipped: 0,
+      alreadyPaid: { count: 1, paidAt: new Date(1_700_000_000_000) },
+    });
     expect(await target()).toBe(`${LIST}&already=1&paidOn=1700000000000`);
   });
 });

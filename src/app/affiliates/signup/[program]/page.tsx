@@ -32,7 +32,9 @@ export default async function AffiliateSignupPage({
   // What the affiliate's link is a link on, not where the signup page itself
   // is hosted: the two domains differ whenever the program runs on its own
   // subdomain.
-  const linkHost = merchant.websiteUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const linkHost = merchant.websiteUrl
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
 
   return (
     <main className="flex min-h-dvh items-center bg-background px-4 py-10 sm:px-8">

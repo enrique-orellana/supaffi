@@ -9,24 +9,33 @@ export type Audience = "owner" | "affiliate";
 
 const DEFAULT_OWNER_VOID = "voided by owner";
 
-export function voidReasonText(reason: string | null, audience: Audience): string | null {
+export function voidReasonText(
+  reason: string | null,
+  audience: Audience,
+): string | null {
   if (!reason) return null;
 
   switch (reason) {
     case "refund":
-      return audience === "affiliate" ? "The customer was refunded" : "Refunded in Stripe";
+      return audience === "affiliate"
+        ? "The customer was refunded"
+        : "Refunded in Stripe";
     case "partial refund":
       return audience === "affiliate"
         ? "Reduced because part of the sale was refunded"
         : "Reduced, part of the sale was refunded";
     case "chargeback":
-      return audience === "affiliate" ? "The customer disputed the payment and won" : "Chargeback lost in Stripe";
+      return audience === "affiliate"
+        ? "The customer disputed the payment and won"
+        : "Chargeback lost in Stripe";
     case "confirmed self-referral":
       return audience === "affiliate"
         ? "This sale was made by you, so it does not earn a commission"
         : "Confirmed self-referral";
     case DEFAULT_OWNER_VOID:
-      return audience === "affiliate" ? "Removed by the merchant" : "Voided by you";
+      return audience === "affiliate"
+        ? "Removed by the merchant"
+        : "Voided by you";
     case "refund after payout":
       // Written once, by the migration that voided every adjustment row a
       // refund or lost chargeback had left waiting to come off a payout.
@@ -41,11 +50,16 @@ export function voidReasonText(reason: string | null, audience: Audience): strin
   }
 }
 
-export function flagReasonText(reason: string | null): { title: string; evidence: string[] } | null {
+export function flagReasonText(
+  reason: string | null,
+): { title: string; evidence: string[] } | null {
   if (!reason) return null;
 
   if (reason === "card") {
-    return { title: "The buyer paid with a card the affiliate has used", evidence: [] };
+    return {
+      title: "The buyer paid with a card the affiliate has used",
+      evidence: [],
+    };
   }
 
   if (reason.startsWith("email:")) {

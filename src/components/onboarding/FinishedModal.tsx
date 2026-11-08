@@ -16,9 +16,20 @@ import { CopyField } from "./CodeBlock";
  * both on it, and closing it would leave someone staring at a step they have
  * already completed.
  */
-export function FinishedModal({ link, dashboardHref }: { link: string; dashboardHref: string }) {
+export function FinishedModal({
+  link,
+  dashboardHref,
+}: {
+  link: string;
+  dashboardHref: string;
+}) {
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="finished-title" className="fixed inset-0 z-40">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="finished-title"
+      className="fixed inset-0 z-40"
+    >
       <div className="supaffi-fade-in absolute inset-0 bg-white/70 backdrop-blur-md dark:bg-black/50" />
       <Confetti />
       <div className="absolute inset-0 flex items-center justify-center p-6">
@@ -27,16 +38,23 @@ export function FinishedModal({ link, dashboardHref }: { link: string; dashboard
             <Check className="size-6 text-white" strokeWidth={3} />
           </span>
           <div className="flex flex-col gap-2">
-            <h2 id="finished-title" className="text-[24px] leading-[1.2] font-medium tracking-[-0.02em] text-balance">
+            <h2
+              id="finished-title"
+              className="text-[24px] leading-[1.2] font-medium tracking-[-0.02em] text-balance"
+            >
               Your affiliate program is live
             </h2>
             <p className="text-sm text-muted-foreground text-pretty">
-              Share this link with your audience. They sign up, get their own link, and you earn from every sale they
-              bring.
+              Share this link with your audience. They sign up, get their own
+              link, and you earn from every sale they bring.
             </p>
           </div>
           <CopyField value={link} className="w-full" />
-          <Button size="lg" variant="success" render={<Link href={dashboardHref} />}>
+          <Button
+            size="lg"
+            variant="success"
+            render={<Link href={dashboardHref} />}
+          >
             Go to dashboard
           </Button>
         </div>

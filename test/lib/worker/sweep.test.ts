@@ -10,7 +10,9 @@ import { sweepPayableCommissions } from "@/lib/worker/sweep";
 const DAY = 24 * 60 * 60 * 1000;
 
 async function clearAll() {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -29,7 +31,10 @@ describe("sweepPayableCommissions", () => {
   beforeEach(async () => {
     await clearAll();
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     const merchant = await db.merchant.create({
       data: {
@@ -38,7 +43,9 @@ describe("sweepPayableCommissions", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     const program = await db.program.create({
@@ -62,7 +69,12 @@ describe("sweepPayableCommissions", () => {
     });
     affiliateId = affiliate.id;
     const click = await db.click.create({
-      data: { merchantId: merchant.id, affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + DAY) },
+      data: {
+        merchantId: merchant.id,
+        affiliateId,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + DAY),
+      },
     });
     clickId = click.id;
   });
@@ -92,12 +104,18 @@ describe("sweepPayableCommissions", () => {
   it("makes a commission past its holding period payable", async () => {
     const commission = await givenCommission({});
     await sweepPayableCommissions();
-    expect((await db.commission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe("PAYABLE");
+    expect(
+      (await db.commission.findUniqueOrThrow({ where: { id: commission.id } }))
+        .status,
+    ).toBe("PAYABLE");
   });
 
   it("leaves a commission held by an open dispute pending past its holding period", async () => {
     const commission = await givenCommission({ disputeOpenedAt: new Date() });
     await sweepPayableCommissions();
-    expect((await db.commission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe("PENDING");
+    expect(
+      (await db.commission.findUniqueOrThrow({ where: { id: commission.id } }))
+        .status,
+    ).toBe("PENDING");
   });
 });

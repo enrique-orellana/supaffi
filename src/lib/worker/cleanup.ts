@@ -27,7 +27,7 @@ const MAX_BATCHES = 100;
 
 export async function cleanupProcessedEvents(
   now: Date = new Date(),
-  options: { batchSize?: number } = {}
+  options: { batchSize?: number } = {},
 ): Promise<number> {
   const batchSize = options.batchSize ?? BATCH_SIZE;
   const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60_000);
@@ -73,9 +73,15 @@ const CLEANUP_EVERY_MS = 24 * 60 * 60_000;
 
 export type CleanupDeps = { cleanup: () => Promise<number>; now: () => number };
 
-const defaults: CleanupDeps = { cleanup: () => cleanupProcessedEvents(), now: Date.now };
+const defaults: CleanupDeps = {
+  cleanup: () => cleanupProcessedEvents(),
+  now: Date.now,
+};
 
-const schedule: { running: boolean; lastRunAt: number | null } = { running: false, lastRunAt: null };
+const schedule: { running: boolean; lastRunAt: number | null } = {
+  running: false,
+  lastRunAt: null,
+};
 
 /** For tests only: forgets when cleanup last ran. */
 export function resetCleanupSchedule(): void {
@@ -88,10 +94,16 @@ export function resetCleanupSchedule(): void {
  * tick, so it returns at once when a run is going or nothing is due. Never
  * throws.
  */
-export async function runDailyCleanup(deps: CleanupDeps = defaults): Promise<void> {
+export async function runDailyCleanup(
+  deps: CleanupDeps = defaults,
+): Promise<void> {
   if (schedule.running) return;
   const now = deps.now();
-  if (schedule.lastRunAt !== null && now - schedule.lastRunAt < CLEANUP_EVERY_MS) return;
+  if (
+    schedule.lastRunAt !== null &&
+    now - schedule.lastRunAt < CLEANUP_EVERY_MS
+  )
+    return;
   // Stamped before the run, so a run that fails is not repeated every five
   // seconds by the next tick.
   schedule.lastRunAt = now;
@@ -99,7 +111,9 @@ export async function runDailyCleanup(deps: CleanupDeps = defaults): Promise<voi
   try {
     const deleted = await deps.cleanup();
     if (deleted > 0) {
-      console.log(`[cleanup] removed ${deleted} processed webhook events older than 90 days`);
+      console.log(
+        `[cleanup] removed ${deleted} processed webhook events older than 90 days`,
+      );
     }
   } catch (err) {
     console.error("[cleanup] could not remove old webhook events", err);

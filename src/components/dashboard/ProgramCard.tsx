@@ -37,30 +37,51 @@ export function ProgramCard({
     <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-300 bg-card">
       <div className="flex items-stretch gap-6 p-5">
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-5">
-          <p className="truncate text-[17px] font-medium tracking-tight">{name}</p>
+          <p className="truncate text-[17px] font-medium tracking-tight">
+            {name}
+          </p>
           <dl className="flex divide-x divide-neutral-200">
-            <Term icon={<CalendarDays />} value={`${attributionDays} days`} label="Attribution" first />
+            <Term
+              icon={<CalendarDays />}
+              value={`${attributionDays} days`}
+              label="Attribution"
+              first
+            />
             <Term icon={<Clock />} value={`${holdingDays} days`} label="Hold" />
           </dl>
         </div>
         <div className="flex w-40 shrink-0 flex-col justify-center rounded-(--radius) bg-accent-50 px-4 py-3">
-          <span className="text-[11px] font-medium tracking-[0.04em] text-accent-700 uppercase">Earn</span>
+          <span className="text-[11px] font-medium tracking-[0.04em] text-accent-700 uppercase">
+            Earn
+          </span>
           <span className="font-heading text-[34px] leading-none font-medium tracking-tight text-accent-800 tabular-nums">
             {rate}%
           </span>
-          <span className="mt-1 text-[13px] font-medium text-accent-700">{duration}</span>
+          <span className="mt-1 text-[13px] font-medium text-accent-700">
+            {duration}
+          </span>
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 px-5 py-3">
         <span className="flex items-center gap-2 text-sm text-muted-foreground">
           <Users className="size-4" />
-          <span className="tabular-nums">{affiliateCount === 1 ? "1 affiliate" : `${affiliateCount} affiliates`}</span>
+          <span className="tabular-nums">
+            {affiliateCount === 1
+              ? "1 affiliate"
+              : `${affiliateCount} affiliates`}
+          </span>
         </span>
         <div className="flex items-center gap-1.5">
           {signupLink ? (
-            <CopyLinkButton link={signupLink} size="sm" label="Copy signup link" />
+            <CopyLinkButton
+              link={signupLink}
+              size="sm"
+              label="Copy signup link"
+            />
           ) : (
-            <span className="px-2 text-sm text-muted-foreground">Invite only</span>
+            <span className="px-2 text-sm text-muted-foreground">
+              Invite only
+            </span>
           )}
           <Button variant="ghost" size="sm" render={<Link href={editHref} />}>
             <Pencil />
@@ -84,7 +105,13 @@ function Term({
   first?: boolean;
 }) {
   return (
-    <div className={first ? "flex items-center gap-2.5 pr-5" : "flex items-center gap-2.5 px-5"}>
+    <div
+      className={
+        first
+          ? "flex items-center gap-2.5 pr-5"
+          : "flex items-center gap-2.5 px-5"
+      }
+    >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius) bg-neutral-100 text-neutral-600 [&_svg]:size-4">
         {icon}
       </span>

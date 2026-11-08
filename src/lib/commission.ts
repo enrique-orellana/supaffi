@@ -2,7 +2,10 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { SqlSchema } from "@/lib/sqlSchema";
 
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
+async function assertMerchantOwnership(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { id: true },
@@ -12,7 +15,8 @@ async function assertMerchantOwnership(ownerId: string, merchantId: string): Pro
   }
 }
 
-export type CommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
+export type CommissionStatus =
+  "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
 
 export const COMMISSION_STATUSES: readonly CommissionStatus[] = [
   "PENDING",
@@ -68,7 +72,12 @@ export type CommissionRow = {
    * The click this sale was attributed to, the link it arrived through, and
    * whether the Owner already confirmed that referral as a self referral.
    */
-  click: { at: Date; linkCode: string | null; destinationPath: string | null; selfReferralConfirmed: boolean };
+  click: {
+    at: Date;
+    linkCode: string | null;
+    destinationPath: string | null;
+    selfReferralConfirmed: boolean;
+  };
 };
 
 export const COMMISSIONS_PAGE_SIZE = 25;
@@ -87,9 +96,24 @@ function whereFor(merchantId: string, filters: CommissionFilters) {
     ...(query
       ? {
           OR: [
-            { stripePaymentRef: { contains: query, mode: "insensitive" as const } },
-            { affiliate: { merchantId, email: { contains: query, mode: "insensitive" as const } } },
-            { affiliate: { merchantId, name: { contains: query, mode: "insensitive" as const } } },
+            {
+              stripePaymentRef: {
+                contains: query,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              affiliate: {
+                merchantId,
+                email: { contains: query, mode: "insensitive" as const },
+              },
+            },
+            {
+              affiliate: {
+                merchantId,
+                name: { contains: query, mode: "insensitive" as const },
+              },
+            },
           ],
         }
       : {}),
@@ -108,7 +132,7 @@ export async function listCommissions(
   ownerId: string,
   merchantId: string,
   filters: CommissionFilters,
-  { page, pageSize }: { page: number; pageSize: number }
+  { page, pageSize }: { page: number; pageSize: number },
 ): Promise<{ rows: CommissionRow[]; total: number }> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -163,7 +187,10 @@ export async function listCommissions(
       // are recent by nature and otherwise filled the first page.
       orderBy:
         filters.status === "PAYABLE"
-          ? [{ adjustsCommissionId: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }]
+          ? [
+              { adjustsCommissionId: { sort: "asc", nulls: "first" } },
+              { createdAt: "desc" },
+            ]
           : { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -204,7 +231,9 @@ export async function listCommissions(
       isAdjustment: c.adjustsCommissionId !== null,
       // A voided or paid row can keep the date a dispute began; only an unpaid
       // one is still held by it.
-      disputed: c.disputeOpenedAt !== null && ["PENDING", "PAYABLE", "FLAGGED"].includes(c.status),
+      disputed:
+        c.disputeOpenedAt !== null &&
+        ["PENDING", "PAYABLE", "FLAGGED"].includes(c.status),
       click: {
         at: c.click.createdAt,
         linkCode: c.click.link?.code ?? null,
@@ -230,7 +259,7 @@ export type StatusTotal = {
  */
 export async function getCommissionTotals(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<StatusTotal[]> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -259,7 +288,7 @@ export async function getCommissionTotals(
 /** Everything the filter bar offers, drawn from what this Merchant actually has. */
 export async function getCommissionFilterOptions(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<{
   affiliates: { id: string; name: string | null; email: string }[];
   currencies: string[];
@@ -291,7 +320,11 @@ export type ShownCommission = { id: string; amount: string };
  * counted as skipped, so without it a press from an older tab says nothing.
  */
 export type MarkPaidResult =
-  | { count: number; skipped: number; alreadyPaid?: { count: number; paidAt: Date | null } }
+  | {
+      count: number;
+      skipped: number;
+      alreadyPaid?: { count: number; paidAt: Date | null };
+    }
   | { error: string };
 
 /** The refusal for bound input no page could have produced. */
@@ -365,19 +398,27 @@ type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
  * whose Holding Period had not yet passed when the page was rendered was never
  * payable, dispute or not, so it is skipped.
  */
-function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Payout {
+function payoutFor(
+  row: PayoutRow,
+  shown: Prisma.Decimal,
+  renderedAt: Date,
+): Payout {
   if (row.status === "PAID") return "already paid";
   if (row.checkoutConflictHeldAt !== null) return "skip";
   if (row.adjustsCommissionId !== null) return "skip";
   if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
 
-  if (row.disputeOpenedAt !== null && row.disputeOpenedAt.getTime() < renderedAt.getTime()) {
+  if (
+    row.disputeOpenedAt !== null &&
+    row.disputeOpenedAt.getTime() < renderedAt.getTime()
+  ) {
     return "skip";
   }
 
   if (row.status === "PAYABLE") {
     if (shown.eq(row.amount)) return "as stored";
-    if (shown.gt(row.amount) && row.voidReason === "partial refund") return "at shown amount";
+    if (shown.gt(row.amount) && row.voidReason === "partial refund")
+      return "at shown amount";
     return "skip";
   }
 
@@ -421,7 +462,7 @@ export async function markCommissionsPaid(
   ownerId: string,
   merchantId: string,
   shown: ShownCommission[],
-  renderedAt: string
+  renderedAt: string,
 ): Promise<MarkPaidResult> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -454,7 +495,8 @@ export async function markCommissionsPaid(
     if (amount.lte(0)) return { error: REFUSED };
     amounts.set(entry.id, amount);
   }
-  const loadedAt = typeof renderedAt === "string" ? new Date(renderedAt) : new Date(NaN);
+  const loadedAt =
+    typeof renderedAt === "string" ? new Date(renderedAt) : new Date(NaN);
   if (Number.isNaN(loadedAt.getTime()) || loadedAt.getTime() > Date.now()) {
     return { error: REFUSED };
   }
@@ -506,12 +548,21 @@ export async function markCommissionsPaid(
     // An id this product does not have was not on its page.
     if (rows.length !== ids.length) return { error: REFUSED };
 
-    if (new Set(rows.map((row) => row.affiliateId)).size > 1 || new Set(rows.map((row) => row.currency)).size > 1) {
-      return { error: "A payout covers one affiliate and one currency at a time" };
+    if (
+      new Set(rows.map((row) => row.affiliateId)).size > 1 ||
+      new Set(rows.map((row) => row.currency)).size > 1
+    ) {
+      return {
+        error: "A payout covers one affiliate and one currency at a time",
+      };
     }
 
     const asStored: string[] = [];
-    const atShownAmount: { id: string; amount: Prisma.Decimal; ceiling: Prisma.Decimal }[] = [];
+    const atShownAmount: {
+      id: string;
+      amount: Prisma.Decimal;
+      ceiling: Prisma.Decimal;
+    }[] = [];
     let skipped = 0;
     let alreadyPaid = 0;
     let alreadyPaidAt: Date | null = null;
@@ -519,11 +570,17 @@ export async function markCommissionsPaid(
       const amount = amounts.get(row.id)!;
       const payout = payoutFor(row, amount, loadedAt);
       if (payout === "as stored") asStored.push(row.id);
-      else if (payout === "at shown amount") atShownAmount.push({ id: row.id, amount, ceiling: row.grossAmount ?? row.amount });
+      else if (payout === "at shown amount")
+        atShownAmount.push({
+          id: row.id,
+          amount,
+          ceiling: row.grossAmount ?? row.amount,
+        });
       else if (payout === "skip") skipped += 1;
       else if (payout === "already paid") {
         alreadyPaid += 1;
-        if (row.paidAt && (!alreadyPaidAt || row.paidAt > alreadyPaidAt)) alreadyPaidAt = row.paidAt;
+        if (row.paidAt && (!alreadyPaidAt || row.paidAt > alreadyPaidAt))
+          alreadyPaidAt = row.paidAt;
       }
     }
 
@@ -554,7 +611,9 @@ export async function markCommissionsPaid(
     return {
       count: asStored.length + atShownAmount.length,
       skipped,
-      ...(alreadyPaid > 0 && { alreadyPaid: { count: alreadyPaid, paidAt: alreadyPaidAt } }),
+      ...(alreadyPaid > 0 && {
+        alreadyPaid: { count: alreadyPaid, paidAt: alreadyPaidAt },
+      }),
     };
   });
 }
@@ -579,12 +638,16 @@ export async function markCommissionsPaid(
 export async function confirmCommissionFraud(
   ownerId: string,
   merchantId: string,
-  commissionId: string
+  commissionId: string,
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
-    where: { id: commissionId, adjustsCommissionId: null, affiliate: { merchantId } },
+    where: {
+      id: commissionId,
+      adjustsCommissionId: null,
+      affiliate: { merchantId },
+    },
     select: { clickId: true },
   });
   if (!existing) {
@@ -592,7 +655,11 @@ export async function confirmCommissionFraud(
   }
 
   const now = new Date();
-  const confirmed = { status: "VOIDED" as const, voidedAt: now, voidReason: "confirmed self-referral" };
+  const confirmed = {
+    status: "VOIDED" as const,
+    voidedAt: now,
+    voidReason: "confirmed self-referral",
+  };
   await db.$transaction(async (tx) => {
     // The click first. The worker holds it for share while it checks it and
     // writes a commission, so either that row is committed before the void
@@ -674,7 +741,7 @@ export async function voidCommission(
   ownerId: string,
   merchantId: string,
   commissionId: string,
-  reason: string
+  reason: string,
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -688,7 +755,9 @@ export async function voidCommission(
     select: { id: true },
   });
   if (!existing) {
-    throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
+    throw new Error(
+      "Commission not found, or already paid, voided, or a refund adjustment",
+    );
   }
 
   const stored = SYSTEM_VOID_REASONS.includes(reason.trim().toLowerCase())
@@ -699,18 +768,23 @@ export async function voidCommission(
   // in the moment between the two is refused rather than voided after the
   // money left.
   const { count } = await db.commission.updateMany({
-    where: { id: commissionId, status: { in: ["PENDING", "PAYABLE", "FLAGGED"] } },
+    where: {
+      id: commissionId,
+      status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+    },
     data: { status: "VOIDED", voidedAt: new Date(), voidReason: stored },
   });
   if (count === 0) {
-    throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
+    throw new Error(
+      "Commission not found, or already paid, voided, or a refund adjustment",
+    );
   }
 }
 
 export async function dismissCommissionFlag(
   ownerId: string,
   merchantId: string,
-  commissionId: string
+  commissionId: string,
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 

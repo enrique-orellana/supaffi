@@ -6,7 +6,8 @@
  * Seven or fewer pages are all shown, since a gap would hide no more than one.
  */
 export function pageList(page: number, totalPages: number): (number | "gap")[] {
-  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  if (totalPages <= 7)
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
 
   // Near either end the window is widened, so the pager keeps the same number
   // of slots and does not jump in width as you page through it.

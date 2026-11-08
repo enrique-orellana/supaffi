@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import {
+  REFERRAL_CLIENT_REFERENCE_PREFIX,
+  REFERRAL_COOKIE,
+  REFERRAL_QUERY_PARAM,
+} from "@/lib/referral";
 import { originFor } from "@/lib/url";
 import { listPaymentProviderAdapters } from "@/lib/payments/registry";
 
@@ -22,7 +26,10 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findUnique({ where: { domain: host }, select: { id: true, domain: true } })
+    ? await db.merchant.findUnique({
+        where: { domain: host },
+        select: { id: true, domain: true },
+      })
     : null;
   if (!merchant) {
     return new NextResponse(null, { status: 404 });
@@ -32,15 +39,24 @@ export async function GET(req: NextRequest) {
     where: { merchantId: merchant.id, importSourceIdentity: { not: null } },
     select: { legacyQueryParamAliases: true },
   });
-  const legacyQueryParamAliases = [...new Set(importedLinks.flatMap((link) => link.legacyQueryParamAliases.map((name) => name.toLowerCase())))];
+  const legacyQueryParamAliases = [
+    ...new Set(
+      importedLinks.flatMap((link) =>
+        link.legacyQueryParamAliases.map((name) => name.toLowerCase()),
+      ),
+    ),
+  ];
   const trackingOrigin = originFor(merchant.domain);
   const trackUrl = JSON.stringify(`${trackingOrigin}/api/track?`);
-  const checkoutAttributionUrl = JSON.stringify(`${trackingOrigin}/api/track/checkout-attribution`);
+  const checkoutAttributionUrl = JSON.stringify(
+    `${trackingOrigin}/api/track/checkout-attribution`,
+  );
   const checkoutTrackingAdapters = JSON.stringify(
-    listPaymentProviderAdapters()
-      .flatMap((adapter) =>
-        adapter.clientTracking ? [{ provider: adapter.provider, ...adapter.clientTracking }] : []
-      )
+    listPaymentProviderAdapters().flatMap((adapter) =>
+      adapter.clientTracking
+        ? [{ provider: adapter.provider, ...adapter.clientTracking }]
+        : [],
+    ),
   );
   const legacyParams = JSON.stringify(legacyQueryParamAliases);
 

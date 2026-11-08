@@ -4,7 +4,13 @@ import { useActionState, useId, useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Section } from "@/components/dashboard/Page";
 import {
   PAYOUT_METHODS,
@@ -17,12 +23,15 @@ import {
 import { updatePayoutDetailsAction } from "./updatePayoutDetails";
 
 const METHOD_LABELS = Object.fromEntries(
-  Object.entries(PAYOUT_METHODS).map(([method, { label }]) => [method, label])
+  Object.entries(PAYOUT_METHODS).map(([method, { label }]) => [method, label]),
 ) as Record<PayoutMethod, string>;
 
 type FormState = { error?: string; saved?: boolean };
 
-async function submit(_prevState: FormState, formData: FormData): Promise<FormState> {
+async function submit(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const value = String(formData.get("payoutDetails") ?? "");
   const result = await updatePayoutDetailsAction(value);
   if (result.error) return { error: result.error };
@@ -48,24 +57,39 @@ export function PayoutDetailsForm({
   const [state, formAction, pending] = useActionState(submit, {});
   const formId = useId();
   const parsedInitial = parsePayoutDetails(initial);
-  const initialCrypto = parsedInitial.method === "crypto"
-    ? parseCryptoPayoutDetails(parsedInitial.value)
-    : { coinAndNetwork: "", walletAddress: "" };
+  const initialCrypto =
+    parsedInitial.method === "crypto"
+      ? parseCryptoPayoutDetails(parsedInitial.value)
+      : { coinAndNetwork: "", walletAddress: "" };
   const [method, setMethod] = useState<PayoutMethod>(parsedInitial.method);
   const [value, setValue] = useState(() =>
-    parsedInitial.method === "crypto" ? initialCrypto.walletAddress : parsedInitial.value
+    parsedInitial.method === "crypto"
+      ? initialCrypto.walletAddress
+      : parsedInitial.value,
   );
-  const [cryptoCoinAndNetwork, setCryptoCoinAndNetwork] = useState(initialCrypto.coinAndNetwork);
-  const [cryptoWalletAddress, setCryptoWalletAddress] = useState(initialCrypto.walletAddress);
+  const [cryptoCoinAndNetwork, setCryptoCoinAndNetwork] = useState(
+    initialCrypto.coinAndNetwork,
+  );
+  const [cryptoWalletAddress, setCryptoWalletAddress] = useState(
+    initialCrypto.walletAddress,
+  );
 
   // From the prop alone: the action revalidates the layout, so `initial`
   // arrives filled in after a save and the notice goes with it. Saving an
   // empty field leaves it up next to "Saved", which is the truth.
   const missing = initial.trim() === "";
   const methodSelect = (
-    <Select items={METHOD_LABELS} value={method} onValueChange={(next) => setMethod(next as PayoutMethod)}>
+    <Select
+      items={METHOD_LABELS}
+      value={method}
+      onValueChange={(next) => setMethod(next as PayoutMethod)}
+    >
       <SelectTrigger
-        className={method === "crypto" ? "h-9 w-full cursor-pointer" : "h-9 w-full shrink-0 cursor-pointer sm:w-40"}
+        className={
+          method === "crypto"
+            ? "h-9 w-full cursor-pointer"
+            : "h-9 w-full shrink-0 cursor-pointer sm:w-40"
+        }
         aria-label="Payout method"
       >
         <SelectValue />
@@ -92,7 +116,13 @@ export function PayoutDetailsForm({
               Saved
             </span>
           )}
-          <Button type="submit" form={formId} size="sm" className="cursor-pointer" disabled={pending}>
+          <Button
+            type="submit"
+            form={formId}
+            size="sm"
+            className="cursor-pointer"
+            disabled={pending}
+          >
             {pending ? "Saving" : "Save"}
           </Button>
         </div>
@@ -104,15 +134,21 @@ export function PayoutDetailsForm({
             here, where it is fixed, and nowhere else. */}
         {missing && (
           <p className="shrink-0 rounded-(--radius) bg-status-warning-bg px-3 py-2 text-[13px] text-status-warning">
-            Until this is filled in, your merchant has nowhere to send your money.
+            Until this is filled in, your merchant has nowhere to send your
+            money.
           </p>
         )}
         <input
           type="hidden"
           name="payoutDetails"
-          value={method === "crypto"
-            ? composeCryptoPayoutDetails({ coinAndNetwork: cryptoCoinAndNetwork, walletAddress: cryptoWalletAddress })
-            : composePayoutDetails(method, value)}
+          value={
+            method === "crypto"
+              ? composeCryptoPayoutDetails({
+                  coinAndNetwork: cryptoCoinAndNetwork,
+                  walletAddress: cryptoWalletAddress,
+                })
+              : composePayoutDetails(method, value)
+          }
         />
         {method === "crypto" ? (
           <div className="grid items-end gap-x-3 gap-y-2 sm:grid-cols-2">

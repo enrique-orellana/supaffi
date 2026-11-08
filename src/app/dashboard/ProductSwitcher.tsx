@@ -19,7 +19,9 @@ function Mark({ name, small = false }: { name: string; small?: boolean }) {
     <span
       className={cn(
         "flex shrink-0 items-center justify-center bg-accent-700 font-medium text-accent-100",
-        small ? "size-6 rounded-(--radius) text-[10px]" : "size-7 rounded-(--radius) text-[11px]"
+        small
+          ? "size-6 rounded-(--radius) text-[10px]"
+          : "size-7 rounded-(--radius) text-[11px]",
       )}
     >
       {initials(name)}
@@ -53,8 +55,12 @@ export function ProductSwitcher({
           <>
             <Mark name={active.name} />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">{active.name}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">{active.domain}</span>
+              <span className="block truncate text-sm font-medium">
+                {active.name}
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {active.domain}
+              </span>
             </span>
           </>
         ) : (
@@ -63,9 +69,13 @@ export function ProductSwitcher({
               <LayoutGrid className="size-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">All products</span>
+              <span className="block truncate text-sm font-medium">
+                All products
+              </span>
               <span className="block truncate text-[11px] text-muted-foreground">
-                {merchants.length === 1 ? "1 product" : `${merchants.length} products`}
+                {merchants.length === 1
+                  ? "1 product"
+                  : `${merchants.length} products`}
               </span>
             </span>
           </>
@@ -81,11 +91,16 @@ export function ProductSwitcher({
           >
             <Mark name={m.name} small />
             <span className="min-w-0 flex-1 truncate">{m.name}</span>
-            {m.id === active?.id && <Check className="size-4 text-foreground" />}
+            {m.id === active?.id && (
+              <Check className="size-4 text-foreground" />
+            )}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="h-9 gap-2.5" render={<Link href="/onboarding" />}>
+        <DropdownMenuItem
+          className="h-9 gap-2.5"
+          render={<Link href="/onboarding" />}
+        >
           <span className="flex size-6 shrink-0 items-center justify-center">
             <Plus className="size-4" />
           </span>

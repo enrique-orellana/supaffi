@@ -54,7 +54,8 @@ export type Release = {
  * something to silently tolerate here.
  */
 export function compareVersions(a: string, b: string): number {
-  const parts = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const parts = (v: string) =>
+    v.split(".").map((n) => Number.parseInt(n, 10) || 0);
   const [x, y] = [parts(a), parts(b)];
   const length = Math.max(x.length, y.length);
   for (let i = 0; i < length; i += 1) {
@@ -66,7 +67,11 @@ export function compareVersions(a: string, b: string): number {
 
 export function parseRelease(payload: unknown): Release | null {
   if (typeof payload !== "object" || payload === null) return null;
-  const raw = payload as { tag_name?: unknown; html_url?: unknown; body?: unknown };
+  const raw = payload as {
+    tag_name?: unknown;
+    html_url?: unknown;
+    body?: unknown;
+  };
   if (typeof raw.tag_name !== "string") return null;
 
   const version = raw.tag_name.replace(/^v/, "").trim();
@@ -79,7 +84,8 @@ export function parseRelease(payload: unknown): Release | null {
   // this repository is not something we put in front of the operator, however
   // it got into the response.
   const url =
-    typeof raw.html_url === "string" && raw.html_url.startsWith(`https://github.com/${REPO}/`)
+    typeof raw.html_url === "string" &&
+    raw.html_url.startsWith(`https://github.com/${REPO}/`)
       ? raw.html_url
       : fallbackUrl;
   return {
@@ -102,7 +108,9 @@ const FAIL_TTL_MS = 30 * 60 * 1000;
 
 type Cached = { release: Release | null; until: number };
 
-const globalForVersion = globalThis as unknown as { supaffiLatestRelease?: Cached };
+const globalForVersion = globalThis as unknown as {
+  supaffiLatestRelease?: Cached;
+};
 let cache: Cached | null = globalForVersion.supaffiLatestRelease ?? null;
 
 // One request at a time, shared. Without this, every render that arrives while
@@ -120,7 +128,9 @@ export function resetReleaseCache(): void {
  * Asks GitHub and updates the cache. Exported so a caller can wait for it when
  * it genuinely wants to; nothing on a render path does.
  */
-export function refreshLatestRelease(now: number = Date.now()): Promise<Release | null> {
+export function refreshLatestRelease(
+  now: number = Date.now(),
+): Promise<Release | null> {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
@@ -141,7 +151,8 @@ export function refreshLatestRelease(now: number = Date.now()): Promise<Release 
     }
 
     cache = { release, until: now + ttl };
-    if (process.env.NODE_ENV !== "production") globalForVersion.supaffiLatestRelease = cache;
+    if (process.env.NODE_ENV !== "production")
+      globalForVersion.supaffiLatestRelease = cache;
     inFlight = null;
     return release;
   })();

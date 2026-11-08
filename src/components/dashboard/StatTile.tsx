@@ -45,7 +45,8 @@ export function StatTile({
     success: "text-status-success",
     warning: "text-status-warning",
   }[tone];
-  const trend = series && series.length > 1 && series.some((n) => n !== 0) ? series : null;
+  const trend =
+    series && series.length > 1 && series.some((n) => n !== 0) ? series : null;
   // A figure earns the full size. "None yet" and "Live" are words, and a word
   // set as loud as a number shouts a non-answer across the row.
   const isFigure = /\d/.test(value);
@@ -53,7 +54,9 @@ export function StatTile({
   const body = (
     <>
       <div className="flex items-center justify-between gap-3">
-        <span className="truncate text-[13px] font-medium text-neutral-700">{label}</span>
+        <span className="truncate text-[13px] font-medium text-neutral-700">
+          {label}
+        </span>
         {href && <ChevronRight className="size-4 shrink-0 text-neutral-400" />}
       </div>
       {/* The figure keeps its size and the trend gives way: it shrinks to
@@ -63,8 +66,10 @@ export function StatTile({
         <span
           className={cn(
             "shrink-0 font-heading leading-none font-medium tracking-[-0.025em] tabular-nums",
-            isFigure ? "text-[22px] @min-[200px]:text-[26px]" : "text-[18px] @min-[200px]:text-[21px]",
-            valueTone
+            isFigure
+              ? "text-[22px] @min-[200px]:text-[26px]"
+              : "text-[18px] @min-[200px]:text-[21px]",
+            valueTone,
           )}
         >
           {value}
@@ -81,7 +86,11 @@ export function StatTile({
           cell height, so a missing footnote is a hole under the number rather
           than a shorter card. */}
       <div className="flex min-h-4 items-center gap-1.5 text-[12px] tabular-nums">
-        {delta ? <Delta {...delta} /> : <span className="text-muted-foreground">{hint ?? " "}</span>}
+        {delta ? (
+          <Delta {...delta} />
+        ) : (
+          <span className="text-muted-foreground">{hint ?? " "}</span>
+        )}
       </div>
     </>
   );
@@ -98,7 +107,10 @@ export function StatTile({
     return (
       <Link
         href={href}
-        className={cn(surface, "cursor-pointer transition-[border-color,background-color,transform] duration-150 ease-(--ease-out) hover:border-neutral-300 hover:bg-neutral-50 active:scale-[0.99]")}
+        className={cn(
+          surface,
+          "cursor-pointer transition-[border-color,background-color,transform] duration-150 ease-(--ease-out) hover:border-neutral-300 hover:bg-neutral-50 active:scale-[0.99]",
+        )}
       >
         {body}
       </Link>
@@ -107,9 +119,19 @@ export function StatTile({
   return <div className={surface}>{body}</div>;
 }
 
-function Delta({ percent, against }: { percent: number | null; against: string }) {
+function Delta({
+  percent,
+  against,
+}: {
+  percent: number | null;
+  against: string;
+}) {
   if (percent === null) {
-    return <span className="text-muted-foreground">No earlier {against} to compare</span>;
+    return (
+      <span className="text-muted-foreground">
+        No earlier {against} to compare
+      </span>
+    );
   }
   const up = percent > 0;
   const flat = percent === 0;
@@ -121,13 +143,19 @@ function Delta({ percent, against }: { percent: number | null; against: string }
       <span
         className={cn(
           "flex items-center gap-0.5 font-medium",
-          flat ? "text-muted-foreground" : up ? "text-status-success" : "text-status-danger"
+          flat
+            ? "text-muted-foreground"
+            : up
+              ? "text-status-success"
+              : "text-status-danger",
         )}
       >
         <Icon className="size-3.5" />
         {Math.abs(percent).toLocaleString("en", { maximumFractionDigits: 1 })}%
       </span>
-      <span className="hidden truncate text-muted-foreground @min-[190px]:inline">vs {against}</span>
+      <span className="hidden truncate text-muted-foreground @min-[190px]:inline">
+        vs {against}
+      </span>
     </>
   );
 }

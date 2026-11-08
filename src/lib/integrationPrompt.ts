@@ -7,7 +7,10 @@
  * assistant. So the prompt sits on the code it describes, and it is written
  * as an instruction to that assistant rather than as a note to a human.
  */
-export function trackingScriptPrompt(input: { websiteUrl: string; scriptTag: string }): string {
+export function trackingScriptPrompt(input: {
+  websiteUrl: string;
+  scriptTag: string;
+}): string {
   return [
     `Add affiliate tracking to my website (${input.websiteUrl}).`,
     "",

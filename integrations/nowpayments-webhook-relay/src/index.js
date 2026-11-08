@@ -12,7 +12,8 @@ function configuredDestination(value) {
       url.username ||
       url.password ||
       url.hash
-    ) return null;
+    )
+      return null;
     return url.href;
   } catch {
     return null;
@@ -84,7 +85,10 @@ export async function handleRequest(request, env, fetchFn = fetch) {
   }
 
   const contentType = request.headers.get("content-type");
-  if (!contentType || contentType.split(";")[0].trim().toLowerCase() !== "application/json") {
+  if (
+    !contentType ||
+    contentType.split(";")[0].trim().toLowerCase() !== "application/json"
+  ) {
     return errorResponse(415);
   }
 
@@ -102,19 +106,23 @@ export async function handleRequest(request, env, fetchFn = fetch) {
     "x-nowpayments-sig": signature,
   });
   const signal = AbortSignal.timeout(DOWNSTREAM_TIMEOUT_MS);
-  const results = await Promise.allSettled(destinations.map(async (destination) => {
-    const response = await fetchFn(destination, {
-      method: "POST",
-      headers: new Headers(headers),
-      body: body.slice(),
-      cache: "no-store",
-      redirect: "manual",
-      signal,
-    });
-    return response.ok;
-  }));
+  const results = await Promise.allSettled(
+    destinations.map(async (destination) => {
+      const response = await fetchFn(destination, {
+        method: "POST",
+        headers: new Headers(headers),
+        body: body.slice(),
+        cache: "no-store",
+        redirect: "manual",
+        signal,
+      });
+      return response.ok;
+    }),
+  );
 
-  if (results.some((result) => result.status !== "fulfilled" || !result.value)) {
+  if (
+    results.some((result) => result.status !== "fulfilled" || !result.value)
+  ) {
     // Never include destination URLs, response bodies, or the provider
     // signature in logs or in the response sent back to NOWPayments.
     return errorResponse(502);

@@ -18,12 +18,17 @@ const adapters: readonly AffiliateImportAdapter[] = [
 
 const adaptersById = new Map(adapters.map((adapter) => [adapter.id, adapter]));
 
-export function getAffiliateImportAdapter(id: string): AffiliateImportAdapter | null {
+export function getAffiliateImportAdapter(
+  id: string,
+): AffiliateImportAdapter | null {
   return adaptersById.get(id) ?? null;
 }
 
-export function requireAffiliateImportAdapter(id: string): AffiliateImportAdapter {
+export function requireAffiliateImportAdapter(
+  id: string,
+): AffiliateImportAdapter {
   const adapter = getAffiliateImportAdapter(id);
-  if (!adapter) throw new Error("This import adapter is not supported by this server.");
+  if (!adapter)
+    throw new Error("This import adapter is not supported by this server.");
   return adapter;
 }

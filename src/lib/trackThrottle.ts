@@ -42,10 +42,15 @@ function cap<V>(map: Map<string, V>): void {
  * Whether this address may start another click. `now` is injectable so the
  * window can be tested without waiting it out.
  */
-export function isClickLimited(address: string, now: number = Date.now()): boolean {
+export function isClickLimited(
+  address: string,
+  now: number = Date.now(),
+): boolean {
   const window = addresses.get(address);
   return Boolean(
-    window && now - window.windowStartedAt < ADDRESS_WINDOW_MS && window.count >= MAX_NEW_CLICKS_PER_ADDRESS
+    window &&
+    now - window.windowStartedAt < ADDRESS_WINDOW_MS &&
+    window.count >= MAX_NEW_CLICKS_PER_ADDRESS,
   );
 }
 

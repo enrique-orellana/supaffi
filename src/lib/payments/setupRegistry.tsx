@@ -51,7 +51,10 @@ export type PaymentProviderSetup = {
   provider: PaymentProviderId;
   label: string;
   trackingGuide: Omit<PaymentProviderTrackingGuide, "provider" | "label">;
-  readStatus(ownerId: string, merchantId: string): Promise<PaymentProviderSetupStatus>;
+  readStatus(
+    ownerId: string,
+    merchantId: string,
+  ): Promise<PaymentProviderSetupStatus>;
   checkSections: readonly CheckSection[];
   panel: ComponentType<PaymentProviderPanelProps>;
 };
@@ -63,9 +66,12 @@ const paymentProviderSetups: readonly PaymentProviderSetup[] = [
     panel: StripeConnectionPanel,
     trackingGuide: {
       title: "Stripe Checkout sessions",
-      description: "If you create Stripe Checkout Sessions yourself, pass the referral cookie to the session metadata. Stripe Payment Links, buy buttons and pricing tables need no checkout code.",
+      description:
+        "If you create Stripe Checkout Sessions yourself, pass the referral cookie to the session metadata. Stripe Payment Links, buy buttons and pricing tables need no checkout code.",
       checkoutSnippet: stripeCheckoutSnippet,
-      checkoutPrompt: checkoutPrompt({ checkoutSnippet: stripeCheckoutSnippet }),
+      checkoutPrompt: checkoutPrompt({
+        checkoutSnippet: stripeCheckoutSnippet,
+      }),
     },
     async readStatus(ownerId, merchantId) {
       const status = await getIntegrationStatus(ownerId, merchantId);
@@ -85,7 +91,8 @@ const paymentProviderSetups: readonly PaymentProviderSetup[] = [
     panel: NowPaymentsConnectionPanel,
     trackingGuide: {
       title: "NOWPayments hosted invoices",
-      description: "Automatic capture supports successful same-origin fetch POSTs and cross-origin fetch POSTs whose responses the browser can read through CORS, when they return a fresh NOWPayments hosted invoice URL in JSON. The tracking script registers that invoice before checkout opens; it does not report payment success. Only signed notifications with a matching invoice_id can earn a commission. Reusing an invoice or paying one order with multiple payment IDs is not supported. XHR and other response formats are not detected. Configure the merchant-owned IPN relay so your existing webhook and Supaffi both receive payment notifications.",
+      description:
+        "Automatic capture supports successful same-origin fetch POSTs and cross-origin fetch POSTs whose responses the browser can read through CORS, when they return a fresh NOWPayments hosted invoice URL in JSON. The tracking script registers that invoice before checkout opens; it does not report payment success. Only signed notifications with a matching invoice_id can earn a commission. Reusing an invoice or paying one order with multiple payment IDs is not supported. XHR and other response formats are not detected. Configure the merchant-owned IPN relay so your existing webhook and Supaffi both receive payment notifications.",
     },
     async readStatus(ownerId, merchantId) {
       const status = await getNowPaymentsConnectionStatus(ownerId, merchantId);
@@ -103,16 +110,20 @@ export function listPaymentProviderSetups(): readonly PaymentProviderSetup[] {
 }
 
 export function listPaymentTrackingGuides(
-  connectedProviders: readonly PaymentProviderId[]
+  connectedProviders: readonly PaymentProviderId[],
 ): readonly PaymentProviderTrackingGuide[] {
   const connected = new Set(connectedProviders);
   return paymentProviderSetups
     .filter(({ provider }) => connected.has(provider))
-    .map(({ provider, label, trackingGuide }) => ({ provider, label, ...trackingGuide }));
+    .map(({ provider, label, trackingGuide }) => ({
+      provider,
+      label,
+      ...trackingGuide,
+    }));
 }
 
 export function getPaymentProviderSetup(
-  providerId: PaymentProviderId
+  providerId: PaymentProviderId,
 ): PaymentProviderSetup | undefined {
   return paymentProviderSetups.find(({ provider }) => provider === providerId);
 }

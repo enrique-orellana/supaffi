@@ -5,7 +5,7 @@ import { AuthError } from "next-auth";
 
 export async function login(
   _prevState: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string } | never> {
   try {
     await signIn("credentials", {

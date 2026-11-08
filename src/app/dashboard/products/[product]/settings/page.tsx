@@ -60,12 +60,18 @@ export default async function SettingsPage({
   const fresh = freshSection(query.fresh);
   const providerSetups = listPaymentProviderSetups();
   const [checks, keyKind, paymentStatuses] = await Promise.all([
-    runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
+    runProductChecks(
+      ownerId,
+      merchant.id,
+      fresh ? { fresh: new Set([fresh]) } : {},
+    ),
     getStripeKeyKind(ownerId, merchant.id),
-    Promise.all(providerSetups.map(async (setup) => ({
-      setup,
-      status: await setup.readStatus(ownerId, merchant.id),
-    }))),
+    Promise.all(
+      providerSetups.map(async (setup) => ({
+        setup,
+        status: await setup.readStatus(ownerId, merchant.id),
+      })),
+    ),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
@@ -95,9 +101,10 @@ export default async function SettingsPage({
   } as const;
 
   // A value that names no sheet opens none, rather than an empty panel.
-  const sheet = query.replace && query.replace in sheets
-    ? sheets[query.replace as keyof typeof sheets]
-    : null;
+  const sheet =
+    query.replace && query.replace in sheets
+      ? sheets[query.replace as keyof typeof sheets]
+      : null;
 
   return (
     <Page>

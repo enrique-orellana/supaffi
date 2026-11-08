@@ -22,6 +22,8 @@ export function webhookEndpointUrl(domain: string): string {
 export function webhookCreateUrl(domain: string): string {
   const params = new URLSearchParams();
   params.set("endpoint_location", webhookEndpointUrl(domain));
-  const events = WEBHOOK_EVENTS.map((e) => `events[]=${encodeURIComponent(e)}`).join("&");
+  const events = WEBHOOK_EVENTS.map(
+    (e) => `events[]=${encodeURIComponent(e)}`,
+  ).join("&");
   return `https://dashboard.stripe.com/webhooks/create?${params.toString()}&${events}`;
 }

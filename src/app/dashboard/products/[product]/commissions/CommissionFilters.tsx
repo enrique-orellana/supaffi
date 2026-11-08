@@ -41,7 +41,10 @@ function FilterMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" className="cursor-pointer justify-between gap-1.5" />
+          <Button
+            variant="outline"
+            className="cursor-pointer justify-between gap-1.5"
+          />
         }
       >
         <span className={current ? "font-medium" : "text-muted-foreground"}>
@@ -49,10 +52,19 @@ function FilterMenu({
         </span>
         <ChevronDown className="opacity-60" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 min-w-56 overflow-y-auto">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-72 min-w-56 overflow-y-auto"
+      >
         <DropdownMenuItem
           className="cursor-pointer"
-          render={<button type="button" onClick={() => onPick(null)} className="w-full" />}
+          render={
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className="w-full"
+            />
+          }
         >
           <Check className={active === null ? "opacity-100" : "opacity-0"} />
           <span>{label}</span>
@@ -61,12 +73,24 @@ function FilterMenu({
           <DropdownMenuItem
             key={o.value}
             className="cursor-pointer"
-            render={<button type="button" onClick={() => onPick(o.value)} className="w-full" />}
+            render={
+              <button
+                type="button"
+                onClick={() => onPick(o.value)}
+                className="w-full"
+              />
+            }
           >
-            <Check className={active === o.value ? "opacity-100" : "opacity-0"} />
+            <Check
+              className={active === o.value ? "opacity-100" : "opacity-0"}
+            />
             <span className="flex min-w-0 flex-col items-start">
               <span className="truncate">{o.label}</span>
-              {o.hint && <span className="truncate text-xs text-muted-foreground">{o.hint}</span>}
+              {o.hint && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {o.hint}
+                </span>
+              )}
             </span>
           </DropdownMenuItem>
         ))}
@@ -127,7 +151,10 @@ export function CommissionFilters({
           label="All currencies"
           active={currency}
           onPick={(value) => push({ currency: value })}
-          options={currencies.map((c) => ({ value: c, label: c.toUpperCase() }))}
+          options={currencies.map((c) => ({
+            value: c,
+            label: c.toUpperCase(),
+          }))}
         />
       )}
 

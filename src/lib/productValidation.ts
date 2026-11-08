@@ -43,7 +43,7 @@ function isValidWebsiteUrl(raw: string): boolean {
 // pass instanceDomain() from @/lib/instance.
 export function validateProductInput(
   input: ProductInput,
-  instanceDomain = ""
+  instanceDomain = "",
 ): string | null {
   if (!input.name.trim()) return "Name is required";
 
@@ -77,7 +77,7 @@ export type StripeCredentialsInput = {
 // encrypting an empty string over the top of a live credential.
 export function validateStripeCredentials(
   input: StripeCredentialsInput,
-  allowBlank = false
+  allowBlank = false,
 ): string | null {
   // `rk_` is the restricted key the connect screen's one-click link creates,
   // and the one an Owner should prefer: it carries read access to five
@@ -89,7 +89,10 @@ export function validateStripeCredentials(
   ) {
     return "Stripe key must start with rk_ or sk_";
   }
-  if (!(allowBlank && !input.webhookSecret) && !input.webhookSecret.startsWith("whsec_")) {
+  if (
+    !(allowBlank && !input.webhookSecret) &&
+    !input.webhookSecret.startsWith("whsec_")
+  ) {
     return "Stripe webhook signing secret must start with whsec_";
   }
   return null;

@@ -70,13 +70,17 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/app/affiliates/signup/createAffiliateSignup.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/app/affiliates/signup/createAffiliateSignup.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
 const PASSWORD = "correct horse battery";
 
-function formDataFor(name: string, email: string, password: string = PASSWORD): FormData {
+function formDataFor(
+  name: string,
+  email: string,
+  password: string = PASSWORD,
+): FormData {
   const fd = new FormData();
   fd.set("name", name);
   fd.set("email", email);
@@ -87,7 +91,11 @@ function formDataFor(name: string, email: string, password: string = PASSWORD): 
 // A chosen code is only "chosen" when codeTouched is set, matching the
 // SignupForm client: the live preview always carries some value, and only a
 // touched one is a deliberate pick the server must never silently swap out.
-function formDataWithChosenCode(name: string, email: string, code: string): FormData {
+function formDataWithChosenCode(
+  name: string,
+  email: string,
+  code: string,
+): FormData {
   const fd = formDataFor(name, email);
   fd.set("code", code);
   fd.set("codeTouched", "1");
@@ -146,7 +154,9 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     });
     programSlug = program.slug;
 
-    headersMock.mockResolvedValue(new Headers({ host: "signup-action-test.example.com" }));
+    headersMock.mockResolvedValue(
+      new Headers({ host: "signup-action-test.example.com" }),
+    );
   });
 
   afterAll(async () => {
@@ -166,7 +176,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const first = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataFor("Sarah", "sarah1@example.com")
+      formDataFor("Sarah", "sarah1@example.com"),
     );
     expect(first.error).toBe("");
 
@@ -180,16 +190,24 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const second = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataFor("Sarah", "sarah2@example.com")
+      formDataFor("Sarah", "sarah2@example.com"),
     );
     expect(second.error).toBe("");
 
     const affiliates = await db.affiliate.findMany({
       where: { merchantId },
-      select: { email: true, links: { where: { isPrimary: true }, select: { code: true } } },
+      select: {
+        email: true,
+        links: { where: { isPrimary: true }, select: { code: true } },
+      },
       orderBy: { email: "asc" },
     });
-    expect(affiliates.map((a) => ({ email: a.email, referralCode: a.links[0]?.code ?? "" }))).toEqual([
+    expect(
+      affiliates.map((a) => ({
+        email: a.email,
+        referralCode: a.links[0]?.code ?? "",
+      })),
+    ).toEqual([
       { email: "sarah1@example.com", referralCode: "sarah" },
       { email: "sarah2@example.com", referralCode: "sarah2" },
     ]);
@@ -198,16 +216,31 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
 
   it("does not stamp a password change at signup, so the session it starts is kept", async () => {
     referralCodeQueue.push("sarah");
-    await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+    await createAffiliateSignup(
+      programSlug,
+      { error: "" },
+      formDataFor("Sarah", "sarah@example.com"),
+    );
 
-    const affiliate = await db.affiliate.findFirstOrThrow({ where: { merchantId, email: "sarah@example.com" } });
+    const affiliate = await db.affiliate.findFirstOrThrow({
+      where: { merchantId, email: "sarah@example.com" },
+    });
     expect(affiliate.passwordChangedAt).toBeNull();
-    expect(await affiliateSessionIsCurrent(affiliate.id, Math.floor(Date.now() / 1000))).toBe(true);
+    expect(
+      await affiliateSessionIsCurrent(
+        affiliate.id,
+        Math.floor(Date.now() / 1000),
+      ),
+    ).toBe(true);
   });
 
   it("refuses a second signup with an email already registered, without logging anyone in", async () => {
     referralCodeQueue.push("sarah");
-    await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+    await createAffiliateSignup(
+      programSlug,
+      { error: "" },
+      formDataFor("Sarah", "sarah@example.com"),
+    );
     signInMock.mockClear();
 
     // Same email again, with a different name/slug so this exercises the
@@ -217,20 +250,29 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const repeat = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataFor("Sarah Again", "sarah@example.com", "someone elses password")
+      formDataFor("Sarah Again", "sarah@example.com", "someone elses password"),
     );
 
-    expect(repeat.error).toBe("You already have an account here. Log in instead.");
+    expect(repeat.error).toBe(
+      "You already have an account here. Log in instead.",
+    );
     expect(await db.affiliate.count({ where: { merchantId } })).toBe(1);
     expect(signInMock).not.toHaveBeenCalled();
   });
 
   it("creates the Affiliate with a hash of their password and logs them in", async () => {
     referralCodeQueue.push("sarah");
-    const result = await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+    const result = await createAffiliateSignup(
+      programSlug,
+      { error: "" },
+      formDataFor("Sarah", "sarah@example.com"),
+    );
 
     expect(result.error).toBe("");
-    const affiliate = await db.affiliate.findFirstOrThrow({ where: { merchantId }, select: { passwordHash: true } });
+    const affiliate = await db.affiliate.findFirstOrThrow({
+      where: { merchantId },
+      select: { passwordHash: true },
+    });
     expect(affiliate.passwordHash).toBeTruthy();
     expect(affiliate.passwordHash).not.toBe(PASSWORD);
     expect(await verifyPassword(PASSWORD, affiliate.passwordHash!)).toBe(true);
@@ -246,7 +288,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const result = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataFor("Sarah", "sarah@example.com", "short")
+      formDataFor("Sarah", "sarah@example.com", "short"),
     );
 
     expect(result.error).toMatch(/^Use at least \d+ characters$/);
@@ -258,13 +300,20 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // Every request looks like the proxy here. Counting that as one visitor
     // would stop the whole instance at twenty signups an hour.
     headersMock.mockResolvedValue(
-      new Headers({ host: "signup-action-test.example.com", "x-forwarded-for": "172.18.0.3" })
+      new Headers({
+        host: "signup-action-test.example.com",
+        "x-forwarded-for": "172.18.0.3",
+      }),
     );
     for (let i = 0; i < 25; i += 1) {
       const result = await createAffiliateSignup(
         programSlug,
         { error: "" },
-        formDataWithChosenCode(`Person ${i}`, `person-${i}@example.com`, `person-${i}`)
+        formDataWithChosenCode(
+          `Person ${i}`,
+          `person-${i}@example.com`,
+          `person-${i}`,
+        ),
       );
       expect(result.error).toBe("");
     }
@@ -276,7 +325,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const result = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataWithChosenCode("Sarah", "sarah@example.com", "my-own-code")
+      formDataWithChosenCode("Sarah", "sarah@example.com", "my-own-code"),
     );
 
     expect(result.error).toBe("");
@@ -294,13 +343,13 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataFor("First", "first@example.com")
+      formDataFor("First", "first@example.com"),
     );
 
     const result = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataWithChosenCode("Second", "second@example.com", "taken-code")
+      formDataWithChosenCode("Second", "second@example.com", "taken-code"),
     );
 
     expect(result.error).toBe("That code is already taken. Try another.");
@@ -316,11 +365,11 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const result = await createAffiliateSignup(
       programSlug,
       { error: "" },
-      formDataWithChosenCode("Sarah", "sarah@example.com", "Not A Valid Code!")
+      formDataWithChosenCode("Sarah", "sarah@example.com", "Not A Valid Code!"),
     );
 
     expect(result.error).toBe(
-      "Use lowercase letters, numbers and hyphens, with no hyphen at either end."
+      "Use lowercase letters, numbers and hyphens, with no hyphen at either end.",
     );
     const affiliates = await db.affiliate.findMany({ where: { merchantId } });
     expect(affiliates).toHaveLength(0);

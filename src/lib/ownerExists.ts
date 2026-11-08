@@ -30,7 +30,7 @@ export async function ownerExists(): Promise<boolean> {
  */
 export async function ownerSessionIsCurrent(
   ownerId: string,
-  issuedAtSeconds: number | undefined
+  issuedAtSeconds: number | undefined,
 ): Promise<boolean> {
   const owner = await db.owner.findUnique({
     where: { id: ownerId },

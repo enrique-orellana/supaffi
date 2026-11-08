@@ -30,7 +30,9 @@ export function isChartRange(value: unknown): value is ChartRange {
 }
 
 /** The range a page was asked for, or the default when the URL says nothing usable. */
-export function rangeFromQuery(value: string | string[] | undefined): ChartRange {
+export function rangeFromQuery(
+  value: string | string[] | undefined,
+): ChartRange {
   return isChartRange(value) ? value : DEFAULT_RANGE;
 }
 

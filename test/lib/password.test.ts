@@ -11,7 +11,9 @@ describe("password", () => {
   it("hashes a password and verifies it correctly", async () => {
     const hash = await hashPassword("correct horse battery staple");
     expect(hash).not.toBe("correct horse battery staple");
-    expect(await verifyPassword("correct horse battery staple", hash)).toBe(true);
+    expect(await verifyPassword("correct horse battery staple", hash)).toBe(
+      true,
+    );
   });
 
   it("rejects the wrong password", async () => {
@@ -20,7 +22,9 @@ describe("password", () => {
   });
 
   it("refuses every password when there is no account to check against", async () => {
-    expect(await verifyAgainstNoAccount("correct horse battery staple")).toBe(false);
+    expect(await verifyAgainstNoAccount("correct horse battery staple")).toBe(
+      false,
+    );
     expect(await verifyAgainstNoAccount("")).toBe(false);
   });
 });
@@ -40,8 +44,8 @@ describe("limitConcurrency", () => {
           await new Promise((resolve) => setTimeout(resolve, 1));
           active -= 1;
           return i;
-        })
-      )
+        }),
+      ),
     );
     expect(peak).toBe(2);
     expect(results).toEqual(Array.from({ length: 20 }, (_, i) => i));
@@ -55,7 +59,9 @@ describe("limitConcurrency", () => {
     const blocker = new Promise<void>((resolve) => (release = resolve));
     const running = run(() => blocker);
     const queued = [run(async () => "a"), run(async () => "b")];
-    await expect(run(async () => "c")).rejects.toBeInstanceOf(ConcurrencyLimitError);
+    await expect(run(async () => "c")).rejects.toBeInstanceOf(
+      ConcurrencyLimitError,
+    );
     release();
     await running;
     expect(await Promise.all(queued)).toEqual(["a", "b"]);
@@ -64,7 +70,9 @@ describe("limitConcurrency", () => {
 
   it("frees the slot when the work throws", async () => {
     const run = limitConcurrency(1);
-    await expect(run(async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+    await expect(
+      run(async () => Promise.reject(new Error("boom"))),
+    ).rejects.toThrow("boom");
     expect(await run(async () => "next")).toBe("next");
   });
 });

@@ -9,7 +9,12 @@ import { paymentLinkSale, sale } from "./provider";
 test.describe.configure({ mode: "serial" });
 
 const OWNER = { email: "owner@example.com", password: "owner-password-123" };
-const AFFILIATE = { name: "Alice", email: "alice@example.com", password: "alice-password-123", code: "alice" };
+const AFFILIATE = {
+  name: "Alice",
+  email: "alice@example.com",
+  password: "alice-password-123",
+  code: "alice",
+};
 const ADMIN = "https://admin.test";
 const PRODUCT_DOMAIN = "https://affiliates.shop.test";
 const SHOP = "https://shop.test";
@@ -18,8 +23,12 @@ let owner: Page;
 let affiliate: Page;
 
 function setupToken(): string {
-  const logs = execSync("docker compose logs app", { cwd: `${import.meta.dirname}/..` }).toString();
-  const token = [...logs.matchAll(/setup token: ([A-Za-z0-9_-]{16,})/g)].at(-1)?.[1];
+  const logs = execSync("docker compose logs app", {
+    cwd: `${import.meta.dirname}/..`,
+  }).toString();
+  const token = [...logs.matchAll(/setup token: ([A-Za-z0-9_-]{16,})/g)].at(
+    -1,
+  )?.[1];
   if (!token) throw new Error("No setup token in the app logs");
   return token;
 }
@@ -77,10 +86,16 @@ test("owner onboards a product", async () => {
 
   // The app fetches the merchant's page and finds its own script tag.
   await owner.waitForURL(/\/tracking$/);
-  await expect(owner.getByText("Script is live on shop.test")).toBeVisible({ timeout: 90_000 });
+  await expect(owner.getByText("Script is live on shop.test")).toBeVisible({
+    timeout: 90_000,
+  });
   await owner.getByRole("button", { name: "Finish" }).click();
-  const live = owner.getByRole("dialog", { name: "Your affiliate program is live" });
-  await expect(live.getByText(`${PRODUCT_DOMAIN}/affiliates/signup/shop`)).toBeVisible();
+  const live = owner.getByRole("dialog", {
+    name: "Your affiliate program is live",
+  });
+  await expect(
+    live.getByText(`${PRODUCT_DOMAIN}/affiliates/signup/shop`),
+  ).toBeVisible();
   await live.getByRole("button", { name: "Go to dashboard" }).click();
   await owner.waitForURL(/\/dashboard\/products\/shop/);
 });
@@ -94,10 +109,14 @@ test("affiliate signs up on the product domain", async () => {
   await affiliate.getByLabel("Your referral link").fill(AFFILIATE.code);
   await affiliate.getByRole("button", { name: "Get my link" }).click();
   await affiliate.waitForURL(/\/affiliates\/dashboard/);
-  await expect(affiliate.getByText(`https://shop.test?via=${AFFILIATE.code}`)).toBeVisible();
+  await expect(
+    affiliate.getByText(`https://shop.test?via=${AFFILIATE.code}`),
+  ).toBeVisible();
 });
 
-test("owner pages are not served on the product domain", async ({ browser }) => {
+test("owner pages are not served on the product domain", async ({
+  browser,
+}) => {
   const visitor = await newPage(browser);
   const res = await visitor.goto(`${PRODUCT_DOMAIN}/dashboard`);
   expect(res?.status()).toBe(404);
@@ -105,14 +124,21 @@ test("owner pages are not served on the product domain", async ({ browser }) => 
 
 test("a referred sale earns a commission", async ({ browser }) => {
   const buyer = await newPage(browser);
-  const result = await sale(buyer, { via: AFFILIATE.code, email: "buyer@example.com" });
+  const result = await sale(buyer, {
+    via: AFFILIATE.code,
+    email: "buyer@example.com",
+  });
   expect(result.referral).not.toBe("none");
   expect(result.delivered).toEqual([200]);
 
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
-  await eventually(owner, () => expect(owner.getByRole("cell", { name: "$30.00" })).toBeVisible());
+  await eventually(owner, () =>
+    expect(owner.getByRole("cell", { name: "$30.00" })).toBeVisible(),
+  );
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard`);
-  await eventually(affiliate, () => expect(affiliate.getByText(/30\.00/).first()).toBeVisible());
+  await eventually(affiliate, () =>
+    expect(affiliate.getByText(/30\.00/).first()).toBeVisible(),
+  );
 
   saleRefs.referred = result.paymentIntent;
 });
@@ -131,46 +157,74 @@ test("a sale with no referral earns nothing", async ({ browser }) => {
 const saleRefs: { referred?: string } = {};
 
 test("a full refund voids the commission", async ({ request }) => {
-  const res = await request.post("http://127.0.0.1:12111/_test/refund", { data: { payment_intent: saleRefs.referred } });
+  const res = await request.post("http://127.0.0.1:12111/_test/refund", {
+    data: { payment_intent: saleRefs.referred },
+  });
   expect(res.ok()).toBe(true);
-  expect((await res.json()).deliveries.map((d: { status: number }) => d.status)).toEqual([200]);
+  expect(
+    (await res.json()).deliveries.map((d: { status: number }) => d.status),
+  ).toEqual([200]);
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
-  await eventually(owner, () => expect(owner.getByRole("cell", { name: "Voided" })).toBeVisible());
+  await eventually(owner, () =>
+    expect(owner.getByRole("cell", { name: "Voided" })).toBeVisible(),
+  );
 });
 
 test("a dispute holds the commission", async ({ browser, request }) => {
   const buyer = await newPage(browser);
-  const result = await sale(buyer, { via: AFFILIATE.code, email: "disputer@example.com" });
-  const res = await request.post("http://127.0.0.1:12111/_test/dispute", { data: { payment_intent: result.paymentIntent } });
+  const result = await sale(buyer, {
+    via: AFFILIATE.code,
+    email: "disputer@example.com",
+  });
+  const res = await request.post("http://127.0.0.1:12111/_test/dispute", {
+    data: { payment_intent: result.paymentIntent },
+  });
   expect(res.ok()).toBe(true);
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   // The hold shows in the commission's panel; the list row does not say it.
   await eventually(owner, async () => {
     await owner.getByRole("row").nth(1).getByRole("link").click();
-    await expect(owner.getByText("Disputed", { exact: true })).toBeVisible({ timeout: 3_000 });
+    await expect(owner.getByText("Disputed", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 });
 
-test("an affiliate buying through their own link is flagged", async ({ browser }) => {
+test("an affiliate buying through their own link is flagged", async ({
+  browser,
+}) => {
   const buyer = await newPage(browser);
   await sale(buyer, { via: AFFILIATE.code, email: AFFILIATE.email });
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
-  await eventually(owner, () => expect(owner.getByRole("cell", { name: "Flagged" })).toBeVisible());
+  await eventually(owner, () =>
+    expect(owner.getByRole("cell", { name: "Flagged" })).toBeVisible(),
+  );
 });
 
-test("a Payment Link on the merchant's page earns a commission", async ({ browser }) => {
+test("a Payment Link on the merchant's page earns a commission", async ({
+  browser,
+}) => {
   const buyer = await newPage(browser);
-  const result = await paymentLinkSale(buyer, { via: AFFILIATE.code, email: "linkbuyer@example.com", amount: 5000, cardFingerprint: "fp_link_buyer_card" });
+  const result = await paymentLinkSale(buyer, {
+    via: AFFILIATE.code,
+    email: "linkbuyer@example.com",
+    amount: 5000,
+    cardFingerprint: "fp_link_buyer_card",
+  });
   // The script tagged the link with the visitor's referral, and nothing else
   // on the merchant's side did.
-  expect(new URL(result.href).searchParams.get("client_reference_id")).toBe(`supaffi_${result.referral}`);
+  expect(new URL(result.href).searchParams.get("client_reference_id")).toBe(
+    `supaffi_${result.referral}`,
+  );
   expect(result.delivered).toEqual([200]);
   // A different amount from every other sale, so this commission is its own.
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   // A card of its own, so it is not mistaken for the affiliate buying through
   // their own link.
   await eventually(owner, async () => {
-    const row = owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "$15.00" }) });
+    const row = owner
+      .getByRole("row")
+      .filter({ has: owner.getByRole("cell", { name: "$15.00" }) });
     await expect(row).toBeVisible();
     await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
   });

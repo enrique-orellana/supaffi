@@ -47,7 +47,9 @@ export function DashboardCard({
     >
       {title && (
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
-          <h2 className="font-heading text-sm font-medium tracking-tight">{title}</h2>
+          <h2 className="font-heading text-sm font-medium tracking-tight">
+            {title}
+          </h2>
           {action}
         </div>
       )}
@@ -59,7 +61,9 @@ export function DashboardCard({
         {children}
       </div>
       {footer && (
-        <div className="shrink-0 border-t border-border/60 px-4 py-2.5">{footer}</div>
+        <div className="shrink-0 border-t border-border/60 px-4 py-2.5">
+          {footer}
+        </div>
       )}
     </section>
   );

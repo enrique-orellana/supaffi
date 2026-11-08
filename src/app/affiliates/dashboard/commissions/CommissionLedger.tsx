@@ -1,6 +1,9 @@
 import { formatMoney, formatDate } from "@/lib/format";
 import { Coins } from "lucide-react";
-import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
+import type {
+  AffiliateCommissionRow,
+  AffiliateCommissionStatus,
+} from "@/lib/affiliate";
 import { voidReasonText } from "@/lib/commissionReason";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -28,7 +31,6 @@ import {
  * list of the same rows, because five columns in the width of a phone is not a
  * table.
  */
-
 
 // FLAGGED never reaches an affiliate: toDisplayStatus folds it into PENDING
 // before a row gets here, so there are four states, not five. Locked to the
@@ -102,7 +104,9 @@ export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
     id: row.id,
     dateLabel: formatDate(row.createdAt),
     amount: formatMoney(row.amount, row.currency),
-    grossAmount: row.grossAmount ? formatMoney(row.grossAmount, row.currency) : null,
+    grossAmount: row.grossAmount
+      ? formatMoney(row.grossAmount, row.currency)
+      : null,
     status: row.status,
     linkCode: row.linkCode,
     isAdjustment: row.isAdjustment,
@@ -127,7 +131,11 @@ function voidedDetail(cause: string | null, when: string | null): string {
  * one place a stored token becomes words, so both the table and the phone list
  * go through it rather than writing their own.
  */
-function readRow(row: LedgerRow): { voided: boolean; cause: string | null; reduced: boolean } {
+function readRow(row: LedgerRow): {
+  voided: boolean;
+  cause: string | null;
+  reduced: boolean;
+} {
   const voided = row.status === "VOIDED";
   return {
     voided,
@@ -136,10 +144,20 @@ function readRow(row: LedgerRow): { voided: boolean; cause: string | null; reduc
   };
 }
 
-export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filtered: boolean }) {
+export function CommissionLedger({
+  rows,
+  filtered,
+}: {
+  rows: LedgerRow[];
+  filtered: boolean;
+}) {
   if (rows.length === 0) {
     return filtered ? (
-      <EmptyState icon={<Coins />} title="Nothing matches" body="Pick another filter to see more." />
+      <EmptyState
+        icon={<Coins />}
+        title="Nothing matches"
+        body="Pick another filter to see more."
+      />
     ) : (
       <EmptyState
         icon={<Coins />}
@@ -161,7 +179,10 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
           return (
             <li
               key={row.id}
-              className={cn("flex flex-col gap-1 px-4 py-3", voided && "text-muted-foreground")}
+              className={cn(
+                "flex flex-col gap-1 px-4 py-3",
+                voided && "text-muted-foreground",
+              )}
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-[13px] text-muted-foreground tabular-nums">
@@ -172,7 +193,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     className={cn(
                       "text-[15px] font-medium whitespace-nowrap tabular-nums",
                       row.isAdjustment && "text-destructive",
-                      !row.isAdjustment && !voided && "text-neutral-900"
+                      !row.isAdjustment && !voided && "text-neutral-900",
                     )}
                   >
                     {row.amount}
@@ -189,9 +210,13 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                   {STATUS_LABELS[row.status]}
                 </Badge>
                 <span className="min-w-0 flex-1 text-[13px] text-pretty text-muted-foreground">
-                  {voided ? voidedDetail(cause, row.voidedLabel) : row.stateLabel}
+                  {voided
+                    ? voidedDetail(cause, row.voidedLabel)
+                    : row.stateLabel}
                   {reduced && cause && (
-                    <span className="block text-xs text-muted-foreground/70">{cause}</span>
+                    <span className="block text-xs text-muted-foreground/70">
+                      {cause}
+                    </span>
                   )}
                 </span>
               </div>
@@ -224,65 +249,71 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
           </TableRow>
         </TableHeader>
         <TableBody className="divide-y divide-neutral-200">
-        {rows.map((row) => {
-          const { voided, cause, reduced } = readRow(row);
-          return (
-            <TableRow
-              key={row.id}
-              className={cn(
-                "border-neutral-200 hover:bg-neutral-50",
-                // Muted throughout, not only on the badge: a voided sale is the
-                // least important row on the screen and should read that way
-                // before the eye reaches the status column.
-                voided && "text-muted-foreground"
-              )}
-            >
-              <TableCell className="align-top whitespace-nowrap text-muted-foreground tabular-nums">
-                {row.dateLabel}
-              </TableCell>
-              <TableCell className="text-right align-top">
-                {/* The heaviest thing in the row: this screen's whole subject
+          {rows.map((row) => {
+            const { voided, cause, reduced } = readRow(row);
+            return (
+              <TableRow
+                key={row.id}
+                className={cn(
+                  "border-neutral-200 hover:bg-neutral-50",
+                  // Muted throughout, not only on the badge: a voided sale is the
+                  // least important row on the screen and should read that way
+                  // before the eye reaches the status column.
+                  voided && "text-muted-foreground",
+                )}
+              >
+                <TableCell className="align-top whitespace-nowrap text-muted-foreground tabular-nums">
+                  {row.dateLabel}
+                </TableCell>
+                <TableCell className="text-right align-top">
+                  {/* The heaviest thing in the row: this screen's whole subject
                     is money, and the currency is carried once, on the figure
                     itself. */}
-                <span
-                  className={cn(
-                    "block text-[15px] font-medium whitespace-nowrap tabular-nums",
-                    row.isAdjustment && "text-destructive",
-                    !row.isAdjustment && !voided && "text-neutral-900"
-                  )}
-                >
-                  {row.amount}
-                </span>
-                {/* What it was before the refund, struck through under what it
+                  <span
+                    className={cn(
+                      "block text-[15px] font-medium whitespace-nowrap tabular-nums",
+                      row.isAdjustment && "text-destructive",
+                      !row.isAdjustment && !voided && "text-neutral-900",
+                    )}
+                  >
+                    {row.amount}
+                  </span>
+                  {/* What it was before the refund, struck through under what it
                     is now: a reduced row has to show both figures or the
                     affiliate is left doing the subtraction. */}
-                {reduced && row.grossAmount && (
-                  <span className="block text-[11px] text-neutral-500 line-through tabular-nums">
-                    {row.grossAmount}
+                  {reduced && row.grossAmount && (
+                    <span className="block text-[11px] text-neutral-500 line-through tabular-nums">
+                      {row.grossAmount}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="align-top">
+                  <Badge className={STATUS_STYLES[row.status]}>
+                    {STATUS_LABELS[row.status]}
+                  </Badge>
+                </TableCell>
+                <TableCell className="align-top">
+                  <span className="block truncate font-mono text-[13px] text-muted-foreground">
+                    {row.linkCode ?? "Deleted"}
                   </span>
-                )}
-              </TableCell>
-              <TableCell className="align-top">
-                <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
-              </TableCell>
-              <TableCell className="align-top">
-                <span className="block truncate font-mono text-[13px] text-muted-foreground">
-                  {row.linkCode ?? "Deleted"}
-                </span>
-              </TableCell>
-              <TableCell className="align-top">
-                {/* Never truncated. The reason money moved is the one string on
+                </TableCell>
+                <TableCell className="align-top">
+                  {/* Never truncated. The reason money moved is the one string on
                     this screen an affiliate cannot be asked to guess at. */}
-                <span className="block text-[13px] text-pretty text-muted-foreground">
-                  {voided ? voidedDetail(cause, row.voidedLabel) : row.stateLabel}
-                </span>
-                {reduced && cause && (
-                  <span className="block text-xs text-pretty text-muted-foreground/70">{cause}</span>
-                )}
-              </TableCell>
-            </TableRow>
-          );
-        })}
+                  <span className="block text-[13px] text-pretty text-muted-foreground">
+                    {voided
+                      ? voidedDetail(cause, row.voidedLabel)
+                      : row.stateLabel}
+                  </span>
+                  {reduced && cause && (
+                    <span className="block text-xs text-pretty text-muted-foreground/70">
+                      {cause}
+                    </span>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </>

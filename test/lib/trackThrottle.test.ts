@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { isClickLimited, rememberClick, resetTrackThrottle } from "@/lib/trackThrottle";
+import {
+  isClickLimited,
+  rememberClick,
+  resetTrackThrottle,
+} from "@/lib/trackThrottle";
 import { isPrivateAddress } from "@/lib/clientAddress";
 
 const T0 = 1_700_000_000_000;
@@ -17,7 +21,8 @@ describe("isClickLimited", () => {
   });
 
   it("stops one address after too many new clicks, until the window passes", () => {
-    for (let i = 0; i < MAX_NEW_CLICKS_PER_ADDRESS; i++) rememberClick(VISITOR, T0);
+    for (let i = 0; i < MAX_NEW_CLICKS_PER_ADDRESS; i++)
+      rememberClick(VISITOR, T0);
     expect(isClickLimited(VISITOR, T0)).toBe(true);
     expect(isClickLimited("198.51.100.4", T0)).toBe(false);
     expect(isClickLimited(VISITOR, T0 + TEN_MINUTES)).toBe(false);
@@ -42,7 +47,12 @@ describe("isPrivateAddress", () => {
   });
 
   it("treats internet addresses as public", () => {
-    for (const address of ["203.0.113.7", "8.8.8.8", "172.32.0.1", "2001:db8::1"]) {
+    for (const address of [
+      "203.0.113.7",
+      "8.8.8.8",
+      "172.32.0.1",
+      "2001:db8::1",
+    ]) {
       expect(isPrivateAddress(address), address).toBe(false);
     }
   });

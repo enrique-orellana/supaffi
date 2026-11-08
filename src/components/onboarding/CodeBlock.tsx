@@ -30,11 +30,21 @@ export function CodeBlock({
   return (
     <div className="overflow-hidden rounded-(--radius) border border-neutral-300 bg-card">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-100 py-1.5 pr-2 pl-4">
-        <span className="truncate text-[13px] font-medium text-neutral-700">{title}</span>
+        <span className="truncate text-[13px] font-medium text-neutral-700">
+          {title}
+        </span>
         <div className="flex shrink-0 items-center gap-1.5">
           {prompt && (
-            <Button variant="secondary" size="sm" onClick={() => copyPrompt(prompt)}>
-              {copiedPrompt ? <Check className="text-status-success" /> : <Sparkles />}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => copyPrompt(prompt)}
+            >
+              {copiedPrompt ? (
+                <Check className="text-status-success" />
+              ) : (
+                <Sparkles />
+              )}
               Copy AI prompt
             </Button>
           )}
@@ -54,17 +64,34 @@ export function CodeBlock({
 }
 
 /** A one-line value to copy: an endpoint, a link, a record value. */
-export function CopyField({ value, mono = true, className }: { value: string; mono?: boolean; className?: string }) {
+export function CopyField({
+  value,
+  mono = true,
+  className,
+}: {
+  value: string;
+  mono?: boolean;
+  className?: string;
+}) {
   const [copied, copy] = useCopy();
   return (
     <div
       className={cn(
         "flex h-12 items-center gap-2 rounded-(--radius) border border-neutral-300 bg-card pr-2 pl-4",
-        className
+        className,
       )}
     >
-      <span className={cn("min-w-0 flex-1 truncate text-sm", mono && "font-mono")}>{value}</span>
-      <Button variant="secondary" size="sm" className="shrink-0" onClick={() => copy(value)}>
+      <span
+        className={cn("min-w-0 flex-1 truncate text-sm", mono && "font-mono")}
+      >
+        {value}
+      </span>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="shrink-0"
+        onClick={() => copy(value)}
+      >
         {copied ? <Check className="text-status-success" /> : <Copy />}
         Copy
       </Button>

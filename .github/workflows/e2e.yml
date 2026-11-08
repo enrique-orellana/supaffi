@@ -47,13 +47,15 @@ jobs:
           # Three packages; not worth a cache anything else could write to.
           package-manager-cache: false
 
+      - run: corepack enable
+
       # Lifecycle scripts off, as in CI. The browser is fetched explicitly.
       - name: Install Playwright
         working-directory: e2e
         run: |
           set -euo pipefail
-          npm ci --ignore-scripts
-          npx playwright install --with-deps chromium
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm exec playwright install --with-deps chromium
 
       - name: Start the stack
         working-directory: e2e
@@ -70,7 +72,7 @@ jobs:
 
       - name: Run
         working-directory: e2e
-        run: npx playwright test
+        run: pnpm exec playwright test
 
       - name: Logs
         if: failure()

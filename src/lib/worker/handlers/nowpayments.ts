@@ -1,7 +1,11 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import type { CommerceCheckout, PaymentRecord, WebhookEvent } from "@prisma/client";
+import type {
+  CommerceCheckout,
+  PaymentRecord,
+  WebhookEvent,
+} from "@prisma/client";
 import { db } from "@/lib/db";
 import { SqlSchema } from "@/lib/sqlSchema";
 import {
@@ -9,14 +13,21 @@ import {
   releaseCheckoutConflictHold,
 } from "@/lib/commerceCheckoutReferences";
 import { commissionRateFor, computePayableAt } from "../commission";
-import { commissionDurationForClick, referralStillEarns } from "../referralDuration";
+import {
+  commissionDurationForClick,
+  referralStillEarns,
+} from "../referralDuration";
 
 type JsonObject = Record<string, unknown>;
 
 type QueuedNowPaymentsEvent = {
   provider: typeof PaymentProvider.NOWPAYMENTS.id;
   eventId: string;
-  kind: "payment_succeeded" | "payment_failed" | "payment_refunded" | "payment_pending";
+  kind:
+    | "payment_succeeded"
+    | "payment_failed"
+    | "payment_refunded"
+    | "payment_pending";
   paymentRef: string;
   checkoutRef: string | null;
   saleAmount: string;
@@ -47,67 +58,96 @@ function isObject(value: unknown): value is JsonObject {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function decimalText(value: unknown, maxIntegerDigits: number, maxFractionDigits: number): string | null {
+function decimalText(
+  value: unknown,
+  maxIntegerDigits: number,
+  maxFractionDigits: number,
+): string | null {
   if (typeof value !== "string" || value.length > 128) return null;
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(value);
-  if (!match || match[1].length > maxIntegerDigits || (match[2]?.length ?? 0) > maxFractionDigits) return null;
+  if (
+    !match ||
+    match[1].length > maxIntegerDigits ||
+    (match[2]?.length ?? 0) > maxFractionDigits
+  )
+    return null;
   return value;
 }
 
 function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
-  if (!isObject(payload) || payload.provider !== PaymentProvider.NOWPAYMENTS.id) return null;
+  if (!isObject(payload) || payload.provider !== PaymentProvider.NOWPAYMENTS.id)
+    return null;
   if (
     typeof payload.eventId !== "string" ||
     typeof payload.kind !== "string" ||
-    !["payment_succeeded", "payment_failed", "payment_refunded", "payment_pending"].includes(payload.kind) ||
+    ![
+      "payment_succeeded",
+      "payment_failed",
+      "payment_refunded",
+      "payment_pending",
+    ].includes(payload.kind) ||
     typeof payload.paymentRef !== "string" ||
     !payload.paymentRef.trim() ||
     typeof payload.saleAmount !== "string" ||
     typeof payload.saleCurrency !== "string" ||
     typeof payload.occurredAt !== "string" ||
     !isObject(payload.rawPayload)
-  ) return null;
+  )
+    return null;
 
   const raw = payload.rawPayload;
   const providerStatus = raw.payment_status;
   const rawPaymentRef =
     typeof raw.payment_id === "string"
       ? raw.payment_id
-      : typeof raw.payment_id === "number" && Number.isSafeInteger(raw.payment_id)
+      : typeof raw.payment_id === "number" &&
+          Number.isSafeInteger(raw.payment_id)
         ? String(raw.payment_id)
         : null;
   const providerInvoiceRef =
     typeof raw.invoice_id === "string" && raw.invoice_id.trim()
       ? raw.invoice_id
-      : typeof raw.invoice_id === "number" && Number.isSafeInteger(raw.invoice_id)
+      : typeof raw.invoice_id === "number" &&
+          Number.isSafeInteger(raw.invoice_id)
         ? String(raw.invoice_id)
         : null;
   const sourceOrderId =
     typeof raw.order_id === "string" && raw.order_id.trim()
       ? raw.order_id
-      : rawPaymentRef ?? "";
+      : (rawPaymentRef ?? "");
   if (
     !rawPaymentRef ||
     !sourceOrderId.trim() ||
     sourceOrderId.length > 255 ||
     /[\u0000-\u001f\u007f]/.test(sourceOrderId) ||
     typeof providerStatus !== "string" ||
-    !Object.prototype.hasOwnProperty.call(PAYMENT_STATUS_PRIORITY, providerStatus) ||
+    !Object.prototype.hasOwnProperty.call(
+      PAYMENT_STATUS_PRIORITY,
+      providerStatus,
+    ) ||
     rawPaymentRef !== payload.paymentRef ||
-    (
-      payload.eventId !== `${payload.paymentRef}:${providerStatus}` &&
-      !(payload.reconciliation === true && /^owner-reconcile:[a-f0-9]{64}$/.test(payload.eventId))
-    )
-  ) return null;
+    (payload.eventId !== `${payload.paymentRef}:${providerStatus}` &&
+      !(
+        payload.reconciliation === true &&
+        /^owner-reconcile:[a-f0-9]{64}$/.test(payload.eventId)
+      ))
+  )
+    return null;
 
   const saleAmount = decimalText(payload.saleAmount, 16, 2);
   const saleCurrency = payload.saleCurrency.toLowerCase();
   const occurredAt = new Date(payload.occurredAt);
-  if (!saleAmount || !/^[a-z]{3}$/.test(saleCurrency) || Number.isNaN(occurredAt.getTime())) return null;
+  if (
+    !saleAmount ||
+    !/^[a-z]{3}$/.test(saleCurrency) ||
+    Number.isNaN(occurredAt.getTime())
+  )
+    return null;
 
   const cryptoAmount = decimalText(payload.cryptoAmount, 20, 18);
   const cryptoCurrency =
-    typeof payload.cryptoCurrency === "string" && /^[a-z0-9_-]{2,20}$/i.test(payload.cryptoCurrency)
+    typeof payload.cryptoCurrency === "string" &&
+    /^[a-z0-9_-]{2,20}$/i.test(payload.cryptoCurrency)
       ? payload.cryptoCurrency.toLowerCase()
       : null;
   const cryptoNetwork =
@@ -120,7 +160,8 @@ function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
     eventId: payload.eventId,
     kind: payload.kind as QueuedNowPaymentsEvent["kind"],
     paymentRef: payload.paymentRef,
-    checkoutRef: typeof payload.checkoutRef === "string" ? payload.checkoutRef : null,
+    checkoutRef:
+      typeof payload.checkoutRef === "string" ? payload.checkoutRef : null,
     saleAmount,
     saleCurrency,
     cryptoAmount,
@@ -149,12 +190,17 @@ function statusAfter(current: string | null, incoming: string): string {
   const incomingPriority = PAYMENT_STATUS_PRIORITY[incoming] ?? -1;
   if (prior === "refunded" || incoming === "refunded") return "refunded";
   if (prior === "finished" || incoming === "finished") return "finished";
-  if ((prior === "failed" || prior === "expired") && incomingPriority < 5) return prior;
-  if ((incoming === "failed" || incoming === "expired") && priorPriority < 5) return incoming;
+  if ((prior === "failed" || prior === "expired") && incomingPriority < 5)
+    return prior;
+  if ((incoming === "failed" || incoming === "expired") && priorPriority < 5)
+    return incoming;
   return incomingPriority >= priorPriority ? incoming : prior;
 }
 
-function commissionAmount(saleAmount: Prisma.Decimal, rate: Prisma.Decimal): Prisma.Decimal {
+function commissionAmount(
+  saleAmount: Prisma.Decimal,
+  rate: Prisma.Decimal,
+): Prisma.Decimal {
   return saleAmount
     .mul(rate)
     .div(100)
@@ -163,7 +209,7 @@ function commissionAmount(saleAmount: Prisma.Decimal, rate: Prisma.Decimal): Pri
 
 function paymentTerminalSnapshot(
   event: QueuedNowPaymentsEvent,
-  paymentRecord: PaymentRecord
+  paymentRecord: PaymentRecord,
 ): {
   paymentRef: string;
   invoiceRef: string | null;
@@ -202,7 +248,7 @@ async function upsertPaymentRecord(
     cryptoCurrency: string | null;
     cryptoNetwork: string | null;
     status: string;
-  }
+  },
 ): Promise<{ record: PaymentRecord; previousStatus: string | null }> {
   const existing = await tx.paymentRecord.findUnique({
     where: {
@@ -214,14 +260,19 @@ async function upsertPaymentRecord(
     },
   });
   const samePayment = existing?.paymentRef === input.paymentRef;
-  const status = samePayment ? statusAfter(existing?.status ?? null, input.status) : input.status;
-  const cryptoAmount = samePayment && existing?.cryptoAmount && input.cryptoAmount
-    ? (existing.cryptoAmount.gte(input.cryptoAmount) ? existing.cryptoAmount : input.cryptoAmount)
-    : samePayment
-      ? input.cryptoAmount ?? existing?.cryptoAmount ?? null
-      : input.cryptoAmount;
+  const status = samePayment
+    ? statusAfter(existing?.status ?? null, input.status)
+    : input.status;
+  const cryptoAmount =
+    samePayment && existing?.cryptoAmount && input.cryptoAmount
+      ? existing.cryptoAmount.gte(input.cryptoAmount)
+        ? existing.cryptoAmount
+        : input.cryptoAmount
+      : samePayment
+        ? (input.cryptoAmount ?? existing?.cryptoAmount ?? null)
+        : input.cryptoAmount;
   const checkoutRef = samePayment
-    ? input.checkoutRef ?? existing?.checkoutRef ?? null
+    ? (input.checkoutRef ?? existing?.checkoutRef ?? null)
     : input.checkoutRef;
 
   const record = existing
@@ -236,8 +287,12 @@ async function upsertPaymentRecord(
           saleAmount: input.saleAmount,
           saleCurrency: input.saleCurrency,
           cryptoAmount,
-          cryptoCurrency: samePayment ? input.cryptoCurrency ?? existing.cryptoCurrency : input.cryptoCurrency,
-          cryptoNetwork: samePayment ? input.cryptoNetwork ?? existing.cryptoNetwork : input.cryptoNetwork,
+          cryptoCurrency: samePayment
+            ? (input.cryptoCurrency ?? existing.cryptoCurrency)
+            : input.cryptoCurrency,
+          cryptoNetwork: samePayment
+            ? (input.cryptoNetwork ?? existing.cryptoNetwork)
+            : input.cryptoNetwork,
           status,
         },
       })
@@ -260,7 +315,10 @@ async function upsertPaymentRecord(
         },
       });
 
-  return { record, previousStatus: samePayment ? existing?.status ?? null : null };
+  return {
+    record,
+    previousStatus: samePayment ? (existing?.status ?? null) : null,
+  };
 }
 
 async function createCommissionIfEligible(
@@ -272,14 +330,20 @@ async function createCommissionIfEligible(
     paymentRecord: PaymentRecord;
     clickMatches: boolean;
     allowRefundVoidRestore: boolean;
-  }
+  },
 ): Promise<void> {
   const { event } = input;
   if (!input.clickId || !input.clickMatches) return;
 
   const existing = await tx.commission.findUnique({
     where: { paymentRecordId: input.paymentRecord.id },
-    select: { id: true, status: true, voidReason: true, paidAt: true, flagReason: true },
+    select: {
+      id: true,
+      status: true,
+      voidReason: true,
+      paidAt: true,
+      flagReason: true,
+    },
   });
   // A replacement payment for the owner-selected invoice may reuse only the
   // unpaid commission voided by the prior payment's refund. PAID and other
@@ -290,11 +354,13 @@ async function createCommissionIfEligible(
     existing.status === "VOIDED" &&
     existing.voidReason === "refund" &&
     existing.flagReason === null &&
-    existing.paidAt === null
+    existing.paidAt === null,
   );
   if (existing && !restoreRefundVoid) return;
 
-  const lockedClicks = await tx.$queryRaw<{ fraudConfirmedAt: Date | null }[]>(Prisma.sql`
+  const lockedClicks = await tx.$queryRaw<
+    { fraudConfirmedAt: Date | null }[]
+  >(Prisma.sql`
     SELECT ${SqlSchema.tables.Click.fraudConfirmedAt}
     FROM ${SqlSchema.tables.Click.name}
     WHERE ${SqlSchema.tables.Click.id} = ${input.clickId}
@@ -308,30 +374,49 @@ async function createCommissionIfEligible(
     where: { id: input.clickId, merchantId: input.merchantId },
     include: {
       affiliate: { include: { program: true } },
-      link: { select: { commissionRateOverride: true, activeFrom: true, activeUntil: true } },
+      link: {
+        select: {
+          commissionRateOverride: true,
+          activeFrom: true,
+          activeUntil: true,
+        },
+      },
     },
   });
-  if (!click || event.occurredAt < click.createdAt || event.occurredAt > click.expiresAt) return;
+  if (
+    !click ||
+    event.occurredAt < click.createdAt ||
+    event.occurredAt > click.expiresAt
+  )
+    return;
 
   const linkActiveAtClick =
     (!click.link?.activeFrom || click.createdAt >= click.link.activeFrom) &&
     (!click.link?.activeUntil || click.createdAt <= click.link.activeUntil);
   const linkForRate = linkActiveAtClick ? click.link : null;
   const rate = new Prisma.Decimal(
-    commissionRateFor(click.affiliate, click.affiliate.program, linkForRate, click)
+    commissionRateFor(
+      click.affiliate,
+      click.affiliate.program,
+      linkForRate,
+      click,
+    ),
   );
   if (rate.lte(0)) return;
 
   const sale = { ref: event.paymentRef, at: event.occurredAt };
-  if (!(await referralStillEarns(
-    input.merchantId,
-    click.id,
-    click.affiliate.program,
-    sale,
-    [],
-    tx,
-    commissionDurationForClick(click.affiliate.program, click)
-  ))) return;
+  if (
+    !(await referralStillEarns(
+      input.merchantId,
+      click.id,
+      click.affiliate.program,
+      sale,
+      [],
+      tx,
+      commissionDurationForClick(click.affiliate.program, click),
+    ))
+  )
+    return;
 
   const saleAmount = input.paymentRecord.saleAmount;
   const amount = commissionAmount(saleAmount, rate);
@@ -361,13 +446,19 @@ async function createCommissionIfEligible(
     checkoutConflictHeldAt: null,
   };
   if (existing && restoreRefundVoid) {
-    await tx.commission.update({ where: { id: existing.id }, data: commissionData });
+    await tx.commission.update({
+      where: { id: existing.id },
+      data: commissionData,
+    });
   } else {
     await tx.commission.create({ data: commissionData });
   }
 }
 
-async function markCommissionRefunded(tx: Prisma.TransactionClient, paymentRecordId: string): Promise<void> {
+async function markCommissionRefunded(
+  tx: Prisma.TransactionClient,
+  paymentRecordId: string,
+): Promise<void> {
   await tx.commission.updateMany({
     where: {
       paymentRecordId,
@@ -388,7 +479,9 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
   if (!event) throw new Error("Queued NOWPayments event is invalid");
 
   const saleAmount = new Prisma.Decimal(event.saleAmount);
-  const cryptoAmount = event.cryptoAmount ? new Prisma.Decimal(event.cryptoAmount) : null;
+  const cryptoAmount = event.cryptoAmount
+    ? new Prisma.Decimal(event.cryptoAmount)
+    : null;
 
   await db.$transaction(async (tx) => {
     // Serialize different statuses for the same order across worker instances.
@@ -400,10 +493,18 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     `;
 
     const connection = await tx.paymentConnection.findUnique({
-      where: { merchantId_provider: { merchantId: row.merchantId, provider: PaymentProvider.NOWPAYMENTS.database } },
+      where: {
+        merchantId_provider: {
+          merchantId: row.merchantId,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+        },
+      },
       select: { id: true },
     });
-    if (!connection) throw new Error("NOWPayments connection is missing for the queued payment event");
+    if (!connection)
+      throw new Error(
+        "NOWPayments connection is missing for the queued payment event",
+      );
 
     const checkoutKey = await tx.commerceCheckout.findUnique({
       where: {
@@ -431,10 +532,11 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     // reached Supaffi before the signed payment update. Prefer NOWPayments'
     // signed update timestamp, falling back to when Supaffi received the IPN.
     const attributionCutoff = providerUpdateTime(event) ?? row.createdAt;
-    const checkoutAttribution = storedCheckoutAttribution &&
+    const checkoutAttribution =
+      storedCheckoutAttribution &&
       storedCheckoutAttribution.createdAt <= attributionCutoff
-      ? storedCheckoutAttribution
-      : null;
+        ? storedCheckoutAttribution
+        : null;
     const otherCompletedInvoicePayment = event.providerInvoiceRef
       ? await tx.paymentRecord.findFirst({
           where: {
@@ -449,7 +551,9 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       : null;
     const invoiceAlreadyCompleted = Boolean(otherCompletedInvoicePayment);
     if (invoiceAlreadyCompleted) {
-      console.warn("[worker] NOWPayments invoice already has a completed payment; later payment left unattributed");
+      console.warn(
+        "[worker] NOWPayments invoice already has a completed payment; later payment left unattributed",
+      );
     }
     let checkout: Pick<
       CommerceCheckout,
@@ -487,33 +591,43 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     }
 
     const amountMatches = Boolean(checkout && checkout.amount.eq(saleAmount));
-    const currencyMatches = Boolean(checkout && checkout.currency.toLowerCase() === event.saleCurrency);
+    const currencyMatches = Boolean(
+      checkout && checkout.currency.toLowerCase() === event.saleCurrency,
+    );
     const invoiceMatches = Boolean(
       checkout &&
       event.providerInvoiceRef &&
       !checkout.alternateCheckoutRef &&
       checkout.hostedCheckoutRef &&
-      checkout.hostedCheckoutRef === event.providerInvoiceRef
+      checkout.hostedCheckoutRef === event.providerInvoiceRef,
     );
     let checkoutMatches = Boolean(
       checkout &&
       checkout.status === "READY" &&
       amountMatches &&
       currencyMatches &&
-      invoiceMatches
+      invoiceMatches,
     );
     if (checkout && event.providerInvoiceRef) {
-      const reference = await recordCommerceCheckoutReference(tx, checkout.id, event.providerInvoiceRef);
+      const reference = await recordCommerceCheckoutReference(
+        tx,
+        checkout.id,
+        event.providerInvoiceRef,
+      );
       const refreshed = await tx.commerceCheckout.findUnique({
         where: { id: checkout.id },
-        select: { status: true, hostedCheckoutRef: true, alternateCheckoutRef: true },
+        select: {
+          status: true,
+          hostedCheckoutRef: true,
+          alternateCheckoutRef: true,
+        },
       });
       checkoutMatches = Boolean(
         checkoutMatches &&
         reference.matchesPrimary &&
         refreshed?.status === "READY" &&
         refreshed.hostedCheckoutRef === event.providerInvoiceRef &&
-        !refreshed.alternateCheckoutRef
+        !refreshed.alternateCheckoutRef,
       );
       if (refreshed) {
         checkout = {
@@ -536,27 +650,38 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     });
     const samePayment = existing?.paymentRef === event.paymentRef;
     if (existing && !samePayment && !checkoutMatches) {
-      console.warn("[worker] multiple NOWPayments payment IDs share an order; only one payment per order is supported");
+      console.warn(
+        "[worker] multiple NOWPayments payment IDs share an order; only one payment per order is supported",
+      );
     }
     const unmatchedInvoiceLessEventAfterFound = Boolean(
       checkout?.reconciliationResolution === "FOUND" &&
       !event.providerInvoiceRef &&
-      !samePayment
+      !samePayment,
     );
     if (unmatchedInvoiceLessEventAfterFound) {
       checkoutMatches = false;
     }
-    const effectiveCheckoutAttribution = invoiceAlreadyCompleted ? null : checkoutAttribution;
-    const attributionMatches = !invoiceAlreadyCompleted && (Boolean(checkoutAttribution) || checkoutMatches);
+    const effectiveCheckoutAttribution = invoiceAlreadyCompleted
+      ? null
+      : checkoutAttribution;
+    const attributionMatches =
+      !invoiceAlreadyCompleted &&
+      (Boolean(checkoutAttribution) || checkoutMatches);
     const attributedClickId = invoiceAlreadyCompleted
       ? null
-      : effectiveCheckoutAttribution?.clickId ?? (checkoutMatches ? checkout?.clickId : null) ?? null;
+      : (effectiveCheckoutAttribution?.clickId ??
+        (checkoutMatches ? checkout?.clickId : null) ??
+        null);
     const nextStatus = samePayment
       ? statusAfter(existing?.status ?? null, event.providerStatus)
       : event.providerStatus;
     let paymentRecord: PaymentRecord | null = null;
     let previousStatus: string | null = null;
-    const mayReplaceStoredPayment = (!existing && !unmatchedInvoiceLessEventAfterFound) || samePayment || checkoutMatches;
+    const mayReplaceStoredPayment =
+      (!existing && !unmatchedInvoiceLessEventAfterFound) ||
+      samePayment ||
+      checkoutMatches;
     if (mayReplaceStoredPayment) {
       const upserted = await upsertPaymentRecord(tx, {
         merchantId: row.merchantId,
@@ -565,8 +690,13 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         clickId: attributedClickId,
         sourceOrderId: event.sourceOrderId,
         paymentRef: event.paymentRef,
-        checkoutRef: event.providerInvoiceRef ??
-          (checkoutMatches && event.checkoutRef && event.checkoutRef !== event.sourceOrderId ? event.checkoutRef : null),
+        checkoutRef:
+          event.providerInvoiceRef ??
+          (checkoutMatches &&
+          event.checkoutRef &&
+          event.checkoutRef !== event.sourceOrderId
+            ? event.checkoutRef
+            : null),
         saleAmount,
         saleCurrency: event.saleCurrency,
         cryptoAmount,
@@ -580,7 +710,9 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
 
     if (nextStatus === "finished" && event.providerStatus === "finished") {
       if (checkout && !checkoutMatches) {
-        console.warn(`[worker] payment ${event.paymentRef} did not match its stored checkout`);
+        console.warn(
+          `[worker] payment ${event.paymentRef} did not match its stored checkout`,
+        );
       }
       if (paymentRecord && attributionMatches) {
         await createCommissionIfEligible(tx, {
@@ -592,13 +724,17 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           allowRefundVoidRestore: Boolean(
             !samePayment &&
             event.providerInvoiceRef &&
-            checkout?.hostedCheckoutRef === event.providerInvoiceRef
+            checkout?.hostedCheckoutRef === event.providerInvoiceRef,
           ),
         });
       }
     }
 
-    if (nextStatus === "refunded" && paymentRecord && (samePayment || checkoutMatches)) {
+    if (
+      nextStatus === "refunded" &&
+      paymentRecord &&
+      (samePayment || checkoutMatches)
+    ) {
       await markCommissionRefunded(tx, paymentRecord.id);
     }
 
@@ -610,7 +746,8 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       nextStatus === "finished" &&
       checkout.status === "READY" &&
       checkout.hostedCheckoutRef !== null &&
-      (!event.providerInvoiceRef || checkout.hostedCheckoutRef === event.providerInvoiceRef) &&
+      (!event.providerInvoiceRef ||
+        checkout.hostedCheckoutRef === event.providerInvoiceRef) &&
       checkout.refundReconciliationPendingAt === null
     ) {
       await releaseCheckoutConflictHold(
@@ -620,7 +757,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         event.sourceOrderId,
         checkout.hostedCheckoutRef,
         "finished",
-        paymentTerminalSnapshot(event, paymentRecord)
+        paymentTerminalSnapshot(event, paymentRecord),
       );
     }
 
@@ -641,7 +778,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         event.sourceOrderId,
         checkout.hostedCheckoutRef,
         "refunded",
-        paymentTerminalSnapshot(event, paymentRecord)
+        paymentTerminalSnapshot(event, paymentRecord),
       );
     }
   });
@@ -689,13 +826,16 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
       SELECT pg_advisory_xact_lock(${lockBytes.readInt32BE(0)}::integer, ${lockBytes.readInt32BE(4)}::integer) IS NULL AS locked
     `;
 
-    const payment = await tx.paymentRecord.findUnique({ where: { id: candidate.id } });
+    const payment = await tx.paymentRecord.findUnique({
+      where: { id: candidate.id },
+    });
     if (
       !payment ||
       payment.status !== "finished" ||
       payment.checkoutRef !== input.providerCheckoutRef ||
-      payment.clickId && payment.clickId !== input.clickId
-    ) return;
+      (payment.clickId && payment.clickId !== input.clickId)
+    )
+      return;
 
     const eventRecord = await tx.webhookEvent.findUnique({
       where: {
@@ -715,16 +855,19 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
       event.paymentRef !== payment.paymentRef ||
       event.sourceOrderId !== payment.sourceOrderId ||
       event.providerInvoiceRef !== input.providerCheckoutRef
-    ) return;
-    const attributionCutoff = providerUpdateTime(event) ?? eventRecord.createdAt;
+    )
+      return;
+    const attributionCutoff =
+      providerUpdateTime(event) ?? eventRecord.createdAt;
     if (attribution.createdAt > attributionCutoff) return;
 
-    const linkedPayment = payment.clickId === input.clickId
-      ? payment
-      : await tx.paymentRecord.update({
-          where: { id: payment.id },
-          data: { clickId: input.clickId },
-        });
+    const linkedPayment =
+      payment.clickId === input.clickId
+        ? payment
+        : await tx.paymentRecord.update({
+            where: { id: payment.id },
+            data: { clickId: input.clickId },
+          });
     await createCommissionIfEligible(tx, {
       merchantId: input.merchantId,
       event,
@@ -735,4 +878,3 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
     });
   });
 }
-

@@ -11,12 +11,17 @@ import { handleSubscriptionDeleted } from "./handlers/subscriptionDeleted";
 import { handleNowPaymentsEvent } from "./handlers/nowpayments";
 
 export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
-  if (row.provider === PaymentProvider.NOWPAYMENTS.database) return handleNowPaymentsEvent(row);
+  if (row.provider === PaymentProvider.NOWPAYMENTS.database)
+    return handleNowPaymentsEvent(row);
   if (row.provider !== PaymentProvider.STRIPE.database) {
-    throw new Error(`No webhook handler is registered for provider ${row.provider}`);
+    throw new Error(
+      `No webhook handler is registered for provider ${row.provider}`,
+    );
   }
   const event = row.payload as unknown as Stripe.Event;
-  const merchant = await db.merchant.findUniqueOrThrow({ where: { id: row.merchantId } });
+  const merchant = await db.merchant.findUniqueOrThrow({
+    where: { id: row.merchantId },
+  });
 
   // Keep this switch's cases in sync with src/lib/stripeWebhookEvents.ts's
   // REQUIRED_STRIPE_WEBHOOK_EVENTS list — that's what a Merchant is shown
@@ -28,18 +33,30 @@ export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
     // lands first on a paid Session wins, the other dedupes.
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded":
-      return handleCheckoutSessionCompleted(merchant, event.data.object as Stripe.Checkout.Session);
+      return handleCheckoutSessionCompleted(
+        merchant,
+        event.data.object as Stripe.Checkout.Session,
+      );
     case "invoice.paid":
       return handleInvoicePaid(merchant, event.data.object as Stripe.Invoice);
     case "charge.refunded":
       return handleChargeRefunded(merchant, event.data.object as Stripe.Charge);
     // An open dispute holds the commission; its close releases or voids it.
     case "charge.dispute.created":
-      return handleChargeDisputeCreated(merchant, event.data.object as Stripe.Dispute);
+      return handleChargeDisputeCreated(
+        merchant,
+        event.data.object as Stripe.Dispute,
+      );
     case "charge.dispute.closed":
-      return handleChargeDisputeClosed(merchant, event.data.object as Stripe.Dispute);
+      return handleChargeDisputeClosed(
+        merchant,
+        event.data.object as Stripe.Dispute,
+      );
     case "customer.subscription.deleted":
-      return handleSubscriptionDeleted(merchant, event.data.object as Stripe.Subscription);
+      return handleSubscriptionDeleted(
+        merchant,
+        event.data.object as Stripe.Subscription,
+      );
     default:
       // A Merchant's webhook endpoint may be subscribed to more event types
       // than Supaffi cares about — expected, not a failure.

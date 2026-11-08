@@ -13,7 +13,10 @@ export type ProgramInput = {
   signupOpen?: boolean;
 };
 
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
+async function assertMerchantOwnership(
+  ownerId: string,
+  merchantId: string,
+): Promise<void> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { id: true },
@@ -26,7 +29,7 @@ async function assertMerchantOwnership(ownerId: string, merchantId: string): Pro
 export async function createProgram(
   ownerId: string,
   merchantId: string,
-  input: ProgramInput
+  input: ProgramInput,
 ): Promise<{ id: string; slug: string }> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -35,8 +38,8 @@ export async function createProgram(
       await db.program.findFirst({
         where: { merchantId, slug: candidate },
         select: { id: true },
-      })
-    )
+      }),
+    ),
   );
 
   return db.program.create({
@@ -47,7 +50,7 @@ export async function createProgram(
 
 export async function listProgramsForMerchant(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
 ): Promise<
   {
     id: string;
@@ -94,7 +97,7 @@ export async function listProgramsForMerchant(
 export async function getProgramForMerchant(
   ownerId: string,
   merchantId: string,
-  programSlug: string
+  programSlug: string,
 ): Promise<{
   id: string;
   slug: string;
@@ -130,7 +133,7 @@ export async function updateProgram(
   ownerId: string,
   merchantId: string,
   programId: string,
-  input: ProgramInput
+  input: ProgramInput,
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -166,7 +169,7 @@ export type ProgramForSignup = {
 
 export async function getProgramForSignup(
   merchantId: string,
-  programSlug: string
+  programSlug: string,
 ): Promise<ProgramForSignup | null> {
   const program = await db.program.findFirst({
     where: { slug: programSlug, merchantId, signupOpen: true },
@@ -180,14 +183,20 @@ export async function getProgramForSignup(
     },
   });
   if (!program) return null;
-  return { ...program, defaultCommissionRate: Number(program.defaultCommissionRate) };
+  return {
+    ...program,
+    defaultCommissionRate: Number(program.defaultCommissionRate),
+  };
 }
 
 /**
  * A program's name when it exists but has sign-ups closed, so its signup link
  * can say "invite only" rather than "not found". Null otherwise.
  */
-export async function getClosedProgramName(merchantId: string, programSlug: string): Promise<string | null> {
+export async function getClosedProgramName(
+  merchantId: string,
+  programSlug: string,
+): Promise<string | null> {
   const program = await db.program.findFirst({
     where: { slug: programSlug, merchantId, signupOpen: false },
     select: { name: true },
@@ -197,7 +206,9 @@ export async function getClosedProgramName(merchantId: string, programSlug: stri
 
 // Public, like getProgramForSignup: the program the bare affiliate address
 // signs people up to, which is the oldest one still open.
-export async function getDefaultProgramSlug(merchantId: string): Promise<string | null> {
+export async function getDefaultProgramSlug(
+  merchantId: string,
+): Promise<string | null> {
   const program = await db.program.findFirst({
     where: { merchantId, signupOpen: true },
     orderBy: { createdAt: "asc" },

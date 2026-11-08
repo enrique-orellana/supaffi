@@ -8,11 +8,24 @@ import {
   updateMerchant,
   markOnboardingComplete,
 } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
+import {
+  validateProductInput,
+  normalizeDomain,
+  normalizeWebsiteUrl,
+} from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { stepPath, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
-import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
+import {
+  stepPath,
+  splitSubdomain,
+  rehomeSubdomain,
+  type StepId,
+} from "@/lib/onboarding";
+import {
+  createProgram,
+  updateProgram,
+  listProgramsForMerchant,
+} from "@/lib/program";
 import { validateProgramInput } from "@/lib/programValidation";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
@@ -35,7 +48,7 @@ export type EditResult = { error: string; savedAt?: number };
 export async function updateSubdomainAction(
   product: { id: string; slug: string },
   _prev: EditResult,
-  formData: FormData
+  formData: FormData,
 ): Promise<EditResult> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
@@ -52,13 +65,21 @@ export async function updateSubdomainAction(
   }
   const domain = normalizeDomain(split ? `${raw}${split.suffix}` : raw);
 
-  const error = validateProductInput({ name: merchant.name, domain, websiteUrl: merchant.websiteUrl }, instanceDomain());
+  const error = validateProductInput(
+    { name: merchant.name, domain, websiteUrl: merchant.websiteUrl },
+    instanceDomain(),
+  );
   if (error) return { error };
 
   try {
-    await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl: merchant.websiteUrl });
+    await updateMerchant(ownerId, product.id, {
+      name: merchant.name,
+      domain,
+      websiteUrl: merchant.websiteUrl,
+    });
   } catch (err) {
-    if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (isUniqueConstraintError(err))
+      return { error: "Another product already uses that address" };
     throw err;
   }
   // No revalidate here. Re-rendering the step from the action means the save
@@ -71,17 +92,24 @@ export async function updateSubdomainAction(
 export async function updateProductNameAction(
   product: { id: string; slug: string },
   _prev: EditResult,
-  formData: FormData
+  formData: FormData,
 ): Promise<EditResult> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
   const name = String(formData.get("value") ?? "").trim();
-  const error = validateProductInput({ name, domain: merchant.domain, websiteUrl: merchant.websiteUrl }, instanceDomain());
+  const error = validateProductInput(
+    { name, domain: merchant.domain, websiteUrl: merchant.websiteUrl },
+    instanceDomain(),
+  );
   if (error) return { error };
 
-  await updateMerchant(ownerId, product.id, { name, domain: merchant.domain, websiteUrl: merchant.websiteUrl });
+  await updateMerchant(ownerId, product.id, {
+    name,
+    domain: merchant.domain,
+    websiteUrl: merchant.websiteUrl,
+  });
   revalidatePath(stepPath(product.slug, "product"));
   return { error: "", savedAt: Date.now() };
 }
@@ -95,21 +123,31 @@ export async function updateProductNameAction(
 export async function updateProductWebsiteAction(
   product: { id: string; slug: string },
   _prev: EditResult,
-  formData: FormData
+  formData: FormData,
 ): Promise<EditResult> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
   const websiteUrl = normalizeWebsiteUrl(String(formData.get("value") ?? ""));
-  const domain = normalizeDomain(rehomeSubdomain(merchant.domain, merchant.websiteUrl, websiteUrl));
-  const error = validateProductInput({ name: merchant.name, domain, websiteUrl }, instanceDomain());
+  const domain = normalizeDomain(
+    rehomeSubdomain(merchant.domain, merchant.websiteUrl, websiteUrl),
+  );
+  const error = validateProductInput(
+    { name: merchant.name, domain, websiteUrl },
+    instanceDomain(),
+  );
   if (error) return { error };
 
   try {
-    await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl });
+    await updateMerchant(ownerId, product.id, {
+      name: merchant.name,
+      domain,
+      websiteUrl,
+    });
   } catch (err) {
-    if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (isUniqueConstraintError(err))
+      return { error: "Another product already uses that address" };
     throw err;
   }
   revalidatePath(stepPath(product.slug, "product"));
@@ -123,7 +161,7 @@ export async function updateProductWebsiteAction(
 export async function saveTermsAction(
   product: { id: string; slug: string },
   _prev: { error: string },
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error: string }> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
@@ -134,8 +172,12 @@ export async function saveTermsAction(
   const result = validateProgramInput({
     name: existing[0]?.name ?? merchant.name,
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
-    commissionDurationType: String(formData.get("commissionDurationType") ?? ""),
-    commissionDurationMonths: String(formData.get("commissionDurationMonths") ?? ""),
+    commissionDurationType: String(
+      formData.get("commissionDurationType") ?? "",
+    ),
+    commissionDurationMonths: String(
+      formData.get("commissionDurationMonths") ?? "",
+    ),
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
   });
@@ -158,7 +200,10 @@ export async function saveTermsAction(
  * every render (`checks.ts`), so revalidating the step's own path is enough;
  * there is no separate cache to invalidate here.
  */
-export async function recheckAction(product: { id: string; slug: string }, step: StepId): Promise<void> {
+export async function recheckAction(
+  product: { id: string; slug: string },
+  step: StepId,
+): Promise<void> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
@@ -168,15 +213,23 @@ export async function recheckAction(product: { id: string; slug: string }, step:
   const section = checkSectionFor(step);
   const sections =
     step === "payments"
-      ? new Set(listPaymentProviderSetups().flatMap(({ checkSections }) => [...checkSections]))
+      ? new Set(
+          listPaymentProviderSetups().flatMap(({ checkSections }) => [
+            ...checkSections,
+          ]),
+        )
       : section
         ? new Set([section])
         : undefined;
-  if (sections?.size) await runProductChecks(ownerId, product.id, { fresh: sections });
+  if (sections?.size)
+    await runProductChecks(ownerId, product.id, { fresh: sections });
   revalidatePath(stepPath(product.slug, step));
 }
 
-export async function finishOnboardingAction(product: { id: string; slug: string }): Promise<void> {
+export async function finishOnboardingAction(product: {
+  id: string;
+  slug: string;
+}): Promise<void> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");

@@ -14,8 +14,11 @@ const globalForRateLimit = globalThis as unknown as {
 // Held on globalThis for the same reason the Prisma client is: dev-mode Fast
 // Refresh re-evaluates the module and would otherwise hand out fresh, empty
 // counters on every edit.
-const stores: Map<string, Map<string, Window>> =
-  globalForRateLimit.supaffiRateLimits ?? new Map<string, Map<string, Window>>();
+const stores: Map<
+  string,
+  Map<string, Window>
+> = globalForRateLimit.supaffiRateLimits ??
+new Map<string, Map<string, Window>>();
 if (process.env.NODE_ENV !== "production") {
   globalForRateLimit.supaffiRateLimits = stores;
 }
@@ -101,7 +104,7 @@ export function windowLimit(options: {
  */
 export function takeFromEach(
   limits: ReadonlyArray<readonly [WindowLimit, string]>,
-  now: number
+  now: number,
 ): boolean {
   if (!limits.every(([limit, key]) => limit.allows(key, now))) return false;
   for (const [limit, key] of limits) limit.hit(key, now);

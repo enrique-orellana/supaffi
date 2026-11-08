@@ -29,7 +29,8 @@ export default async function ProductsPage() {
   const merchants = await listMerchantsForOwner(ownerId);
 
   // One product is not a list. Home is that product.
-  if (merchants.length === 1) redirect(`/dashboard/products/${merchants[0].slug}`);
+  if (merchants.length === 1)
+    redirect(`/dashboard/products/${merchants[0].slug}`);
 
   const rows = await Promise.all(
     merchants.map(async (m) => {
@@ -43,10 +44,13 @@ export default async function ProductsPage() {
         ...m,
         affiliates,
         // A product that has never sold has no currency to print a zero in.
-        owed: metrics.owed.length > 0 || metrics.currencies.length > 0 ? `${money(metrics.owed, metrics.currencies[0])} owed` : "Nothing owed",
+        owed:
+          metrics.owed.length > 0 || metrics.currencies.length > 0
+            ? `${money(metrics.owed, metrics.currencies[0])} owed`
+            : "Nothing owed",
         live: m.onboardingCompletedAt !== null,
       };
-    })
+    }),
   );
 
   return (
@@ -54,7 +58,10 @@ export default async function ProductsPage() {
       <PageTitle
         title="Products"
         actions={
-          <Button className="cursor-pointer" render={<Link href="/onboarding" />}>
+          <Button
+            className="cursor-pointer"
+            render={<Link href="/onboarding" />}
+          >
             <Plus data-icon="inline-start" /> Add a product
           </Button>
         }
@@ -78,13 +85,19 @@ export default async function ProductsPage() {
                   {initials(row.name)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{row.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{row.domain}</span>
+                  <span className="block truncate text-sm font-medium">
+                    {row.name}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {row.domain}
+                  </span>
                 </span>
                 <span className="w-28 text-right text-sm tabular-nums">
                   {row.affiliates} affiliates
                 </span>
-                <span className="w-32 text-right text-sm tabular-nums">{row.owed}</span>
+                <span className="w-32 text-right text-sm tabular-nums">
+                  {row.owed}
+                </span>
                 <span className="flex w-16 justify-end">
                   <Badge
                     className={

@@ -19,7 +19,9 @@ export function ProviderTrackingInstructions({
       {guides.map((guide) => (
         <div key={guide.provider} className="grid gap-2">
           <h3 className="text-sm font-medium">{guide.title}</h3>
-          <p className="text-[13px] text-muted-foreground">{guide.description}</p>
+          <p className="text-[13px] text-muted-foreground">
+            {guide.description}
+          </p>
           {guide.checkoutSnippet && guide.checkoutPrompt && (
             <CodeBlock
               title={`${guide.label} checkout session`}

@@ -9,7 +9,7 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 export function validateSetupInput(
   email: string,
   password: string,
-  confirmPassword: string
+  confirmPassword: string,
 ): string | null {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) return "Email is required";

@@ -42,7 +42,8 @@ export function TrackingVerified({ merchantId }: { merchantId: string }) {
           Tracking is working
         </p>
         <p className="text-sm text-muted-foreground">
-          A sale came through carrying a referral token. Commissions are being recorded.
+          A sale came through carrying a referral token. Commissions are being
+          recorded.
         </p>
       </div>
       <button

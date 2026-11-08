@@ -22,7 +22,9 @@ function release(overrides: Record<string, unknown> = {}) {
 }
 
 function respondWith(payload: unknown, ok = true) {
-  const fetchMock = vi.fn(async () => ({ ok, json: async () => payload }) as unknown as Response);
+  const fetchMock = vi.fn(
+    async () => ({ ok, json: async () => payload }) as unknown as Response,
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -90,14 +92,22 @@ describe("parseRelease", () => {
   });
 
   it("marks a release whose notes have a security section", () => {
-    expect(parseRelease(release({ body: "### Security\nFixed a hole." }))?.security).toBe(true);
-    expect(parseRelease(release({ body: "## Security\nFixed a hole." }))?.security).toBe(true);
+    expect(
+      parseRelease(release({ body: "### Security\nFixed a hole." }))?.security,
+    ).toBe(true);
+    expect(
+      parseRelease(release({ body: "## Security\nFixed a hole." }))?.security,
+    ).toBe(true);
   });
 
   it("keeps a link only when it points at this repository", () => {
     const fallback = "https://github.com/ugolbck/supaffi/releases";
-    expect(parseRelease(release({ html_url: "https://evil.example.com/x" }))?.url).toBe(fallback);
-    expect(parseRelease(release({ html_url: "javascript:alert(1)" }))?.url).toBe(fallback);
+    expect(
+      parseRelease(release({ html_url: "https://evil.example.com/x" }))?.url,
+    ).toBe(fallback);
+    expect(
+      parseRelease(release({ html_url: "javascript:alert(1)" }))?.url,
+    ).toBe(fallback);
     expect(parseRelease(release({ html_url: 42 }))?.url).toBe(fallback);
   });
 
@@ -106,7 +116,9 @@ describe("parseRelease", () => {
     // The word alone is not the heading. Otherwise every release that mentions
     // security in passing shows the loud notice and the loud notice stops
     // meaning anything.
-    expect(parseRelease(release({ body: "Improved security headers." }))?.security).toBe(false);
+    expect(
+      parseRelease(release({ body: "Improved security headers." }))?.security,
+    ).toBe(false);
   });
 });
 
@@ -157,7 +169,7 @@ describe("availableUpdate", () => {
       "fetch",
       vi.fn(async () => {
         throw new Error("network down");
-      })
+      }),
     );
     await refreshLatestRelease(T0);
     expect(availableUpdate(T0)).toBeNull();
@@ -186,7 +198,11 @@ describe("caching", () => {
     // and each waits out the same timeout.
     process.env.SUPAFFI_VERSION = "0.1.0";
     const fetchMock = respondWith(release());
-    await Promise.all([refreshLatestRelease(T0), refreshLatestRelease(T0), refreshLatestRelease(T0)]);
+    await Promise.all([
+      refreshLatestRelease(T0),
+      refreshLatestRelease(T0),
+      refreshLatestRelease(T0),
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

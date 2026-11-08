@@ -60,13 +60,19 @@ export function limitConcurrency(max: number, maxWaiting: number = Infinity) {
   };
 }
 
-const withArgon2Slot = limitConcurrency(MAX_CONCURRENT_ARGON2, MAX_WAITING_ARGON2);
+const withArgon2Slot = limitConcurrency(
+  MAX_CONCURRENT_ARGON2,
+  MAX_WAITING_ARGON2,
+);
 
 export async function hashPassword(plain: string): Promise<string> {
   return withArgon2Slot(() => hash(plain, ARGON2_OPTIONS));
 }
 
-export async function verifyPassword(plain: string, hashed: string): Promise<boolean> {
+export async function verifyPassword(
+  plain: string,
+  hashed: string,
+): Promise<boolean> {
   return withArgon2Slot(() => verify(hashed, plain));
 }
 

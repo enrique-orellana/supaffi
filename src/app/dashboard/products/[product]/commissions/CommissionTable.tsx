@@ -41,7 +41,6 @@ export type LedgerRow = {
   href: string;
 };
 
-
 export function CommissionTable({
   rows,
   selectedId,
@@ -58,7 +57,11 @@ export function CommissionTable({
     return (
       <div className="flex h-full flex-col">
         {filtered ? (
-          <EmptyState icon={<Coins />} title="Nothing matches" body="Widen the filters to see more." />
+          <EmptyState
+            icon={<Coins />}
+            title="Nothing matches"
+            body="Widen the filters to see more."
+          />
         ) : (
           <EmptyState
             icon={<Coins />}
@@ -77,13 +80,21 @@ export function CommissionTable({
           blending into them. */}
       <TableHeader className="sticky top-0 z-10 bg-neutral-100">
         <TableRow className="border-neutral-200 hover:bg-transparent">
-          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Date</TableHead>
-          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Name</TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">
+            Date
+          </TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">
+            Name
+          </TableHead>
           <TableHead className="h-9 text-right text-[13px] font-medium text-neutral-700">
             Amount
           </TableHead>
-          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Status</TableHead>
-          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Detail</TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">
+            Status
+          </TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">
+            Detail
+          </TableHead>
           <TableHead className="h-9 text-right text-[13px] font-medium text-neutral-700">
             Sale
           </TableHead>
@@ -101,14 +112,17 @@ export function CommissionTable({
                 // Muted throughout, not only on the badge: a voided sale is
                 // the least important row on the screen and should read that
                 // way before the eye reaches the status column.
-                voided && "text-muted-foreground"
+                voided && "text-muted-foreground",
               )}
             >
               <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
                 {/* One link, stretched over the row by its own overlay: a table
                     row cannot be an anchor, and a click handler would put the
                     whole ledger back on the client. */}
-                <Link href={row.href} className="cursor-pointer after:absolute after:inset-0">
+                <Link
+                  href={row.href}
+                  className="cursor-pointer after:absolute after:inset-0"
+                >
                   {row.createdLabel}
                 </Link>
               </TableCell>
@@ -125,7 +139,7 @@ export function CommissionTable({
                   className={cn(
                     "text-[15px] font-medium whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
-                    !row.isAdjustment && !voided && "text-neutral-900"
+                    !row.isAdjustment && !voided && "text-neutral-900",
                   )}
                 >
                   {row.amount}
@@ -135,7 +149,9 @@ export function CommissionTable({
                 <StatusBadge status={row.status} />
               </TableCell>
               <TableCell className="max-w-56">
-                <span className="block truncate text-sm text-muted-foreground">{row.stateLabel}</span>
+                <span className="block truncate text-sm text-muted-foreground">
+                  {row.stateLabel}
+                </span>
               </TableCell>
               <TableCell className="text-right whitespace-nowrap text-muted-foreground tabular-nums">
                 {row.sale ?? ""}

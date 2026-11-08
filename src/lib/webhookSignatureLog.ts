@@ -14,7 +14,10 @@ const LOG_EVERY_MS = 15 * 60_000;
 // with no valid host lookup cannot add entries to it.
 const lastLoggedAt = new Map<string, number>();
 
-export function shouldLogSignatureFailure(merchantId: string, now: number = Date.now()): boolean {
+export function shouldLogSignatureFailure(
+  merchantId: string,
+  now: number = Date.now(),
+): boolean {
   const last = lastLoggedAt.get(merchantId);
   if (last !== undefined && now - last < LOG_EVERY_MS) return false;
   lastLoggedAt.set(merchantId, now);

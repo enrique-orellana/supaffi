@@ -11,27 +11,43 @@ function rowClass(state: Step["state"], clickable: boolean): string {
     "flex min-h-9 items-center gap-3 rounded-lg px-3 py-1.5 text-sm",
     state === "current" && "bg-accent-50 font-medium text-accent-700",
     state === "upcoming" && "text-muted-foreground/60",
-    clickable && "cursor-pointer transition-colors hover:bg-foreground/[0.04]"
+    clickable && "cursor-pointer transition-colors hover:bg-foreground/[0.04]",
   );
 }
 
 // Steps already done are links, so someone can go back and change something.
 // Upcoming steps are not: the order is the product.
-export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productSlug: string | null; backHref: string | null }) {
+export function Rail({
+  steps,
+  productSlug,
+  backHref,
+}: {
+  steps: Step[];
+  productSlug: string | null;
+  backHref: string | null;
+}) {
   return (
     <aside className="w-64 shrink-0">
       {backHref && (
-        <Link href={backHref} className="mb-6 block cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+        <Link
+          href={backHref}
+          className="mb-6 block cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+        >
           &larr; Back to dashboard
         </Link>
       )}
       <ol className="flex flex-col gap-1">
         {steps.map((step) => {
-          const clickable = productSlug !== null && (step.state === "done" || step.state === "waiting");
+          const clickable =
+            productSlug !== null &&
+            (step.state === "done" || step.state === "waiting");
           return (
             <li key={step.id}>
               {clickable ? (
-                <Link href={stepPath(productSlug, step.id)} className={rowClass(step.state, true)}>
+                <Link
+                  href={stepPath(productSlug, step.id)}
+                  className={rowClass(step.state, true)}
+                >
                   <Marker state={step.state} />
                   <span className="truncate">{step.label}</span>
                 </Link>
@@ -67,6 +83,11 @@ function Marker({ state }: { state: Step["state"] }) {
       </span>
     );
   }
-  if (state === "current") return <span className="size-4 shrink-0 rounded-(--radius) border-2 border-accent-700" />;
-  return <span className="size-4 shrink-0 rounded-(--radius) border border-border" />;
+  if (state === "current")
+    return (
+      <span className="size-4 shrink-0 rounded-(--radius) border-2 border-accent-700" />
+    );
+  return (
+    <span className="size-4 shrink-0 rounded-(--radius) border border-border" />
+  );
 }

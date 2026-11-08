@@ -18,7 +18,8 @@ export async function requireAffiliate(): Promise<{
   merchant: { id: string; name: string; websiteUrl: string };
 }> {
   const session = await auth();
-  if (!session?.user?.id || session.user.role !== "affiliate") redirect("/affiliates/login");
+  if (!session?.user?.id || session.user.role !== "affiliate")
+    redirect("/affiliates/login");
 
   const host = await requestHost();
   const merchant = host ? await getMerchantByDomain(host) : null;
@@ -28,11 +29,16 @@ export async function requireAffiliate(): Promise<{
     where: { id: session.user.id },
     select: { id: true, email: true, merchantId: true },
   });
-  if (!affiliate || affiliate.merchantId !== merchant.id) redirect("/affiliates/login");
+  if (!affiliate || affiliate.merchantId !== merchant.id)
+    redirect("/affiliates/login");
 
   return {
     affiliateId: affiliate.id,
     email: affiliate.email,
-    merchant: { id: merchant.id, name: merchant.name, websiteUrl: merchant.websiteUrl },
+    merchant: {
+      id: merchant.id,
+      name: merchant.name,
+      websiteUrl: merchant.websiteUrl,
+    },
   };
 }

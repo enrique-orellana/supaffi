@@ -17,7 +17,9 @@ export async function runTick(): Promise<void> {
   // Not awaited. A first cleanup on an old install can take a while and must
   // never hold up the queue; it returns at once when it ran less than a day
   // ago or is already going.
-  runDailyCleanup().catch((err) => console.error("[worker] cleanup failed", err));
+  runDailyCleanup().catch((err) =>
+    console.error("[worker] cleanup failed", err),
+  );
   try {
     const batch = await claimBatch();
     for (const event of batch) {
@@ -30,9 +32,14 @@ export async function runTick(): Promise<void> {
         // names the masked key and the account. Anything else is a bug here
         // and keeps its stack.
         if (isStripeError(err)) {
-          console.error(`[worker] event ${event.id} (${providerEvent}) failed: ${loggableError(err)}`);
+          console.error(
+            `[worker] event ${event.id} (${providerEvent}) failed: ${loggableError(err)}`,
+          );
         } else {
-          console.error(`[worker] event ${event.id} (${providerEvent}) failed`, err);
+          console.error(
+            `[worker] event ${event.id} (${providerEvent}) failed`,
+            err,
+          );
         }
         await markFailed(event.id, event.attempts, err);
       }

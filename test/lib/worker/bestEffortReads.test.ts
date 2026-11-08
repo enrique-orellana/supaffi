@@ -1,16 +1,25 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { inspect } from "node:util";
 import type Stripe from "stripe";
-import { latestChargeFor, paymentIntentForInvoice } from "@/lib/worker/paymentState";
+import {
+  latestChargeFor,
+  paymentIntentForInvoice,
+} from "@/lib/worker/paymentState";
 import { resolveInvoiceFingerprint } from "@/lib/worker/selfReferral";
 import { disputeStateFor } from "@/lib/worker/disputes";
 
-const outage = () => Object.assign(new Error("connection reset on acct_secret123"), { type: "StripeConnectionError" });
-const noPermission = () =>
-  Object.assign(new Error("rk_live_****abcd lacks rak_charge_read on acct_secret123"), {
-    type: "StripePermissionError",
-    statusCode: 403,
+const outage = () =>
+  Object.assign(new Error("connection reset on acct_secret123"), {
+    type: "StripeConnectionError",
   });
+const noPermission = () =>
+  Object.assign(
+    new Error("rk_live_****abcd lacks rak_charge_read on acct_secret123"),
+    {
+      type: "StripePermissionError",
+      statusCode: 403,
+    },
+  );
 
 function stripeFailing(err: () => Error): Stripe {
   const fail = vi.fn(async () => {
@@ -36,7 +45,7 @@ describe("best-effort Stripe reads", () => {
     ]) {
       const thrown = await read().then(
         () => null,
-        (err: Error) => err
+        (err: Error) => err,
       );
       expect(thrown?.message).toMatch(/retried/);
       expect(inspect(thrown)).not.toContain("acct_secret123");

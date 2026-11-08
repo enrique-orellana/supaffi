@@ -13,7 +13,11 @@ import {
 import { getProductMetrics } from "@/lib/analytics";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
-import { linkUrl, listLinksWithStats, listOwnerLinkTerms } from "@/lib/affiliateLink";
+import {
+  linkUrl,
+  listLinksWithStats,
+  listOwnerLinkTerms,
+} from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -32,14 +36,17 @@ import { AffiliateSheet, type SheetAffiliate } from "./AffiliateSheet";
  * affiliates is the overview's job and the list already sorts and filters.
  */
 
-
-
 export default async function AffiliatesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ program?: string; q?: string; page?: string; affiliate?: string }>;
+  searchParams: Promise<{
+    program?: string;
+    q?: string;
+    page?: string;
+    affiliate?: string;
+  }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -60,7 +67,9 @@ export default async function AffiliatesPage({
   // The URL carries a program slug like every other route here, so the filter
   // is resolved to an id rather than a cuid ever reaching the address bar.
   const programSlug = query.program ?? null;
-  const filterProgram = programSlug ? programs.find((p) => p.slug === programSlug) ?? null : null;
+  const filterProgram = programSlug
+    ? (programs.find((p) => p.slug === programSlug) ?? null)
+    : null;
   const filters = {
     programId: filterProgram?.id ?? null,
     query: query.q ?? null,
@@ -86,10 +95,11 @@ export default async function AffiliatesPage({
   // under a label counting rows that are not there. Clamping only the label
   // would swap one lie for another, so the URL is corrected instead.
   if (page > totalPages) {
-    const corrected = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
+    const corrected = hrefWith({
+      page: totalPages > 1 ? String(totalPages) : null,
+    });
     redirect(`${base}/affiliates${corrected === "?" ? "" : corrected}`);
   }
-
 
   // Every href keeps the filters already on and changes one thing. The
   // selected affiliate is one of them, which is what makes a row a link.
@@ -116,7 +126,7 @@ export default async function AffiliatesPage({
   const counts = await Promise.all(rows.map((row) => referralCounts(row.id)));
   const referralCountsById = new Map(rows.map((row, i) => [row.id, counts[i]]));
   const recurringByProgramId = new Map(
-    programs.map((p) => [p.id, p.commissionDurationType !== "ONE_TIME"])
+    programs.map((p) => [p.id, p.commissionDurationType !== "ONE_TIME"]),
   );
 
   // An affiliate who has earned nothing still gets a currency on their zero.
@@ -140,7 +150,9 @@ export default async function AffiliatesPage({
       // Nothing when the program has no recurring commission to churn out of,
       // or when nobody has converted yet.
       retention:
-        recurring && counts && counts.total > 0 ? `${counts.active}/${counts.total}` : null,
+        recurring && counts && counts.total > 0
+          ? `${counts.active}/${counts.total}`
+          : null,
       joined: formatDate(row.createdAt),
       href: hrefWith({ affiliate: row.id }),
     };
@@ -148,7 +160,9 @@ export default async function AffiliatesPage({
 
   // Only an affiliate on the page being read can be opened: the id in the URL
   // is a selection within this list, not a route of its own.
-  const selected = query.affiliate ? rows.find((r) => r.id === query.affiliate) ?? null : null;
+  const selected = query.affiliate
+    ? (rows.find((r) => r.id === query.affiliate) ?? null)
+    : null;
 
   let sheetAffiliate: SheetAffiliate | null = null;
   if (selected) {
@@ -159,7 +173,9 @@ export default async function AffiliatesPage({
     ]);
     const detail = details[selected.id];
     const termsByLinkId = new Map(linkTerms.map((terms) => [terms.id, terms]));
-    const program = programs.find((candidate) => candidate.id === selected.programId);
+    const program = programs.find(
+      (candidate) => candidate.id === selected.programId,
+    );
     sheetAffiliate = {
       id: selected.id,
       name: selected.name,
@@ -182,9 +198,12 @@ export default async function AffiliatesPage({
           url: linkUrl(merchant.websiteUrl, l),
           clicks: l.clicks,
           commissionRateOverride: terms?.commissionRateOverride ?? null,
-          commissionDurationTypeOverride: terms?.commissionDurationTypeOverride ?? null,
-          commissionDurationMonthsOverride: terms?.commissionDurationMonthsOverride ?? null,
-          attributionWindowDaysOverride: terms?.attributionWindowDaysOverride ?? null,
+          commissionDurationTypeOverride:
+            terms?.commissionDurationTypeOverride ?? null,
+          commissionDurationMonthsOverride:
+            terms?.commissionDurationMonthsOverride ?? null,
+          attributionWindowDaysOverride:
+            terms?.attributionWindowDaysOverride ?? null,
           holdingPeriodDaysOverride: terms?.holdingPeriodDaysOverride ?? null,
         };
       }),
@@ -199,7 +218,11 @@ export default async function AffiliatesPage({
   }
 
   const newProgramButton = (
-    <Button size="sm" className="cursor-pointer" render={<Link href={`${base}/programs?new=1`} />}>
+    <Button
+      size="sm"
+      className="cursor-pointer"
+      render={<Link href={`${base}/programs?new=1`} />}
+    >
       New program
     </Button>
   );
@@ -207,12 +230,16 @@ export default async function AffiliatesPage({
   // The header's copy sits in the filter toolbar, so it takes the toolbar's
   // control height rather than the empty state's smaller one.
   const toolbarNewProgramButton = (
-    <Button className="cursor-pointer" render={<Link href={`${base}/programs?new=1`} />}>
+    <Button
+      className="cursor-pointer"
+      render={<Link href={`${base}/programs?new=1`} />}
+    >
       New program
     </Button>
   );
 
-  const programCount = programs.length === 1 ? "1 program" : `${programs.length} programs`;
+  const programCount =
+    programs.length === 1 ? "1 program" : `${programs.length} programs`;
 
   // What closing the sheet goes back to: this same list, filters and page kept.
   const unselected = hrefWith({ affiliate: null });

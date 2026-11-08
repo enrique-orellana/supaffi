@@ -9,7 +9,9 @@ const DAY = 24 * 60 * 60 * 1000;
 
 /** Clears in foreign key order: adjustments, commissions, referred subscriptions, clicks. */
 export async function clearReferralTables(): Promise<void> {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -23,7 +25,10 @@ export async function clearReferralTables(): Promise<void> {
 
 export async function seedOwner() {
   return db.owner.create({
-    data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `owner-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
 }
 
@@ -35,7 +40,9 @@ export async function seedMerchant(ownerId: string): Promise<Merchant> {
       name: "Product",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://product.example.com",
-      paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+      paymentConnections: {
+        create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+      },
     },
   });
 }
@@ -47,7 +54,7 @@ export async function seedReferral(
     months?: number | null;
     affiliateEmail?: string;
     clickCreatedAt?: Date;
-  } = {}
+  } = {},
 ) {
   const program = await db.program.create({
     data: {
@@ -87,7 +94,7 @@ export async function seedReferredSubscription(
   clickId: string,
   stripeSubscriptionId: string,
   firstPayment?: { ref: string; at: Date },
-  stripeProductIds?: string[]
+  stripeProductIds?: string[],
 ) {
   return db.referredSubscription.create({
     data: {
@@ -104,8 +111,14 @@ export async function seedReferredSubscription(
 }
 
 /** Makes a click look linked by customer, the way checkout did before 0.2.5. */
-export async function seedLegacyClick(clickId: string, stripeCustomerId: string) {
-  return db.click.update({ where: { id: clickId }, data: { stripeCustomerId } });
+export async function seedLegacyClick(
+  clickId: string,
+  stripeCustomerId: string,
+) {
+  return db.click.update({
+    where: { id: clickId },
+    data: { stripeCustomerId },
+  });
 }
 
 /** A commission earned on an invoice, as the old handlers wrote them. */
@@ -113,7 +126,7 @@ export async function seedInvoiceCommission(
   affiliateId: string,
   clickId: string,
   ref: string,
-  createdAt: Date = new Date()
+  createdAt: Date = new Date(),
 ) {
   return db.commission.create({
     data: {
@@ -134,14 +147,21 @@ export async function seedInvoiceCommission(
 export function retrievedInvoice(
   id: string,
   subscription: string,
-  opts: { billingReason?: Stripe.Invoice.BillingReason; amountPaid?: number; created?: Date } = {}
+  opts: {
+    billingReason?: Stripe.Invoice.BillingReason;
+    amountPaid?: number;
+    created?: Date;
+  } = {},
 ) {
   return {
     id,
     billing_reason: opts.billingReason ?? "subscription_create",
     amount_paid: opts.amountPaid ?? 5000,
     created: Math.floor((opts.created ?? new Date()).getTime() / 1000),
-    parent: { type: "subscription_details", subscription_details: { subscription, metadata: {} } },
+    parent: {
+      type: "subscription_details",
+      subscription_details: { subscription, metadata: {} },
+    },
   };
 }
 

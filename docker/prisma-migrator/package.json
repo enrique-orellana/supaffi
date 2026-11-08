@@ -1,0 +1,8 @@
+{
+  "name": "supaffi-prisma-migrator",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "dependencies": {
+    "prisma": "6.19.3"
+  }
+}

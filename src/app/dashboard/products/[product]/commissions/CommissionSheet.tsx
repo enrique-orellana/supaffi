@@ -79,7 +79,13 @@ const STATUS_LABELS: Record<CommissionStatus, string> = {
   VOIDED: "Voided",
 };
 
-function Line({ label, children }: { label: string; children: React.ReactNode }) {
+function Line({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-start justify-between gap-4 text-sm">
       <span className="text-muted-foreground">{label}</span>
@@ -116,11 +122,15 @@ function Figure({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[11px] font-medium tracking-wide text-neutral-500 uppercase">{label}</span>
+      <span className="text-[11px] font-medium tracking-wide text-neutral-500 uppercase">
+        {label}
+      </span>
       <span
         className={cn(
           "truncate font-mono text-[13px]",
-          muted ? "text-neutral-500 line-through" : "font-medium text-neutral-900"
+          muted
+            ? "text-neutral-500 line-through"
+            : "font-medium text-neutral-900",
         )}
       >
         {value}
@@ -143,25 +153,40 @@ export function CommissionSheet({
 }) {
   const router = useRouter();
 
-  const flag = commission.status === "FLAGGED" ? flagReasonText(commission.flagReason) : null;
+  const flag =
+    commission.status === "FLAGGED"
+      ? flagReasonText(commission.flagReason)
+      : null;
   // The same sentence covers both cases: a void states its cause, and a live
   // row a partial refund reduced states why it shrank.
   const reasonText = voidReasonText(commission.voidReason, "owner");
   const voidCause = commission.status === "VOIDED" ? reasonText : null;
-  const reduced = commission.status !== "VOIDED" && commission.grossAmount !== null;
+  const reduced =
+    commission.status !== "VOIDED" && commission.grossAmount !== null;
   // Any commission of a referral can confirm it, whatever became of this row:
   // a self referral the checks missed is only spotted later, often after a
   // void or a payout. An adjustment row belongs to no referral of its own.
-  const canConfirm = !commission.isAdjustment && !commission.selfReferralConfirmed;
+  const canConfirm =
+    !commission.isAdjustment && !commission.selfReferralConfirmed;
   // Once confirmed, said plainly, unless this row's void cause already says it.
   const confirmedNote =
     !commission.isAdjustment &&
     commission.selfReferralConfirmed === true &&
-    !(commission.status === "VOIDED" && commission.voidReason === "confirmed self-referral");
+    !(
+      commission.status === "VOIDED" &&
+      commission.voidReason === "confirmed self-referral"
+    );
 
   const confirmForm = (
-    <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
-      <Button type="submit" size="sm" variant="destructive" className="cursor-pointer">
+    <form
+      action={confirmFraudAction.bind(null, listHref, product, commission.id)}
+    >
+      <Button
+        type="submit"
+        size="sm"
+        variant="destructive"
+        className="cursor-pointer"
+      >
         Confirm self referral and stop its commissions
       </Button>
     </form>
@@ -193,7 +218,9 @@ export function CommissionSheet({
               before the confirm/dismiss controls, never after. */}
           {flag && (
             <div className="flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-4 py-3.5">
-              <p className="text-sm font-medium text-neutral-900">{flag.title}</p>
+              <p className="text-sm font-medium text-neutral-900">
+                {flag.title}
+              </p>
               {flag.evidence.length > 0 && (
                 // Stacked, not side by side: these are the exact values the
                 // accusation rests on, so they are never shortened. One under
@@ -222,7 +249,9 @@ export function CommissionSheet({
             <div className="flex flex-col gap-0.5 rounded-(--radius) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
               <p className="text-sm text-neutral-900">{voidCause}</p>
               {commission.voidedLabel && (
-                <p className="text-[13px] text-muted-foreground">{commission.voidedLabel}</p>
+                <p className="text-[13px] text-muted-foreground">
+                  {commission.voidedLabel}
+                </p>
               )}
             </div>
           )}
@@ -231,7 +260,11 @@ export function CommissionSheet({
             <div className="flex flex-col gap-3 rounded-(--radius) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
               <p className="text-sm text-neutral-900">{reasonText}</p>
               <div className="grid grid-cols-2 gap-4">
-                <Figure label="What it was" value={commission.grossAmount} muted />
+                <Figure
+                  label="What it was"
+                  value={commission.grossAmount}
+                  muted
+                />
                 <Figure label="What it is now" value={commission.amount} />
               </div>
             </div>
@@ -261,25 +294,34 @@ export function CommissionSheet({
                     {commission.reference.text}
                   </a>
                 ) : (
-                  <span className="font-mono text-xs">{commission.reference.text}</span>
+                  <span className="font-mono text-xs">
+                    {commission.reference.text}
+                  </span>
                 )
               ) : (
                 <span className="text-muted-foreground">No reference</span>
               )}
             </Line>
-            {commission.paymentProvider && <Line label="Provider">{commission.paymentProvider}</Line>}
+            {commission.paymentProvider && (
+              <Line label="Provider">{commission.paymentProvider}</Line>
+            )}
             {commission.cryptoAmount && commission.cryptoCurrency && (
               <Line label="Crypto paid">
                 <span className="font-mono text-xs">
-                  {commission.cryptoAmount} {commission.cryptoCurrency.toUpperCase()}
-                  {commission.cryptoNetwork ? ` · ${commission.cryptoNetwork.toUpperCase()}` : ""}
+                  {commission.cryptoAmount}{" "}
+                  {commission.cryptoCurrency.toUpperCase()}
+                  {commission.cryptoNetwork
+                    ? ` · ${commission.cryptoNetwork.toUpperCase()}`
+                    : ""}
                 </span>
               </Line>
             )}
             <Line label="Click">{commission.clickLabel}</Line>
             {commission.linkLabel && (
               <Line label="Link">
-                <span className="font-mono text-xs">{commission.linkLabel}</span>
+                <span className="font-mono text-xs">
+                  {commission.linkLabel}
+                </span>
               </Line>
             )}
           </div>
@@ -291,7 +333,7 @@ export function CommissionSheet({
                 listHref,
                 product,
                 [{ id: commission.id, amount: commission.payTotal }],
-                renderedAt
+                renderedAt,
               )}
             >
               <Button type="submit" size="sm" className="cursor-pointer">
@@ -309,8 +351,18 @@ export function CommissionSheet({
             >
               <span className="text-sm font-medium">Void this commission</span>
               <div className="flex gap-2">
-                <Input name="reason" placeholder="Reason" maxLength={200} className="flex-1" />
-                <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+                <Input
+                  name="reason"
+                  placeholder="Reason"
+                  maxLength={200}
+                  className="flex-1"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  className="cursor-pointer"
+                >
                   Void
                 </Button>
               </div>
@@ -320,8 +372,20 @@ export function CommissionSheet({
           {commission.status === "FLAGGED" && (
             <div className="flex gap-2">
               {canConfirm && confirmForm}
-              <form action={dismissFlagAction.bind(null, listHref, product, commission.id)}>
-                <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+              <form
+                action={dismissFlagAction.bind(
+                  null,
+                  listHref,
+                  product,
+                  commission.id,
+                )}
+              >
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  className="cursor-pointer"
+                >
                   Dismiss flag
                 </Button>
               </form>
@@ -329,12 +393,18 @@ export function CommissionSheet({
           )}
 
           {commission.status === "PAID" && (
-            <p className="text-sm text-muted-foreground">{commission.stateLabel}</p>
+            <p className="text-sm text-muted-foreground">
+              {commission.stateLabel}
+            </p>
           )}
 
           {commission.status !== "FLAGGED" && canConfirm && confirmForm}
 
-          {confirmedNote && <p className="text-sm text-muted-foreground">Self referral confirmed</p>}
+          {confirmedNote && (
+            <p className="text-sm text-muted-foreground">
+              Self referral confirmed
+            </p>
+          )}
         </div>
       </SheetContent>
     </Sheet>

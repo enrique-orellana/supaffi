@@ -25,7 +25,13 @@ import { deleteProductAction } from "./settingsActions";
  * opens is one misclick from a year of commission history.
  */
 
-export function DeleteProduct({ product, name }: { product: ProductRef; name: string }) {
+export function DeleteProduct({
+  product,
+  name,
+}: {
+  product: ProductRef;
+  name: string;
+}) {
   const [typed, setTyped] = useState("");
   const matches = typed === name;
 
@@ -35,11 +41,18 @@ export function DeleteProduct({ product, name }: { product: ProductRef; name: st
         <div className="flex flex-col gap-0.5">
           <p className="text-sm">Delete this product and everything in it</p>
           <p className="text-sm text-muted-foreground">
-            Affiliates, links, clicks and commissions go with it. There is no undo.
+            Affiliates, links, clicks and commissions go with it. There is no
+            undo.
           </p>
         </div>
         <AlertDialogTrigger
-          render={<Button variant="destructive" size="sm" className="cursor-pointer" />}
+          render={
+            <Button
+              variant="destructive"
+              size="sm"
+              className="cursor-pointer"
+            />
+          }
         >
           Delete
         </AlertDialogTrigger>
@@ -49,11 +62,15 @@ export function DeleteProduct({ product, name }: { product: ProductRef; name: st
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Every affiliate, link, click and commission on this product is deleted with it.
+            Every affiliate, link, click and commission on this product is
+            deleted with it.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <form action={deleteProductAction.bind(null, product)} className="flex flex-col gap-4">
+        <form
+          action={deleteProductAction.bind(null, product)}
+          className="flex flex-col gap-4"
+        >
           <div className="flex flex-col gap-2">
             <Label htmlFor="confirm">Type {name} to confirm</Label>
             <Input
@@ -65,8 +82,15 @@ export function DeleteProduct({ product, name }: { product: ProductRef; name: st
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
-            <Button type="submit" variant="destructive" className="cursor-pointer" disabled={!matches}>
+            <AlertDialogCancel className="cursor-pointer">
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              type="submit"
+              variant="destructive"
+              className="cursor-pointer"
+              disabled={!matches}
+            >
               Delete product
             </Button>
           </AlertDialogFooter>

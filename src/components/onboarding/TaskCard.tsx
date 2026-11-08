@@ -13,12 +13,18 @@ import { cn } from "@/lib/utils";
  * correct its structure is: the bands are what let someone see at a glance
  * which row introduces the rows under it and which row is data.
  */
-export function TaskCard({ className, children }: { className?: string; children: React.ReactNode }) {
+export function TaskCard({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       className={cn(
         "divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card",
-        className
+        className,
       )}
     >
       {children}
@@ -46,15 +52,25 @@ export function TaskCardHeader({
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 bg-neutral-100 px-4 py-1.5">
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-[13px] font-medium text-neutral-700">{title}</span>
-        {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+        <span className="truncate text-[13px] font-medium text-neutral-700">
+          {title}
+        </span>
+        {hint && (
+          <span className="truncate text-xs text-muted-foreground">{hint}</span>
+        )}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
 
-export function TaskCardBody({ className, children }: { className?: string; children: React.ReactNode }) {
+export function TaskCardBody({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return <div className={cn("p-4", className)}>{children}</div>;
 }
 
@@ -72,5 +88,7 @@ export function TaskCardSection({
   sunken?: boolean;
   children: React.ReactNode;
 }) {
-  return <div className={cn(sunken && "bg-neutral-50", className)}>{children}</div>;
+  return (
+    <div className={cn(sunken && "bg-neutral-50", className)}>{children}</div>
+  );
 }

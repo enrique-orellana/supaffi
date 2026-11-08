@@ -2,12 +2,12 @@ import { Prisma } from "@prisma/client";
 
 type SqlColumnNames = readonly string[];
 
-function defineTable<const Name extends string, const Columns extends SqlColumnNames>(
-  name: Name,
-  columns: Columns
-) {
+function defineTable<
+  const Name extends string,
+  const Columns extends SqlColumnNames,
+>(name: Name, columns: Columns) {
   const columnReferences = Object.fromEntries(
-    columns.map((column) => [column, Prisma.raw(`"${column}"`)])
+    columns.map((column) => [column, Prisma.raw(`"${column}"`)]),
   ) as Record<Columns[number], Prisma.Sql>;
 
   return {

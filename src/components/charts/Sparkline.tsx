@@ -1,4 +1,3 @@
-
 /**
  * A trend line that fills whatever box it is given.
  *
@@ -33,7 +32,9 @@ export function Sparkline({
     const y = flat ? 16 : 30 - ((value - min) / span) * 28;
     return { x, y };
   });
-  const line = coords.map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(" ");
+  const line = coords
+    .map((c) => `${c.x.toFixed(2)},${c.y.toFixed(2)}`)
+    .join(" ");
 
   return (
     <svg
@@ -43,7 +44,11 @@ export function Sparkline({
       className={className}
     >
       {area && (
-        <polygon points={`0,32 ${line} 100,32`} fill="currentColor" fillOpacity={0.08} />
+        <polygon
+          points={`0,32 ${line} 100,32`}
+          fill="currentColor"
+          fillOpacity={0.08}
+        />
       )}
       <polyline
         points={line}

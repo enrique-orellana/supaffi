@@ -28,7 +28,10 @@ async function clearAll() {
 
 async function seedProgram() {
   const owner = await db.owner.create({
-    data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `owner-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
   const merchant = await db.merchant.create({
     data: {
@@ -65,9 +68,15 @@ function noonDaysAgo(n: number): Date {
  * A paid sale and a PAYABLE refund adjustment against it, the row an older
  * version wrote for a refund after payout.
  */
-async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysAgo: number) {
+async function seedSaleWithLegacyAdjustment(
+  saleDaysAgo: number,
+  adjustmentDaysAgo: number,
+) {
   const { merchant, program } = await seedProgram();
-  const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+  const sarah = await createAffiliate(merchant.id, program.id, {
+    name: "Sarah",
+    email: "s@example.com",
+  });
   const primary = await getPrimaryLink(sarah.id);
   const click = await db.click.create({
     data: {
@@ -116,9 +125,15 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
 
     const metrics = await getAffiliateMetrics(sarah.id, 30);
 
-    expect(metrics.current.amounts.usd).toEqual({ gross: 30, commission: 30, sales: 1 });
+    expect(metrics.current.amounts.usd).toEqual({
+      gross: 30,
+      commission: 30,
+      sales: 1,
+    });
     expect(metrics.conversions).toBe(1);
-    const landed = metrics.series.find((p) => p.date === noonDaysAgo(1).toISOString().slice(0, 10));
+    const landed = metrics.series.find(
+      (p) => p.date === noonDaysAgo(1).toISOString().slice(0, 10),
+    );
     expect(landed?.amounts.usd).toBeUndefined();
     expect(landed?.conversions).toBe(0);
     // The legacy adjustment is unpaid (PAYABLE), so it does not move pending
@@ -129,7 +144,10 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
 
   it("counts a legacy PAID adjustment in Paid: history, unlike its unpaid counterparts", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
@@ -175,13 +193,20 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
 
     const metrics = await getAffiliateMetrics(sarah.id, 7);
 
-    expect(metrics.previous?.amounts.usd).toEqual({ gross: 30, commission: 30, sales: 1 });
+    expect(metrics.previous?.amounts.usd).toEqual({
+      gross: 30,
+      commission: 30,
+      sales: 1,
+    });
     expect(metrics.previous?.conversions).toBe(1);
   });
 
   it("reports zeros and a full zero-filled series for a brand new affiliate", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
 
     const metrics = await getAffiliateMetrics(sarah.id, 30);
     expect(metrics.clicks).toBe(0);
@@ -191,12 +216,17 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     expect(metrics.unpaid).toEqual([]);
     // A chart that skips quiet days lies about the shape, so every day is present.
     expect(metrics.series).toHaveLength(30);
-    expect(metrics.series.every((p) => p.clicks === 0 && p.conversions === 0)).toBe(true);
+    expect(
+      metrics.series.every((p) => p.clicks === 0 && p.conversions === 0),
+    ).toBe(true);
   });
 
   it("splits unpaid into pending and payable without converting currencies", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
@@ -248,7 +278,10 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
 
   it("shows a commission held by a dispute to the affiliate as pending, never payable", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
@@ -275,13 +308,19 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     expect(metrics.payable).toEqual([]);
     expect(metrics.unpaid).toEqual([{ currency: "usd", total: "12.00" }]);
 
-    const { rows } = await listAffiliateCommissions(sarah.id, { page: 1, pageSize: 25 });
+    const { rows } = await listAffiliateCommissions(sarah.id, {
+      page: 1,
+      pageSize: 25,
+    });
     expect(rows.map((row) => row.status)).toEqual(["PENDING"]);
   });
 
   it("folds a flagged commission into pending, in the tile counts and in the filtered rows", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
@@ -332,14 +371,21 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
       { status: "VOIDED", count: 0 },
     ]);
 
-    const { rows } = await listAffiliateCommissions(sarah.id, { page: 1, pageSize: 10, status: "PENDING" });
+    const { rows } = await listAffiliateCommissions(sarah.id, {
+      page: 1,
+      pageSize: 10,
+      status: "PENDING",
+    });
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.status === "PENDING")).toBe(true);
   });
 
   it("counts flagged money as unpaid and keeps currencies apart", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const primary = await getPrimaryLink(sarah.id);
     const click = await db.click.create({
       data: {
@@ -356,7 +402,14 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
       ["PAYABLE", "4.00", "eur"],
     ] as const) {
       await db.commission.create({
-        data: { affiliateId: sarah.id, clickId: click.id, amount, currency, status, payableAt: new Date() },
+        data: {
+          affiliateId: sarah.id,
+          clickId: click.id,
+          amount,
+          currency,
+          status,
+          payableAt: new Date(),
+        },
       });
     }
 
@@ -378,7 +431,10 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
   async function seedClick(affiliateId: string) {
     const primary = await getPrimaryLink(affiliateId);
-    const affiliate = await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId }, select: { merchantId: true } });
+    const affiliate = await db.affiliate.findUniqueOrThrow({
+      where: { id: affiliateId },
+      select: { merchantId: true },
+    });
     return db.click.create({
       data: {
         merchantId: affiliate.merchantId,
@@ -395,7 +451,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     clickId: string,
     amount: string,
     currency: string,
-    paidAt: Date
+    paidAt: Date,
   ) {
     return db.commission.create({
       data: {
@@ -413,10 +469,25 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
   it("keeps two payouts made the same day as two rows, newest first", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const click = await seedClick(sarah.id);
-    await payCommission(sarah.id, click.id, "10.00", "usd", new Date("2026-08-15T09:00:00.000Z"));
-    await payCommission(sarah.id, click.id, "5.00", "usd", new Date("2026-08-15T18:00:00.000Z"));
+    await payCommission(
+      sarah.id,
+      click.id,
+      "10.00",
+      "usd",
+      new Date("2026-08-15T09:00:00.000Z"),
+    );
+    await payCommission(
+      sarah.id,
+      click.id,
+      "5.00",
+      "usd",
+      new Date("2026-08-15T18:00:00.000Z"),
+    );
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(2);
@@ -427,7 +498,10 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
   it("collapses the commissions of one payout into one row", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const click = await seedClick(sarah.id);
     const moment = new Date("2026-08-15T09:00:00.000Z");
     await payCommission(sarah.id, click.id, "10.00", "usd", moment);
@@ -441,7 +515,10 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
   it("keeps currencies separate within one payout's row rather than summing across them", async () => {
     const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const click = await seedClick(sarah.id);
     const moment = new Date("2026-08-15T09:00:00.000Z");
     await payCommission(sarah.id, click.id, "10.00", "usd", moment);
@@ -460,7 +537,10 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     // Proves the grouping key against the real write: one press stamps one
     // moment on every row it pays, and a second press stamps another.
     const { owner, merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const sarah = await createAffiliate(merchant.id, program.id, {
+      name: "Sarah",
+      email: "s@example.com",
+    });
     const click = await seedClick(sarah.id);
     const make = (amount: string) =>
       db.commission.create({
@@ -480,15 +560,33 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
 
     const renderedAt = new Date().toISOString();
     expect(
-      await markCommissionsPaid(owner.id, merchant.id, [{ id: a.id, amount: "10.00" }, { id: b.id, amount: "4.00" }], renderedAt)
+      await markCommissionsPaid(
+        owner.id,
+        merchant.id,
+        [
+          { id: a.id, amount: "10.00" },
+          { id: b.id, amount: "4.00" },
+        ],
+        renderedAt,
+      ),
     ).toEqual({ count: 2, skipped: 0 });
-    expect(await markCommissionsPaid(owner.id, merchant.id, [{ id: c.id, amount: "5.00" }], renderedAt)).toEqual({
+    expect(
+      await markCommissionsPaid(
+        owner.id,
+        merchant.id,
+        [{ id: c.id, amount: "5.00" }],
+        renderedAt,
+      ),
+    ).toEqual({
       count: 1,
       skipped: 0,
     });
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(2);
-    expect(payments.map((p) => p.totals[0].total).sort()).toEqual(["14.00", "5.00"]);
+    expect(payments.map((p) => p.totals[0].total).sort()).toEqual([
+      "14.00",
+      "5.00",
+    ]);
   });
 });

@@ -39,12 +39,19 @@ createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/buy") {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    const email = new URLSearchParams(Buffer.concat(chunks).toString()).get("email");
+    const email = new URLSearchParams(Buffer.concat(chunks).toString()).get(
+      "email",
+    );
     const token = cookie(req, REFERRAL_COOKIE);
     const checkout = await fetch(`${STRIPE}/_test/checkout`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ amount: 10000, currency: "usd", email, metadata: token ? { [REFERRAL_METADATA_KEY]: token } : {} }),
+      body: JSON.stringify({
+        amount: 10000,
+        currency: "usd",
+        email,
+        metadata: token ? { [REFERRAL_METADATA_KEY]: token } : {},
+      }),
     }).then((r) => r.json());
     res.writeHead(200, { "content-type": "text/html" });
     return res.end(

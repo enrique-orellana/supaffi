@@ -35,7 +35,7 @@ export function skippedNote(raw: string | undefined): string | null {
 export function alreadyPaidNote(
   raw: string | undefined,
   on: string | undefined,
-  recorded: string | undefined
+  recorded: string | undefined,
 ): string | null {
   const already = Math.floor(Number(raw));
   if (!Number.isFinite(already) || already < 1) return null;

@@ -1,6 +1,11 @@
 import { randomBytes, createHash } from "crypto";
 import { db } from "@/lib/db";
-import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
+import {
+  ConcurrencyLimitError,
+  hashPassword,
+  verifyAgainstNoAccount,
+  verifyPassword,
+} from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Affiliate passwords and the links that set them. Nothing here sends email:
@@ -19,11 +24,20 @@ export function affiliatePasswordError(password: string): string | null {
   return null;
 }
 
-export type AffiliateForLogin = { id: string; email: string; passwordHash: string | null };
+export type AffiliateForLogin = {
+  id: string;
+  email: string;
+  passwordHash: string | null;
+};
 
-export async function findAffiliateForLogin(merchantId: string, email: string): Promise<AffiliateForLogin | null> {
+export async function findAffiliateForLogin(
+  merchantId: string,
+  email: string,
+): Promise<AffiliateForLogin | null> {
   return db.affiliate.findUnique({
-    where: { merchantId_email: { merchantId, email: email.trim().toLowerCase() } },
+    where: {
+      merchantId_email: { merchantId, email: email.trim().toLowerCase() },
+    },
     select: { id: true, email: true, passwordHash: true },
   });
 }
@@ -35,7 +49,7 @@ export async function findAffiliateForLogin(merchantId: string, email: string): 
  */
 export async function checkAffiliatePassword(
   affiliate: AffiliateForLogin | null,
-  password: string
+  password: string,
 ): Promise<{ id: string; email: string } | null> {
   try {
     if (!affiliate?.passwordHash) {
@@ -59,7 +73,7 @@ export async function checkAffiliatePassword(
 export async function createAffiliateResetLink(
   ownerId: string,
   merchantId: string,
-  affiliateId: string
+  affiliateId: string,
 ): Promise<string | null> {
   const affiliate = await db.affiliate.findFirst({
     where: { id: affiliateId, merchantId, merchant: { ownerId } },
@@ -71,7 +85,11 @@ export async function createAffiliateResetLink(
   await db.$transaction([
     db.affiliateLoginToken.deleteMany({ where: { affiliateId, usedAt: null } }),
     db.affiliateLoginToken.create({
-      data: { affiliateId, tokenHash: hashToken(rawToken), expiresAt: new Date(Date.now() + LINK_TTL_MS) },
+      data: {
+        affiliateId,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + LINK_TTL_MS),
+      },
     }),
   ]);
   return rawToken;
@@ -87,13 +105,23 @@ export async function createAffiliateResetLink(
 export async function redeemAffiliateResetLink(
   rawToken: string,
   merchantId: string,
-  password: string
+  password: string,
 ): Promise<{ email: string } | null> {
   const record = await db.affiliateLoginToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
-    select: { id: true, expiresAt: true, usedAt: true, affiliate: { select: { id: true, email: true, merchantId: true } } },
+    select: {
+      id: true,
+      expiresAt: true,
+      usedAt: true,
+      affiliate: { select: { id: true, email: true, merchantId: true } },
+    },
   });
-  if (!record || record.usedAt || record.expiresAt < new Date() || record.affiliate.merchantId !== merchantId) {
+  if (
+    !record ||
+    record.usedAt ||
+    record.expiresAt < new Date() ||
+    record.affiliate.merchantId !== merchantId
+  ) {
     return null;
   }
 

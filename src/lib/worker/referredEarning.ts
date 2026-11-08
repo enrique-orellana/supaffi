@@ -1,6 +1,10 @@
 import type Stripe from "stripe";
 import { fillStripeProductIds } from "./referredSubscription";
-import { listInvoiceLines, referredInvoiceBase, type ReferredRevenue } from "./referredRevenue";
+import {
+  listInvoiceLines,
+  referredInvoiceBase,
+  type ReferredRevenue,
+} from "./referredRevenue";
 
 export type Earned = Extract<ReferredRevenue, { kind: "earned" }>;
 
@@ -10,19 +14,28 @@ type InvoiceFigures = Parameters<typeof referredInvoiceBase>[0];
 // should stop. Shared by the first read and the recompute after a subscription
 // learns its products, so a recompute that turns out unreadable or off Stripe
 // is never quietly replaced by the stale figure computed before the fill.
-function earnedOrLog(invoiceId: string, revenue: ReferredRevenue): Earned | null {
+function earnedOrLog(
+  invoiceId: string,
+  revenue: ReferredRevenue,
+): Earned | null {
   if (revenue.kind === "no_tax_breakdown") {
-    console.error(`[worker] invoice ${invoiceId} carries no tax breakdown, so no commission was recorded for it`);
+    console.error(
+      `[worker] invoice ${invoiceId} carries no tax breakdown, so no commission was recorded for it`,
+    );
     return null;
   }
   if (revenue.kind === "unreadable") {
-    console.error(`[worker] invoice ${invoiceId} ${revenue.reason}, so no commission was recorded for it`);
+    console.error(
+      `[worker] invoice ${invoiceId} ${revenue.reason}, so no commission was recorded for it`,
+    );
     return null;
   }
   if (revenue.kind === "off_stripe") {
     // amount_paid already counts a payment made outside Stripe, so an invoice
     // paid entirely that way has nothing left to scale a commission on.
-    console.warn(`[worker] invoice ${invoiceId} was paid outside Stripe, so no commission was recorded for it`);
+    console.warn(
+      `[worker] invoice ${invoiceId} was paid outside Stripe, so no commission was recorded for it`,
+    );
     return null;
   }
   return revenue;
@@ -47,12 +60,17 @@ export async function referredEarningOn(
   invoiceId: string,
   figures: InvoiceFigures,
   subscriptionId: string,
-  referred: { id: string; stripeProductIds: string[] }
+  referred: { id: string; stripeProductIds: string[] },
 ): Promise<Earned | null> {
   const lines = await listInvoiceLines(stripe, invoiceId);
   const revenue = earnedOrLog(
     invoiceId,
-    referredInvoiceBase(figures, lines, subscriptionId, referred.stripeProductIds)
+    referredInvoiceBase(
+      figures,
+      lines,
+      subscriptionId,
+      referred.stripeProductIds,
+    ),
   );
   if (!revenue) return null;
 
@@ -60,7 +78,10 @@ export async function referredEarningOn(
   if (referred.stripeProductIds.length === 0) {
     const stored = await fillStripeProductIds(referred.id, revenue.productIds);
     if (stored.join() !== revenue.productIds.join()) {
-      const again = earnedOrLog(invoiceId, referredInvoiceBase(figures, lines, subscriptionId, stored));
+      const again = earnedOrLog(
+        invoiceId,
+        referredInvoiceBase(figures, lines, subscriptionId, stored),
+      );
       // Never falls back to the figure computed against the stale, empty
       // product list: if the recompute against what is now stored cannot
       // earn, this invoice earns nothing, not the earlier guess.
@@ -70,7 +91,7 @@ export async function referredEarningOn(
   }
   if (earned.otherProductIds.length > 0) {
     console.warn(
-      `[worker] invoice ${invoiceId} bills ${earned.otherProductIds.join(", ")} on subscription ${subscriptionId}, which its referral did not buy, so those lines earned nothing`
+      `[worker] invoice ${invoiceId} bills ${earned.otherProductIds.join(", ")} on subscription ${subscriptionId}, which its referral did not buy, so those lines earned nothing`,
     );
   }
   return earned;
@@ -101,7 +122,7 @@ export async function referredEarningOn(
 export function storableReferredShare(shareMinor: number): bigint {
   if (!Number.isSafeInteger(shareMinor)) {
     throw new Error(
-      `a referred share of ${shareMinor} is outside the range Supaffi can safely record, so this event is retried`
+      `a referred share of ${shareMinor} is outside the range Supaffi can safely record, so this event is retried`,
     );
   }
   return BigInt(shareMinor);
@@ -116,8 +137,13 @@ export function storableReferredShare(shareMinor: number): bigint {
  */
 export function readStoredReferredShare(value: bigint | null): number | null {
   if (value === null) return null;
-  if (value < BigInt(Number.MIN_SAFE_INTEGER) || value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`stored referred share ${value} is outside the range Supaffi can safely read, so this event is retried`);
+  if (
+    value < BigInt(Number.MIN_SAFE_INTEGER) ||
+    value > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new Error(
+      `stored referred share ${value} is outside the range Supaffi can safely read, so this event is retried`,
+    );
   }
   return Number(value);
 }

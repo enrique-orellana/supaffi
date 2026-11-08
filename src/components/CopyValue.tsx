@@ -5,7 +5,13 @@ import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** A value shown as text with a copy button beside it. */
-export function CopyValue({ value, className }: { value: string; className?: string }) {
+export function CopyValue({
+  value,
+  className,
+}: {
+  value: string;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -23,7 +29,11 @@ export function CopyValue({ value, className }: { value: string; className?: str
           setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {copied ? <Check className="size-3.5 text-status-success" /> : <Copy className="size-3.5" />}
+        {copied ? (
+          <Check className="size-3.5 text-status-success" />
+        ) : (
+          <Copy className="size-3.5" />
+        )}
       </button>
     </span>
   );

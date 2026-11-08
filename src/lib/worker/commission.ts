@@ -7,12 +7,20 @@ export function commissionRateFor(
   affiliate: Affiliate,
   program: Program,
   link?: Pick<AffiliateLink, "commissionRateOverride"> | null,
-  click?: Pick<Click, "commissionRateSnapshot"> | null
+  click?: Pick<Click, "commissionRateSnapshot"> | null,
 ): number {
-  return Number(click?.commissionRateSnapshot ?? link?.commissionRateOverride ?? affiliate.customCommissionRate ?? program.defaultCommissionRate);
+  return Number(
+    click?.commissionRateSnapshot ??
+      link?.commissionRateOverride ??
+      affiliate.customCommissionRate ??
+      program.defaultCommissionRate,
+  );
 }
 
-export type CommissionDurationTerms = Pick<Program, "commissionDurationType" | "commissionDurationMonths">;
+export type CommissionDurationTerms = Pick<
+  Program,
+  "commissionDurationType" | "commissionDurationMonths"
+>;
 
 // Decimal rather than float arithmetic: an exact half cent is often held as
 // a hair under it in binary floating point, so float rounding took it down
@@ -20,7 +28,7 @@ export type CommissionDurationTerms = Pick<Program, "commissionDurationType" | "
 export function computeCommissionAmount(
   paidAmountMinor: number,
   currency: string,
-  ratePercent: number
+  ratePercent: number,
 ): Prisma.Decimal {
   return new Prisma.Decimal(minorUnitsToMajor(paidAmountMinor, currency))
     .mul(ratePercent)
@@ -29,14 +37,17 @@ export function computeCommissionAmount(
 }
 
 /** The customer's payment in major units, for the revenue the commission was earned on. */
-export function saleAmountFor(paidAmountMinor: number, currency: string): number {
+export function saleAmountFor(
+  paidAmountMinor: number,
+  currency: string,
+): number {
   return minorUnitsToMajor(paidAmountMinor, currency);
 }
 
 export function computePayableAt(
   program: Program,
   from: Date = new Date(),
-  holdingPeriodDays: number = program.holdingPeriodDays
+  holdingPeriodDays: number = program.holdingPeriodDays,
 ): Date {
   return new Date(from.getTime() + holdingPeriodDays * 24 * 60 * 60 * 1000);
 }
@@ -52,7 +63,9 @@ export type PaymentRef = { ref: string; at: Date };
 export function addMonthsClamped(from: Date, months: number): Date {
   const year = from.getUTCFullYear();
   const month = from.getUTCMonth() + months;
-  const lastDayOfTargetMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(year, month + 1, 0),
+  ).getUTCDate();
   return new Date(
     Date.UTC(
       year,
@@ -61,8 +74,8 @@ export function addMonthsClamped(from: Date, months: number): Date {
       from.getUTCHours(),
       from.getUTCMinutes(),
       from.getUTCSeconds(),
-      from.getUTCMilliseconds()
-    )
+      from.getUTCMilliseconds(),
+    ),
   );
 }
 
@@ -84,7 +97,7 @@ export function isPaymentWithinCommissionDuration(
   program: Program,
   firstPayment: PaymentRef,
   payment: PaymentRef,
-  duration: CommissionDurationTerms = program
+  duration: CommissionDurationTerms = program,
 ): boolean {
   if (payment.ref === firstPayment.ref) return true;
   switch (duration.commissionDurationType) {
@@ -93,14 +106,19 @@ export function isPaymentWithinCommissionDuration(
     case "ONE_TIME":
       return false;
     case "FIXED_MONTHS": {
-      const end = addMonthsClamped(firstPayment.at, duration.commissionDurationMonths ?? 0);
+      const end = addMonthsClamped(
+        firstPayment.at,
+        duration.commissionDurationMonths ?? 0,
+      );
       return payment.at.getTime() < end.getTime() - DURATION_BOUNDARY_GRACE_MS;
     }
   }
 }
 
 /** Whether a metadata map carries the exclusion flag (CONTEXT.md). */
-export function hasExclusionFlag(metadata: Stripe.Metadata | null | undefined): boolean {
+export function hasExclusionFlag(
+  metadata: Stripe.Metadata | null | undefined,
+): boolean {
   return metadata?.supaffi === "false";
 }
 
@@ -124,7 +142,11 @@ export type ExclusionSources = {
 // `named` is what the thrown message may print for this read: the invoice or
 // subscription's own id for those two, but never a customer id, so the caller
 // passes the sale's own reference instead when reading the customer.
-async function readForExclusion<T>(what: string, named: string, read: () => Promise<T>): Promise<T> {
+async function readForExclusion<T>(
+  what: string,
+  named: string,
+  read: () => Promise<T>,
+): Promise<T> {
   try {
     return await read();
   } catch (err) {
@@ -137,12 +159,15 @@ async function readForExclusion<T>(what: string, named: string, read: () => Prom
     // retrieveSessionForEarning uses in checkoutSessionCompleted.ts.
     const { type, code } = err as { type?: string; code?: string };
     throw new Error(
-      `could not read ${what} ${named} (${type ?? "unknown"}/${code ?? "unknown"}) to check whether its sale is excluded, so no commission was recorded and the event will be retried`
+      `could not read ${what} ${named} (${type ?? "unknown"}/${code ?? "unknown"}) to check whether its sale is excluded, so no commission was recorded and the event will be retried`,
     );
   }
 }
 
-function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer, saleRef: string): boolean {
+function customerIsExcluded(
+  customer: Stripe.Customer | Stripe.DeletedCustomer,
+  saleRef: string,
+): boolean {
   // A deleted customer comes back with no metadata left to carry the flag:
   // "If it's for a deleted Customer, a subset of the customer's information
   // is returned, including a deleted property that's set to true" (Stripe
@@ -151,7 +176,9 @@ function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer, 
   // is named by its own Stripe reference, never by anything about the
   // customer, since the customer is the very thing that could not be read.
   if ("deleted" in customer && customer.deleted) {
-    console.warn(`[worker] sale ${saleRef}'s customer was deleted, so it was treated as excluded and earned nothing`);
+    console.warn(
+      `[worker] sale ${saleRef}'s customer was deleted, so it was treated as excluded and earned nothing`,
+    );
     return true;
   }
   return hasExclusionFlag((customer as Stripe.Customer).metadata);
@@ -174,13 +201,19 @@ function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer, 
 // PaymentIntent reference) for the one log line a deleted customer produces,
 // so the line can be traced back to a sale without ever printing anything
 // about the customer.
-export async function isExcluded(stripe: Stripe, sources: ExclusionSources, saleRef: string): Promise<boolean> {
+export async function isExcluded(
+  stripe: Stripe,
+  sources: ExclusionSources,
+  saleRef: string,
+): Promise<boolean> {
   const { invoice, subscription, customer } = sources;
 
   if (invoice) {
     const read =
       typeof invoice === "string"
-        ? await readForExclusion("invoice", invoice, () => stripe.invoices.retrieve(invoice))
+        ? await readForExclusion("invoice", invoice, () =>
+            stripe.invoices.retrieve(invoice),
+          )
         : invoice;
     if (hasExclusionFlag(read.metadata)) return true;
   }
@@ -188,7 +221,9 @@ export async function isExcluded(stripe: Stripe, sources: ExclusionSources, sale
   if (subscription) {
     const read =
       typeof subscription === "string"
-        ? await readForExclusion("subscription", subscription, () => stripe.subscriptions.retrieve(subscription))
+        ? await readForExclusion("subscription", subscription, () =>
+            stripe.subscriptions.retrieve(subscription),
+          )
         : subscription;
     if (hasExclusionFlag(read.metadata)) return true;
   }
@@ -198,7 +233,9 @@ export async function isExcluded(stripe: Stripe, sources: ExclusionSources, sale
       typeof customer === "string"
         ? // Named by the sale, never by the customer id: the id being read is
           // the very thing a failed read must not print.
-          await readForExclusion("customer", saleRef, () => stripe.customers.retrieve(customer))
+          await readForExclusion("customer", saleRef, () =>
+            stripe.customers.retrieve(customer),
+          )
         : customer;
     if (customerIsExcluded(read, saleRef)) return true;
   }

@@ -20,7 +20,8 @@ describe("registrableCandidates", () => {
 describe("resolveAuthoritative", () => {
   const deps = (over = {}) => ({
     resolveNs: async () => ["ns1.cloudflare.com"],
-    resolve4: async (h: string) => (h === "ns1.cloudflare.com" ? ["9.9.9.9"] : ["1.1.1.1"]),
+    resolve4: async (h: string) =>
+      h === "ns1.cloudflare.com" ? ["9.9.9.9"] : ["1.1.1.1"],
     makeResolver: () => ({ resolve4: async () => ["203.0.113.10"] }),
     ...over,
   });
@@ -28,14 +29,21 @@ describe("resolveAuthoritative", () => {
   it("asks the zone's own nameservers, not the system resolver", async () => {
     // The whole point: the system resolver may be holding a cached NXDOMAIN
     // from before the owner created the record.
-    const answer = await resolveAuthoritative("affiliates.dev.mokkit.co", deps());
+    const answer = await resolveAuthoritative(
+      "affiliates.dev.mokkit.co",
+      deps(),
+    );
     expect(answer).toEqual(["203.0.113.10"]);
   });
 
   it("falls back to the system resolver when the nameservers cannot be found", async () => {
     const answer = await resolveAuthoritative(
       "affiliates.dev.mokkit.co",
-      deps({ resolveNs: async () => { throw new Error("no NS"); } })
+      deps({
+        resolveNs: async () => {
+          throw new Error("no NS");
+        },
+      }),
     );
     expect(answer).toEqual(["1.1.1.1"]);
   });
@@ -43,7 +51,10 @@ describe("resolveAuthoritative", () => {
   it("falls back when a nameserver name has no address", async () => {
     const answer = await resolveAuthoritative(
       "affiliates.dev.mokkit.co",
-      deps({ resolve4: async (h: string) => (h === "ns1.cloudflare.com" ? [] : ["1.1.1.1"]) })
+      deps({
+        resolve4: async (h: string) =>
+          h === "ns1.cloudflare.com" ? [] : ["1.1.1.1"],
+      }),
     );
     expect(answer).toEqual(["1.1.1.1"]);
   });
@@ -58,7 +69,8 @@ describe("resolveAuthoritative", () => {
         asked.push(h);
         return h === "co.uk" ? ["ns1.nic.uk"] : ["ns1.registrar.test"];
       },
-      resolve4: async (h: string) => (h.startsWith("ns1.") ? ["9.9.9.9"] : ["1.1.1.1"]),
+      resolve4: async (h: string) =>
+        h.startsWith("ns1.") ? ["9.9.9.9"] : ["1.1.1.1"],
       makeResolver: (servers) => ({
         resolve4: async () => {
           if (servers.includes("9.9.9.9") && asked.includes("co.uk")) {
@@ -81,13 +93,15 @@ describe("resolveAuthoritative", () => {
             throw Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" });
           },
         }),
-      })
+      }),
     );
     expect(answer).toEqual(["1.1.1.1"]);
   });
 
   it("reports no record when the zone's own nameservers say the name does not exist", async () => {
-    const plain = vi.fn(async (h: string) => (h === "ns1.cloudflare.com" ? ["9.9.9.9"] : ["1.1.1.1"]));
+    const plain = vi.fn(async (h: string) =>
+      h === "ns1.cloudflare.com" ? ["9.9.9.9"] : ["1.1.1.1"],
+    );
     await expect(
       resolveAuthoritative(
         "affiliates.dev.mokkit.co",
@@ -95,11 +109,13 @@ describe("resolveAuthoritative", () => {
           resolve4: plain,
           makeResolver: () => ({
             resolve4: async () => {
-              throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+              throw Object.assign(new Error("ENOTFOUND"), {
+                code: "ENOTFOUND",
+              });
             },
           }),
-        })
-      )
+        }),
+      ),
     ).rejects.toMatchObject({ code: "ENOTFOUND" });
     expect(plain).not.toHaveBeenCalledWith("affiliates.dev.mokkit.co");
   });
@@ -107,27 +123,49 @@ describe("resolveAuthoritative", () => {
 
 describe("resolvesTo", () => {
   it("passes when the hostname points at this server", async () => {
-    const result = await resolvesTo("affiliates.instantgradient.com", "146.59.195.140", async () => ["146.59.195.140"]);
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "146.59.195.140",
+      async () => ["146.59.195.140"],
+    );
     expect(result.ok).toBe(true);
   });
 
   it("fails and names the address it found instead", async () => {
-    const result = await resolvesTo("affiliates.instantgradient.com", "146.59.195.140", async () => ["104.21.0.1"]);
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "146.59.195.140",
+      async () => ["104.21.0.1"],
+    );
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("104.21.0.1");
   });
 
   it("passes when SUPAFFI_HOST_IP is a hostname that resolves to the same address", async () => {
     const resolve = async (h: string) =>
-      h === "affiliates.instantgradient.com" ? ["146.59.195.140"] : ["146.59.195.140"];
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
+      h === "affiliates.instantgradient.com"
+        ? ["146.59.195.140"]
+        : ["146.59.195.140"];
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "vps.example.com",
+      resolve,
+      resolve,
+    );
     expect(result.ok).toBe(true);
   });
 
   it("fails when a hostname SUPAFFI_HOST_IP resolves somewhere else", async () => {
     const resolve = async (h: string) =>
-      h === "affiliates.instantgradient.com" ? ["104.21.0.1"] : ["146.59.195.140"];
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
+      h === "affiliates.instantgradient.com"
+        ? ["104.21.0.1"]
+        : ["146.59.195.140"];
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "vps.example.com",
+      resolve,
+      resolve,
+    );
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("104.21.0.1");
   });
@@ -137,7 +175,12 @@ describe("resolvesTo", () => {
       if (h === "affiliates.instantgradient.com") return ["104.21.0.1"];
       throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
     };
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "vps.example.com",
+      resolve,
+      resolve,
+    );
     expect(result.ok).toBe(false);
     expect(result.detail).toMatch(/server's address .* could not be resolved/i);
   });
@@ -156,7 +199,7 @@ describe("resolvesTo", () => {
       "affiliates.instantgradient.com",
       "vps.example.com",
       resolve,
-      resolveExpected
+      resolveExpected,
     );
     expect(result.ok).toBe(true);
     expect(seen.hostname).toBe("affiliates.instantgradient.com");
@@ -164,24 +207,33 @@ describe("resolvesTo", () => {
   });
 
   it("fails when there is no record yet", async () => {
-    const result = await resolvesTo("affiliates.instantgradient.com", "146.59.195.140", async () => {
-      throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
-    });
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "146.59.195.140",
+      async () => {
+        throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+      },
+    );
     expect(result.ok).toBe(false);
     expect(result.detail).toMatch(/no record/i);
   });
 
   it("passes when the authoritative answer carries this server's address", async () => {
-    const result = await resolvesTo("affiliates.dev.mokkit.co", "203.0.113.10", async () => [
+    const result = await resolvesTo(
+      "affiliates.dev.mokkit.co",
       "203.0.113.10",
-    ]);
+      async () => ["203.0.113.10"],
+    );
     expect(result.ok).toBe(true);
   });
 });
 
 describe("httpsReachable", () => {
   const resolves = async () => ["146.59.195.140"];
-  const noProxy = async () => ({ kind: "no-proxy" as const, reason: "No local proxy in this test" });
+  const noProxy = async () => ({
+    kind: "no-proxy" as const,
+    reason: "No local proxy in this test",
+  });
 
   it("passes both when the server answers", async () => {
     const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
@@ -189,32 +241,43 @@ describe("httpsReachable", () => {
       "affiliates.instantgradient.com",
       fetchMock as unknown as typeof fetch,
       resolves,
-      noProxy
+      noProxy,
     );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("https://affiliates.instantgradient.com/track.js", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://affiliates.instantgradient.com/track.js",
+      expect.anything(),
+    );
   });
 
   it("tells a certificate problem apart from an unreachable server", async () => {
-    const certError = Object.assign(new Error("cert"), { cause: { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" } });
+    const certError = Object.assign(new Error("cert"), {
+      cause: { code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE" },
+    });
     const result = await httpsReachable(
       "x.test",
-      (async () => { throw certError; }) as unknown as typeof fetch,
+      (async () => {
+        throw certError;
+      }) as unknown as typeof fetch,
       resolves,
-      noProxy
+      noProxy,
     );
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(false);
   });
 
   it("fails reachable when nothing answers", async () => {
-    const down = Object.assign(new Error("down"), { cause: { code: "ECONNREFUSED" } });
+    const down = Object.assign(new Error("down"), {
+      cause: { code: "ECONNREFUSED" },
+    });
     const result = await httpsReachable(
       "x.test",
-      (async () => { throw down; }) as unknown as typeof fetch,
+      (async () => {
+        throw down;
+      }) as unknown as typeof fetch,
       resolves,
-      noProxy
+      noProxy,
     );
     expect(result.reachable.ok).toBe(false);
     expect(result.certificate.ok).toBe(false);
@@ -225,7 +288,9 @@ describe("httpsReachable", () => {
     const result = await httpsReachable(
       "affiliates.dev.mokkit.co",
       fetchMock as unknown as typeof fetch,
-      async () => { throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); }
+      async () => {
+        throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+      },
     );
     expect(result.reachable.ok).toBe(false);
     expect(result.reachable.detail).toMatch(/no record/i);
@@ -236,19 +301,30 @@ describe("httpsReachable", () => {
 describe("detectDnsProvider", () => {
   it("recognises Cloudflare from the nameservers of the parent domain", async () => {
     const resolveNs = vi.fn(async (h: string) =>
-      h === "instantgradient.com" ? ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"] : []
+      h === "instantgradient.com"
+        ? ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"]
+        : [],
     );
-    expect(await detectDnsProvider("affiliates.instantgradient.com", resolveNs)).toBe("cloudflare");
+    expect(
+      await detectDnsProvider("affiliates.instantgradient.com", resolveNs),
+    ).toBe("cloudflare");
   });
 
   it("answers unknown for anything else", async () => {
-    expect(await detectDnsProvider("affiliates.mokkit.co", async () => ["ns1.ovh.net"])).toBe("unknown");
+    expect(
+      await detectDnsProvider("affiliates.mokkit.co", async () => [
+        "ns1.ovh.net",
+      ]),
+    ).toBe("unknown");
   });
 
   it("gives up on a resolver that never answers instead of holding the page open", async () => {
     vi.useFakeTimers();
     try {
-      const answer = detectDnsProvider("affiliates.mokkit.co", () => new Promise<string[]>(() => {}));
+      const answer = detectDnsProvider(
+        "affiliates.mokkit.co",
+        () => new Promise<string[]>(() => {}),
+      );
       // Both candidates time out, three seconds each.
       await vi.advanceTimersByTimeAsync(7000);
       expect(await answer).toBe("unknown");
@@ -258,12 +334,18 @@ describe("detectDnsProvider", () => {
   });
 
   it("answers unknown when lookup fails", async () => {
-    expect(await detectDnsProvider("affiliates.mokkit.co", async () => { throw new Error("x"); })).toBe("unknown");
+    expect(
+      await detectDnsProvider("affiliates.mokkit.co", async () => {
+        throw new Error("x");
+      }),
+    ).toBe("unknown");
   });
 });
 
 describe("cloudflareDnsRecordsUrl", () => {
   it("opens the named zone's records, leaving the account to Cloudflare", () => {
-    expect(cloudflareDnsRecordsUrl("mokkit.co")).toBe("https://dash.cloudflare.com/?to=/:account/mokkit.co/dns/records");
+    expect(cloudflareDnsRecordsUrl("mokkit.co")).toBe(
+      "https://dash.cloudflare.com/?to=/:account/mokkit.co/dns/records",
+    );
   });
 });

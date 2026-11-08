@@ -29,13 +29,15 @@ export function resolveLegacyQueryAlias(input: {
   queryValue: string;
   importedLinks: readonly ImportedLinkForAliasResolution[];
 }): string | null {
-  if (!input.adapter.legacyQueryParamAliases?.includes(input.queryParameter)) return null;
+  if (!input.adapter.legacyQueryParamAliases?.includes(input.queryParameter))
+    return null;
   const parameter = input.queryParameter.toLowerCase();
   const value = input.queryValue.toLowerCase();
-  const matches = input.importedLinks.filter((link) =>
-    link.merchantId === input.merchantId &&
-    link.legacyQueryParamAliases?.includes(parameter) &&
-    link.legacyAliases?.some((alias) => alias.toLowerCase() === value),
+  const matches = input.importedLinks.filter(
+    (link) =>
+      link.merchantId === input.merchantId &&
+      link.legacyQueryParamAliases?.includes(parameter) &&
+      link.legacyAliases?.some((alias) => alias.toLowerCase() === value),
   );
   return matches.length === 1 ? matches[0].code : null;
 }
@@ -44,5 +46,8 @@ export function adapterSupportsBundle(
   adapter: AffiliateImportAdapter,
   bundle: AffiliateProgramImportBundle,
 ): boolean {
-  return bundle.manifest.sourceAdapter === adapter.id && adapter.supportedVersions.includes(bundle.manifest.version);
+  return (
+    bundle.manifest.sourceAdapter === adapter.id &&
+    adapter.supportedVersions.includes(bundle.manifest.version)
+  );
 }

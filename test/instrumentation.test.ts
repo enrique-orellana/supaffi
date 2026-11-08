@@ -24,7 +24,7 @@ function staticImportsIn(source: string): string[] {
     .replace(/\/\/[^\n]*/g, "")
     .replace(/\bimport\s*\(\s*(["'])(?:(?!\1).)*\1\s*\)/g, "");
   return FORBIDDEN.filter((specifier) =>
-    new RegExp(`["']${specifier.replace(/\//g, "\\/")}["']`).test(code)
+    new RegExp(`["']${specifier.replace(/\//g, "\\/")}["']`).test(code),
   );
 }
 
@@ -38,21 +38,33 @@ describe("the Edge bundling boundary in src/instrumentation.ts", () => {
         `modules reach does not resolve, so this breaks \`npm run build\`. Use the ` +
         `owner-existence check in @/lib/ownerExists, which imports only the database ` +
         `client, or reach the module through a dynamic import inside the Node-runtime ` +
-        `branch.`
+        `branch.`,
     ).toEqual([]);
   });
 
   it("recognises a static import of the modules it forbids", () => {
     // Guards the detector itself: a regex that matched nothing would pass the
     // test above for the wrong reason, forever.
-    expect(staticImportsIn(`import { ownerExists } from "@/lib/owner";`)).toEqual(["@/lib/owner"]);
-    expect(staticImportsIn(`import {\n  hashPassword,\n} from "@/lib/password";`)).toEqual([
-      "@/lib/password",
-    ]);
-    expect(staticImportsIn(`export { ownerExists } from "@/lib/owner";`)).toEqual(["@/lib/owner"]);
-    expect(staticImportsIn(`const m = await import("@/lib/owner");`)).toEqual([]);
-    expect(staticImportsIn(`// this comment names @/lib/password and is not an import`)).toEqual([]);
+    expect(
+      staticImportsIn(`import { ownerExists } from "@/lib/owner";`),
+    ).toEqual(["@/lib/owner"]);
+    expect(
+      staticImportsIn(`import {\n  hashPassword,\n} from "@/lib/password";`),
+    ).toEqual(["@/lib/password"]);
+    expect(
+      staticImportsIn(`export { ownerExists } from "@/lib/owner";`),
+    ).toEqual(["@/lib/owner"]);
+    expect(staticImportsIn(`const m = await import("@/lib/owner");`)).toEqual(
+      [],
+    );
+    expect(
+      staticImportsIn(
+        `// this comment names @/lib/password and is not an import`,
+      ),
+    ).toEqual([]);
     // The safe module whose name the forbidden one is a prefix of.
-    expect(staticImportsIn(`import { ownerExists } from "@/lib/ownerExists";`)).toEqual([]);
+    expect(
+      staticImportsIn(`import { ownerExists } from "@/lib/ownerExists";`),
+    ).toEqual([]);
   });
 });

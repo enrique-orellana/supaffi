@@ -52,14 +52,37 @@ function compactMoney(value: number): string {
   return String(Math.round(value));
 }
 
-const HOUR = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
-const DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-const DAY_LONG = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-const MONTH = new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
-const MONTH_LONG = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+const HOUR = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+const DAY = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const DAY_LONG = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const MONTH = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  year: "2-digit",
+  timeZone: "UTC",
+});
+const MONTH_LONG = new Intl.DateTimeFormat("en-GB", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 function stamp(point: DayPoint): Date {
-  return new Date(point.date.length === 10 ? `${point.date}T00:00:00Z` : point.date);
+  return new Date(
+    point.date.length === 10 ? `${point.date}T00:00:00Z` : point.date,
+  );
 }
 
 /** The label under the axis: short, and the one form that fits the bucket. */
@@ -128,8 +151,8 @@ function monotonePath(xs: number[], ys: number[]): string {
     const b = slopes[i + 1] / deltas[i];
     const h = Math.hypot(a, b);
     if (h > 3) {
-      slopes[i] = (3 * a) / h * deltas[i];
-      slopes[i + 1] = (3 * b) / h * deltas[i];
+      slopes[i] = ((3 * a) / h) * deltas[i];
+      slopes[i + 1] = ((3 * b) / h) * deltas[i];
     }
   }
   let d = `M${xs[0]},${ys[0]}`;
@@ -145,7 +168,13 @@ function monotonePath(xs: number[], ys: number[]): string {
  * corners, which lifts the bar off the axis it is standing on and turns a
  * short one into a lozenge floating above zero.
  */
-function barPath(x: number, y: number, w: number, h: number, radius: number): string {
+function barPath(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number,
+): string {
   const r = Math.max(0, Math.min(radius, w / 2, h));
   return `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h} Z`;
 }
@@ -163,11 +192,13 @@ const money = formatMoney;
 function byCurrency(
   amounts: Record<string, Amounts>,
   drawn: string | null,
-  field: "gross" | "commission"
+  field: "gross" | "commission",
 ): string[] {
   return Object.entries(amounts)
     .filter(([, value]) => value[field] > 0)
-    .sort(([a], [b]) => (a === drawn ? -1 : b === drawn ? 1 : a.localeCompare(b)))
+    .sort(([a], [b]) =>
+      a === drawn ? -1 : b === drawn ? 1 : a.localeCompare(b),
+    )
     .map(([currency, value]) => money(value[field], currency));
 }
 
@@ -226,10 +257,18 @@ export function ActivityChart({
 
   // Divided by the headroom rather than multiplied into the geometry, so the
   // number printed on the axis is still the top of the axis.
-  const grossAt = (p: DayPoint) => (currency ? (p.amounts[currency]?.gross ?? 0) : 0);
-  const commissionAt = (p: DayPoint) => (currency ? (p.amounts[currency]?.commission ?? 0) : 0);
-  const clickMax = niceMax(Math.max(0, ...points.map((p) => p.clicks)) / HEADROOM.line, 4);
-  const barMax = niceMax(Math.max(0, ...points.map(grossAt)) / HEADROOM.bar, 10);
+  const grossAt = (p: DayPoint) =>
+    currency ? (p.amounts[currency]?.gross ?? 0) : 0;
+  const commissionAt = (p: DayPoint) =>
+    currency ? (p.amounts[currency]?.commission ?? 0) : 0;
+  const clickMax = niceMax(
+    Math.max(0, ...points.map((p) => p.clicks)) / HEADROOM.line,
+    4,
+  );
+  const barMax = niceMax(
+    Math.max(0, ...points.map(grossAt)) / HEADROOM.bar,
+    10,
+  );
   const xAt = (i: number) => PAD.left + slot * (i + 0.5);
   const yClicks = (v: number) => PAD.top + plotH - (v / clickMax) * plotH;
   const yBars = (v: number) => PAD.top + plotH - (v / barMax) * plotH;
@@ -238,7 +277,10 @@ export function ActivityChart({
   const xs = points.map((_, i) => xAt(i));
   const ys = points.map((p) => yClicks(p.clicks));
   const linePath = monotonePath(xs, ys);
-  const areaPath = n > 0 ? `${linePath} L${xs[n - 1]},${baseline} L${xs[0]},${baseline} Z` : "";
+  const areaPath =
+    n > 0
+      ? `${linePath} L${xs[n - 1]},${baseline} L${xs[0]},${baseline} Z`
+      : "";
 
   // Every nth bucket, counted from the first. Dividing the range into five
   // instead put the labels at uneven gaps, and rounding landed two of them
@@ -252,12 +294,23 @@ export function ActivityChart({
   const ticks = [0, 0.5, 1];
 
   const active = hovered === null ? null : points[hovered];
-  const grossLines = active ? byCurrency(active.amounts, currency, "gross") : [];
-  const costLines = active && splitLabel ? byCurrency(active.amounts, currency, "commission") : [];
-  const tooltipX = hovered === null ? 0 : Math.min(Math.max(xAt(hovered), 120), Math.max(120, width - 120));
+  const grossLines = active
+    ? byCurrency(active.amounts, currency, "gross")
+    : [];
+  const costLines =
+    active && splitLabel
+      ? byCurrency(active.amounts, currency, "commission")
+      : [];
+  const tooltipX =
+    hovered === null
+      ? 0
+      : Math.min(Math.max(xAt(hovered), 120), Math.max(120, width - 120));
 
   return (
-    <div data-slot="activity-chart" className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
+    <div
+      data-slot="activity-chart"
+      className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}
+    >
       <ul className="flex shrink-0 items-center gap-4 text-[12px] text-muted-foreground">
         <li className="flex items-center gap-1.5">
           <span className="h-0.5 w-3 bg-(--chart-line)" />
@@ -278,7 +331,12 @@ export function ActivityChart({
       </ul>
       <div ref={box} className="relative min-h-0 flex-1 select-none">
         {width > 0 && height > 0 && (
-          <svg width={width} height={height} className="block overflow-visible" aria-hidden>
+          <svg
+            width={width}
+            height={height}
+            className="block overflow-visible"
+            aria-hidden
+          >
             {/* Grid and the two axes' numbers. Dashed and faint: a rule, not a bar. */}
             {ticks.map((t) => {
               const y = PAD.top + plotH - t * plotH;
@@ -306,7 +364,9 @@ export function ActivityChart({
                     textAnchor="start"
                     className="fill-neutral-400 text-[10px] tabular-nums"
                   >
-                    {currency ? `${currencySymbol(currency)}${compactMoney(t * barMax)}` : compactMoney(t * barMax)}
+                    {currency
+                      ? `${currencySymbol(currency)}${compactMoney(t * barMax)}`
+                      : compactMoney(t * barMax)}
                   </text>
                 </g>
               );
@@ -319,49 +379,60 @@ export function ActivityChart({
             </g>
 
             <g key={`bars-${signature}`}>
-            {points.map((p, i) => {
-              const gross = grossAt(p);
-              if (gross <= 0) return null;
-              const full = Math.max(4, baseline - yBars(gross));
-              // What the Owner keeps: the sale minus what he owes on it. The
-              // commission is the ghosted slice above it, so one bar carries
-              // both what came in and what it cost.
-              const cost = splitLabel ? commissionAt(p) : 0;
-              const kept = Math.max(0, full - (cost / Math.max(gross, 0.01)) * full);
-              const lit = hovered === i;
-              const x = xAt(i) - barW / 2;
-              return (
-                <g
-                  key={p.date}
-                  className="supaffi-bar"
-                  style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
-                >
-                  {cost > 0 && (
+              {points.map((p, i) => {
+                const gross = grossAt(p);
+                if (gross <= 0) return null;
+                const full = Math.max(4, baseline - yBars(gross));
+                // What the Owner keeps: the sale minus what he owes on it. The
+                // commission is the ghosted slice above it, so one bar carries
+                // both what came in and what it cost.
+                const cost = splitLabel ? commissionAt(p) : 0;
+                const kept = Math.max(
+                  0,
+                  full - (cost / Math.max(gross, 0.01)) * full,
+                );
+                const lit = hovered === i;
+                const x = xAt(i) - barW / 2;
+                return (
+                  <g
+                    key={p.date}
+                    className="supaffi-bar"
+                    style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
+                  >
+                    {cost > 0 && (
+                      <path
+                        // Only the slice above what he keeps. Drawn as the whole
+                        // bar, its outline ran down both sides of the
+                        // solid part as well, which read as a box around the bar
+                        // rather than a slice off the top of it.
+                        d={barPath(x, baseline - full, barW, full - kept, 2)}
+                        className="transition-[fill] duration-500 ease-(--ease-out)"
+                        style={{
+                          fill: "var(--chart-split)",
+                          stroke: "var(--chart-split-edge)",
+                          strokeWidth: 1,
+                        }}
+                      />
+                    )}
                     <path
-                      // Only the slice above what he keeps. Drawn as the whole
-                      // bar, its outline ran down both sides of the
-                      // solid part as well, which read as a box around the bar
-                      // rather than a slice off the top of it.
-                      d={barPath(x, baseline - full, barW, full - kept, 2)}
-                      className="transition-[fill] duration-500 ease-(--ease-out)"
+                      // Square topped while a ghost sits on it, rounded when it
+                      // is the whole bar: a rounded top under the ghost reads as
+                      // two bars rather than one divided.
+                      d={barPath(
+                        x,
+                        baseline - kept,
+                        barW,
+                        kept,
+                        cost > 0 ? 0 : 2,
+                      )}
+                      className="transition-[fill] duration-500 ease-(--ease-out) motion-reduce:transition-none"
                       style={{
-                        fill: "var(--chart-split)",
-                        stroke: "var(--chart-split-edge)",
-                        strokeWidth: 1,
+                        fill: lit ? "var(--chart-bar-lit)" : "var(--chart-bar)",
                       }}
                     />
-                  )}
-                  <path
-                    // Square topped while a ghost sits on it, rounded when it
-                    // is the whole bar: a rounded top under the ghost reads as
-                    // two bars rather than one divided.
-                    d={barPath(x, baseline - kept, barW, kept, cost > 0 ? 0 : 2)}
-                    className="transition-[fill] duration-500 ease-(--ease-out) motion-reduce:transition-none"
-                    style={{ fill: lit ? "var(--chart-bar-lit)" : "var(--chart-bar)" }}
-                  />
-                </g>
-              );
-            })}
+                  </g>
+                );
+              })}
             </g>
 
             <g key={`line-${signature}`}>
@@ -411,7 +482,7 @@ export function ActivityChart({
                 >
                   {axisLabel(p, bucket)}
                 </text>
-              ) : null
+              ) : null,
             )}
 
             {/* Hit areas, one per bucket, on top of everything. */}
@@ -436,7 +507,9 @@ export function ActivityChart({
             className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-border bg-popover px-3 py-2.5 text-[12px] shadow-(--shadow-float)"
             style={{ left: tooltipX }}
           >
-            <p className="mb-1.5 font-medium text-neutral-900">{periodLabel(active, bucket)}</p>
+            <p className="mb-1.5 font-medium text-neutral-900">
+              {periodLabel(active, bucket)}
+            </p>
             <dl className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-3">
                 <dt className="flex items-center gap-1.5 text-muted-foreground">
@@ -472,8 +545,12 @@ export function ActivityChart({
                 </div>
               )}
               <div className="flex items-center justify-between gap-3">
-                <dt className="pl-[14px] text-muted-foreground">{countLabel}</dt>
-                <dd className="font-medium tabular-nums">{active.conversions}</dd>
+                <dt className="pl-[14px] text-muted-foreground">
+                  {countLabel}
+                </dt>
+                <dd className="font-medium tabular-nums">
+                  {active.conversions}
+                </dd>
               </div>
             </dl>
           </div>

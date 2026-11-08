@@ -66,8 +66,12 @@ function paymentIntent(piId, expand = new Set()) {
   if (!pi) return null;
   return {
     ...pi,
-    payment_method: expand.has("payment_method") ? state.paymentMethods.get(pi.payment_method) : pi.payment_method,
-    latest_charge: expand.has("latest_charge") ? charge(pi.latest_charge) : pi.latest_charge,
+    payment_method: expand.has("payment_method")
+      ? state.paymentMethods.get(pi.payment_method)
+      : pi.payment_method,
+    latest_charge: expand.has("latest_charge")
+      ? charge(pi.latest_charge)
+      : pi.latest_charge,
   };
 }
 
@@ -76,13 +80,17 @@ function session(sessionId, expand = new Set()) {
   if (!s) return null;
   return {
     ...s,
-    customer: expand.has("customer") ? state.customers.get(s.customer) : s.customer,
+    customer: expand.has("customer")
+      ? state.customers.get(s.customer)
+      : s.customer,
   };
 }
 
 function sign(secret, payload) {
   const t = now();
-  const v1 = createHmac("sha256", secret).update(`${t}.${payload}`).digest("hex");
+  const v1 = createHmac("sha256", secret)
+    .update(`${t}.${payload}`)
+    .digest("hex");
   return `t=${t},v1=${v1}`;
 }
 
@@ -103,17 +111,27 @@ async function emit(type, object) {
   const payload = JSON.stringify(event);
   const results = [];
   for (const endpoint of state.endpoints.values()) {
-    if (!endpoint.enabled_events.includes(type) && !endpoint.enabled_events.includes("*")) continue;
+    if (
+      !endpoint.enabled_events.includes(type) &&
+      !endpoint.enabled_events.includes("*")
+    )
+      continue;
     let status = 0;
     try {
       const res = await fetch(endpoint.url, {
         method: "POST",
-        headers: { "content-type": "application/json", "stripe-signature": sign(endpoint.secret, payload) },
+        headers: {
+          "content-type": "application/json",
+          "stripe-signature": sign(endpoint.secret, payload),
+        },
         body: payload,
       });
       status = res.status;
     } catch (err) {
-      console.error(`delivery to ${endpoint.url} failed:`, err.cause?.message ?? err.message);
+      console.error(
+        `delivery to ${endpoint.url} failed:`,
+        err.cause?.message ?? err.message,
+      );
     }
     state.deliveries.push({ type, url: endpoint.url, status });
     results.push({ url: endpoint.url, status });
@@ -128,7 +146,13 @@ async function testCheckout(body) {
   const currency = body.currency ?? "usd";
   const email = body.email ?? "buyer@example.com";
 
-  const customer = { id: id("cus"), object: "customer", email, metadata: {}, deleted: undefined };
+  const customer = {
+    id: id("cus"),
+    object: "customer",
+    email,
+    metadata: {},
+    deleted: undefined,
+  };
   state.customers.set(customer.id, customer);
 
   const pm = {
@@ -136,7 +160,11 @@ async function testCheckout(body) {
     object: "payment_method",
     type: "card",
     customer: customer.id,
-    card: { brand: "visa", last4: "4242", fingerprint: body.cardFingerprint ?? "fp_buyer_card" },
+    card: {
+      brand: "visa",
+      last4: "4242",
+      fingerprint: body.cardFingerprint ?? "fp_buyer_card",
+    },
   };
   state.paymentMethods.set(pm.id, pm);
 
@@ -185,7 +213,12 @@ async function testCheckout(body) {
     invoice: null,
     subscription: null,
     shipping_cost: null,
-    total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0, breakdown: { discounts: [], taxes: [] } },
+    total_details: {
+      amount_discount: 0,
+      amount_shipping: 0,
+      amount_tax: 0,
+      breakdown: { discounts: [], taxes: [] },
+    },
   };
   state.sessions.set(s.id, s);
 
@@ -197,7 +230,10 @@ async function testRefund(body) {
   const pi = state.paymentIntents.get(body.payment_intent);
   if (!pi) return null;
   const ch = charge(pi.latest_charge);
-  ch.amount_refunded = Math.min(ch.amount, ch.amount_refunded + Number(body.amount ?? ch.amount));
+  ch.amount_refunded = Math.min(
+    ch.amount,
+    ch.amount_refunded + Number(body.amount ?? ch.amount),
+  );
   ch.refunded = ch.amount_refunded === ch.amount;
   return emit("charge.refunded", ch);
 }
@@ -216,7 +252,10 @@ async function testDispute(body) {
     reason: "fraudulent",
     charge: ch.id,
     payment_intent: pi.id,
-    payment_method_details: { type: "card", card: { brand: "visa", case_type: "chargeback" } },
+    payment_method_details: {
+      type: "card",
+      card: { brand: "visa", case_type: "chargeback" },
+    },
   };
   state.disputes.set(dispute.id, dispute);
   return emit("charge.dispute.created", dispute);
@@ -227,10 +266,13 @@ async function testDispute(body) {
 function api(method, path, params) {
   let m;
   if (method === "GET" && path === "/v1/customers") {
-    const all = [...state.customers.values()].filter((c) => !params.email || c.email === params.email);
+    const all = [...state.customers.values()].filter(
+      (c) => !params.email || c.email === params.email,
+    );
     return list(path, all.slice(0, Number(params.limit ?? 10)));
   }
-  if (method === "GET" && (m = path.match(/^\/v1\/customers\/([^/]+)$/))) return state.customers.get(m[1]);
+  if (method === "GET" && (m = path.match(/^\/v1\/customers\/([^/]+)$/)))
+    return state.customers.get(m[1]);
 
   if (method === "POST" && path === "/v1/webhook_endpoints") {
     const endpoint = {
@@ -247,7 +289,10 @@ function api(method, path, params) {
     return endpoint;
   }
   if (method === "GET" && path === "/v1/webhook_endpoints") {
-    return list(path, [...state.endpoints.values()].map(({ secret, ...e }) => e));
+    return list(
+      path,
+      [...state.endpoints.values()].map(({ secret, ...e }) => e),
+    );
   }
   if ((m = path.match(/^\/v1\/webhook_endpoints\/([^/]+)$/))) {
     const endpoint = state.endpoints.get(m[1]);
@@ -256,22 +301,41 @@ function api(method, path, params) {
       state.endpoints.delete(m[1]);
       return { id: m[1], object: "webhook_endpoint", deleted: true };
     }
-    if (method === "POST" && params.enabled_events) endpoint.enabled_events = params.enabled_events;
+    if (method === "POST" && params.enabled_events)
+      endpoint.enabled_events = params.enabled_events;
     const { secret, ...rest } = endpoint;
     return rest;
   }
 
-  if (method === "GET" && (m = path.match(/^\/v1\/checkout\/sessions\/([^/]+)$/))) return session(m[1], expands(params));
-  if (method === "GET" && (m = path.match(/^\/v1\/payment_intents\/([^/]+)$/))) return paymentIntent(m[1], expands(params));
-  if (method === "GET" && (m = path.match(/^\/v1\/charges\/([^/]+)$/))) return charge(m[1]);
+  if (
+    method === "GET" &&
+    (m = path.match(/^\/v1\/checkout\/sessions\/([^/]+)$/))
+  )
+    return session(m[1], expands(params));
+  if (method === "GET" && (m = path.match(/^\/v1\/payment_intents\/([^/]+)$/)))
+    return paymentIntent(m[1], expands(params));
+  if (method === "GET" && (m = path.match(/^\/v1\/charges\/([^/]+)$/)))
+    return charge(m[1]);
   if (method === "GET" && path === "/v1/payment_methods") {
-    return list(path, [...state.paymentMethods.values()].filter((p) => p.customer === params.customer));
+    return list(
+      path,
+      [...state.paymentMethods.values()].filter(
+        (p) => p.customer === params.customer,
+      ),
+    );
   }
   if (method === "GET" && path === "/v1/disputes") {
-    return list(path, [...state.disputes.values()].filter((d) => !params.payment_intent || d.payment_intent === params.payment_intent));
+    return list(
+      path,
+      [...state.disputes.values()].filter(
+        (d) =>
+          !params.payment_intent || d.payment_intent === params.payment_intent,
+      ),
+    );
   }
   // Payment-mode sales have no invoice, which is what an empty list says.
-  if (method === "GET" && path === "/v1/invoice_payments") return list(path, []);
+  if (method === "GET" && path === "/v1/invoice_payments")
+    return list(path, []);
   return undefined;
 }
 
@@ -281,7 +345,11 @@ function send(res, status, body) {
 }
 
 const notFound = (path) => ({
-  error: { type: "invalid_request_error", code: "resource_missing", message: `No such resource: ${path}` },
+  error: {
+    type: "invalid_request_error",
+    code: "resource_missing",
+    message: `No such resource: ${path}`,
+  },
 });
 
 createServer(async (req, res) => {
@@ -292,25 +360,45 @@ createServer(async (req, res) => {
 
   if (url.pathname.startsWith("/_test/")) {
     const body = text ? JSON.parse(text) : {};
-    const route = { "/_test/checkout": testCheckout, "/_test/refund": testRefund, "/_test/dispute": testDispute }[url.pathname];
-    if (url.pathname === "/_test/state") return send(res, 200, { endpoints: [...state.endpoints.values()], deliveries: state.deliveries });
+    const route = {
+      "/_test/checkout": testCheckout,
+      "/_test/refund": testRefund,
+      "/_test/dispute": testDispute,
+    }[url.pathname];
+    if (url.pathname === "/_test/state")
+      return send(res, 200, {
+        endpoints: [...state.endpoints.values()],
+        deliveries: state.deliveries,
+      });
     if (!route) return send(res, 404, notFound(url.pathname));
     const result = await route(body);
-    return result ? send(res, 200, result) : send(res, 404, notFound(url.pathname));
+    return result
+      ? send(res, 200, result)
+      : send(res, 404, notFound(url.pathname));
   }
 
   // Any test-mode key works; anything else is rejected the way Stripe does,
   // so a wrong key still fails the onboarding check.
   const key = (req.headers.authorization ?? "").replace(/^Bearer /, "");
   if (!/^(sk|rk)_test_/.test(key)) {
-    return send(res, 401, { error: { type: "invalid_request_error", message: "Invalid API Key provided" } });
+    return send(res, 401, {
+      error: {
+        type: "invalid_request_error",
+        message: "Invalid API Key provided",
+      },
+    });
   }
 
-  const params = req.method === "GET" || req.method === "DELETE" ? parseForm(url.search.slice(1)) : parseForm(text);
+  const params =
+    req.method === "GET" || req.method === "DELETE"
+      ? parseForm(url.search.slice(1))
+      : parseForm(text);
   const result = api(req.method, url.pathname, params);
   if (result === undefined) {
     console.error(`unhandled ${req.method} ${url.pathname}`);
     return send(res, 404, notFound(url.pathname));
   }
-  return result ? send(res, 200, result) : send(res, 404, notFound(url.pathname));
+  return result
+    ? send(res, 200, result)
+    : send(res, 404, notFound(url.pathname));
 }).listen(PORT, () => console.log(`fake stripe on :${PORT}`));

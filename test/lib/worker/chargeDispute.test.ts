@@ -14,15 +14,21 @@ import { db } from "@/lib/db";
 // PaymentIntent id is the commission's payment reference.
 const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
-    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({
+      data: [],
+    })),
   },
   disputes: {
     list: vi.fn(
       async (
-        _params: unknown
+        _params: unknown,
       ): Promise<{
-        data: Array<{ id: string; status: string; payment_method_details?: { card?: { case_type?: string } } }>;
-      }> => ({ data: [] })
+        data: Array<{
+          id: string;
+          status: string;
+          payment_method_details?: { card?: { case_type?: string } };
+        }>;
+      }> => ({ data: [] }),
     ),
   },
   charges: {
@@ -30,7 +36,8 @@ const stripeStub = vi.hoisted(() => ({
   },
 }));
 vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  const actual =
+    await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
@@ -49,46 +56,80 @@ describe("disputeStateOf", () => {
       disputeStateOf([
         { status: "won" },
         { status: "warning_closed" },
-        { status: "prevented", payment_method_details: { card: { case_type: "block" } } },
-      ])
+        {
+          status: "prevented",
+          payment_method_details: { card: { case_type: "block" } },
+        },
+      ]),
     ).toBe("clear");
   });
 
   it("reads any dispute still in progress as open, including a status it does not know", () => {
-    for (const status of ["warning_needs_response", "warning_under_review", "needs_response", "under_review", "something_new"]) {
+    for (const status of [
+      "warning_needs_response",
+      "warning_under_review",
+      "needs_response",
+      "under_review",
+      "something_new",
+    ]) {
       expect(disputeStateOf([{ status: "won" }, { status }])).toBe("open");
     }
   });
 
   it("reads a lost dispute as lost, whatever else is on the charge", () => {
-    expect(disputeStateOf([{ status: "needs_response" }, { status: "lost" }])).toBe("lost");
+    expect(
+      disputeStateOf([{ status: "needs_response" }, { status: "lost" }]),
+    ).toBe("lost");
   });
 
   it("reads a prevented dispute that blocked the chargeback as clear", () => {
-    expect(disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "block" } } }])).toBe(
-      "clear"
-    );
+    expect(
+      disputeStateOf([
+        {
+          status: "prevented",
+          payment_method_details: { card: { case_type: "block" } },
+        },
+      ]),
+    ).toBe("clear");
   });
 
   it("reads a prevented dispute that refunded the cardholder as lost", () => {
     expect(
-      disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "resolution" } } }])
+      disputeStateOf([
+        {
+          status: "prevented",
+          payment_method_details: { card: { case_type: "resolution" } },
+        },
+      ]),
     ).toBe("lost");
   });
 
   it("reads a prevented dispute with no case type, or an unrecognised one, as lost", () => {
     expect(disputeStateOf([{ status: "prevented" }])).toBe("lost");
-    expect(disputeStateOf([{ status: "prevented", payment_method_details: {} }])).toBe("lost");
-    expect(disputeStateOf([{ status: "prevented", payment_method_details: { card: {} } }])).toBe("lost");
     expect(
-      disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "compliance" } } }])
+      disputeStateOf([{ status: "prevented", payment_method_details: {} }]),
+    ).toBe("lost");
+    expect(
+      disputeStateOf([
+        { status: "prevented", payment_method_details: { card: {} } },
+      ]),
+    ).toBe("lost");
+    expect(
+      disputeStateOf([
+        {
+          status: "prevented",
+          payment_method_details: { card: { case_type: "compliance" } },
+        },
+      ]),
     ).toBe("lost");
   });
 });
 
 describe("disputeStateFor", () => {
   it("lists the disputes on the payment", async () => {
-    const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "under_review" }] }));
+    const list = vi.fn(async () => ({
+      data: [{ id: "dp_1", status: "under_review" }],
+    }));
     const stripe = { disputes: { list } } as unknown as Stripe;
 
     expect(await disputeStateFor(stripe, "pi_1")).toBe("open");
@@ -98,7 +139,13 @@ describe("disputeStateFor", () => {
   it("answers unknown, and logs one line, when the disputes cannot be read", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const stripe = {
-      disputes: { list: vi.fn(async () => { throw Object.assign(new Error("permission"), { type: "StripePermissionError" }); }) },
+      disputes: {
+        list: vi.fn(async () => {
+          throw Object.assign(new Error("permission"), {
+            type: "StripePermissionError",
+          });
+        }),
+      },
     } as unknown as Stripe;
     try {
       expect(await disputeStateFor(stripe, "pi_1")).toBe("unknown");
@@ -116,8 +163,10 @@ describe("disputeStateFor", () => {
           // A permission error's raw message names the masked key and the
           // account; it must never reach the server log.
           throw Object.assign(
-            new Error("The provided key does not have the required permissions on account acct_secret123"),
-            { type: "StripePermissionError", code: "permission_error" }
+            new Error(
+              "The provided key does not have the required permissions on account acct_secret123",
+            ),
+            { type: "StripePermissionError", code: "permission_error" },
           );
         }),
       },
@@ -136,7 +185,9 @@ describe("disputeStateFor", () => {
 });
 
 async function clearAll() {
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
+  await db.commission.deleteMany({
+    where: { adjustsCommissionId: { not: null } },
+  });
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
@@ -155,7 +206,7 @@ describe("dispute handlers", () => {
 
   function dispute(
     status: string,
-    overrides: { payment_intent?: string | null; case_type?: string } = {}
+    overrides: { payment_intent?: string | null; case_type?: string } = {},
   ): Stripe.Dispute {
     const { case_type, ...rest } = overrides;
     return {
@@ -172,20 +223,29 @@ describe("dispute handlers", () => {
    * What Stripe answers, now, for the disputes on the test payment. Each entry
    * is a status, or a status paired with a "prevented" dispute's case type.
    */
-  function disputesOnCharge(...entries: (string | { status: string; case_type?: string })[]) {
+  function disputesOnCharge(
+    ...entries: (string | { status: string; case_type?: string })[]
+  ) {
     stripeStub.disputes.list.mockImplementation(async () => ({
       data: entries.map((entry, index) => {
-        const { status, case_type } = typeof entry === "string" ? { status: entry, case_type: undefined } : entry;
+        const { status, case_type } =
+          typeof entry === "string"
+            ? { status: entry, case_type: undefined }
+            : entry;
         return {
           id: `dp_${index + 1}`,
           status,
-          ...(case_type ? { payment_method_details: { card: { case_type } } } : {}),
+          ...(case_type
+            ? { payment_method_details: { card: { case_type } } }
+            : {}),
         };
       }),
     }));
   }
 
-  async function givenCommission(overrides: Partial<Commission> = {}): Promise<Commission> {
+  async function givenCommission(
+    overrides: Partial<Commission> = {},
+  ): Promise<Commission> {
     return db.commission.create({
       data: {
         affiliateId,
@@ -209,13 +269,18 @@ describe("dispute handlers", () => {
   beforeEach(async () => {
     await clearAll();
     stripeStub.invoicePayments.list.mockReset();
-    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [],
+    }));
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.charges.retrieve.mockReset();
 
     const owner = await db.owner.create({
-      data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+      data: {
+        email: `owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
     });
     merchant = await db.merchant.create({
       data: {
@@ -224,7 +289,9 @@ describe("dispute handlers", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     const program = await db.program.create({
@@ -248,7 +315,12 @@ describe("dispute handlers", () => {
     });
     affiliateId = affiliate.id;
     const click = await db.click.create({
-      data: { merchantId: merchant.id, affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + DAY) },
+      data: {
+        merchantId: merchant.id,
+        affiliateId,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + DAY),
+      },
     });
     clickId = click.id;
   });
@@ -266,10 +338,16 @@ describe("dispute handlers", () => {
     const held = await reload(commission);
     expect(held.status).toBe("PENDING");
     expect(held.disputeOpenedAt).not.toBeNull();
-    expect(stripeStub.disputes.list).toHaveBeenCalledWith({ payment_intent: PAYMENT_INTENT_ID, limit: 100 });
+    expect(stripeStub.disputes.list).toHaveBeenCalledWith({
+      payment_intent: PAYMENT_INTENT_ID,
+      limit: 100,
+    });
 
     // The holding period ends while the bank is still deciding.
-    await db.commission.update({ where: { id: commission.id }, data: { payableAt: new Date(Date.now() - DAY) } });
+    await db.commission.update({
+      where: { id: commission.id },
+      data: { payableAt: new Date(Date.now() - DAY) },
+    });
     await sweepPayableCommissions();
     expect((await reload(commission)).status).toBe("PENDING");
 
@@ -283,7 +361,10 @@ describe("dispute handlers", () => {
   it("releases a commission still inside its hold to pending when an inquiry closes without a chargeback", async () => {
     const commission = await givenCommission();
     disputesOnCharge("warning_needs_response");
-    await handleChargeDisputeCreated(merchant, dispute("warning_needs_response"));
+    await handleChargeDisputeCreated(
+      merchant,
+      dispute("warning_needs_response"),
+    );
 
     disputesOnCharge("warning_closed");
     await handleChargeDisputeClosed(merchant, dispute("warning_closed"));
@@ -306,12 +387,17 @@ describe("dispute handlers", () => {
   });
 
   it("releases a held commission when the dispute is prevented by a block", async () => {
-    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+    const commission = await givenCommission({
+      payableAt: new Date(Date.now() - DAY),
+    });
     disputesOnCharge("needs_response");
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
 
     disputesOnCharge({ status: "prevented", case_type: "block" });
-    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "block" }));
+    await handleChargeDisputeClosed(
+      merchant,
+      dispute("prevented", { case_type: "block" }),
+    );
 
     const released = await reload(commission);
     expect(released.status).toBe("PAYABLE");
@@ -324,7 +410,10 @@ describe("dispute handlers", () => {
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
 
     disputesOnCharge({ status: "prevented", case_type: "resolution" });
-    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "resolution" }));
+    await handleChargeDisputeClosed(
+      merchant,
+      dispute("prevented", { case_type: "resolution" }),
+    );
 
     const voided = await reload(commission);
     expect(voided.status).toBe("VOIDED");
@@ -345,10 +434,16 @@ describe("dispute handlers", () => {
   });
 
   it("changes nothing when a prevented dispute that refunded the cardholder closes on a commission already paid", async () => {
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    const commission = await givenCommission({
+      status: "PAID",
+      paidAt: new Date(),
+    });
     disputesOnCharge({ status: "prevented", case_type: "resolution" });
 
-    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "resolution" }));
+    await handleChargeDisputeClosed(
+      merchant,
+      dispute("prevented", { case_type: "resolution" }),
+    );
 
     const paid = await reload(commission);
     expect(paid.status).toBe("PAID");
@@ -356,7 +451,10 @@ describe("dispute handlers", () => {
   });
 
   it("takes a payable commission back to pending while the dispute is open", async () => {
-    const commission = await givenCommission({ status: "PAYABLE", payableAt: new Date(Date.now() - DAY) });
+    const commission = await givenCommission({
+      status: "PAYABLE",
+      payableAt: new Date(Date.now() - DAY),
+    });
     disputesOnCharge("needs_response");
 
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
@@ -367,7 +465,10 @@ describe("dispute handlers", () => {
   });
 
   it("keeps a flagged commission flagged, with its reason, and holds it", async () => {
-    const commission = await givenCommission({ status: "FLAGGED", flagReason: "card" });
+    const commission = await givenCommission({
+      status: "FLAGGED",
+      flagReason: "card",
+    });
     disputesOnCharge("needs_response");
 
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
@@ -390,7 +491,10 @@ describe("dispute handlers", () => {
   });
 
   it("changes nothing when a dispute opens on a commission already paid", async () => {
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    const commission = await givenCommission({
+      status: "PAID",
+      paidAt: new Date(),
+    });
     disputesOnCharge("needs_response");
 
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
@@ -402,7 +506,11 @@ describe("dispute handlers", () => {
   });
 
   it("changes nothing on a voided commission", async () => {
-    const commission = await givenCommission({ status: "VOIDED", voidedAt: new Date(), voidReason: "refund" });
+    const commission = await givenCommission({
+      status: "VOIDED",
+      voidedAt: new Date(),
+      voidReason: "refund",
+    });
     disputesOnCharge("needs_response");
 
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
@@ -414,7 +522,9 @@ describe("dispute handlers", () => {
 
   it("does nothing, and does not fail the event, when the sale has not been recorded yet", async () => {
     disputesOnCharge("needs_response");
-    await expect(handleChargeDisputeCreated(merchant, dispute("needs_response"))).resolves.toBeUndefined();
+    await expect(
+      handleChargeDisputeCreated(merchant, dispute("needs_response")),
+    ).resolves.toBeUndefined();
     expect(await db.commission.count()).toBe(0);
   });
 
@@ -444,7 +554,9 @@ describe("dispute handlers", () => {
   });
 
   it("keeps the hold when one dispute is won while another on the same charge is still open", async () => {
-    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+    const commission = await givenCommission({
+      payableAt: new Date(Date.now() - DAY),
+    });
     disputesOnCharge("needs_response");
     await handleChargeDisputeCreated(merchant, dispute("needs_response"));
 
@@ -459,9 +571,13 @@ describe("dispute handlers", () => {
   it("holds when the disputes cannot be read, and keeps holding on a won close it cannot confirm", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     stripeStub.disputes.list.mockImplementation(async () => {
-      throw Object.assign(new Error("permission"), { type: "StripePermissionError" });
+      throw Object.assign(new Error("permission"), {
+        type: "StripePermissionError",
+      });
     });
-    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+    const commission = await givenCommission({
+      payableAt: new Date(Date.now() - DAY),
+    });
     try {
       await handleChargeDisputeCreated(merchant, dispute("needs_response"));
       await handleChargeDisputeClosed(merchant, dispute("won"));
@@ -477,11 +593,17 @@ describe("dispute handlers", () => {
 
   it("holds the commission before retrying when Stripe cannot be reached for the disputes", async () => {
     stripeStub.disputes.list.mockImplementation(async () => {
-      throw Object.assign(new Error("connection reset"), { type: "StripeConnectionError" });
+      throw Object.assign(new Error("connection reset"), {
+        type: "StripeConnectionError",
+      });
     });
-    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+    const commission = await givenCommission({
+      payableAt: new Date(Date.now() - DAY),
+    });
 
-    await expect(handleChargeDisputeCreated(merchant, dispute("needs_response"))).rejects.toThrow(/retried/);
+    await expect(
+      handleChargeDisputeCreated(merchant, dispute("needs_response")),
+    ).rejects.toThrow(/retried/);
 
     const row = await reload(commission);
     expect(row.status).toBe("PENDING");
@@ -515,10 +637,16 @@ describe("dispute handlers", () => {
 
   it("finds the payment through the charge when the dispute carries no PaymentIntent", async () => {
     const commission = await givenCommission();
-    stripeStub.charges.retrieve.mockImplementation(async (id: string) => ({ id, payment_intent: PAYMENT_INTENT_ID }));
+    stripeStub.charges.retrieve.mockImplementation(async (id: string) => ({
+      id,
+      payment_intent: PAYMENT_INTENT_ID,
+    }));
     disputesOnCharge("needs_response");
 
-    await handleChargeDisputeCreated(merchant, dispute("needs_response", { payment_intent: null }));
+    await handleChargeDisputeCreated(
+      merchant,
+      dispute("needs_response", { payment_intent: null }),
+    );
 
     expect(stripeStub.charges.retrieve).toHaveBeenCalledWith("ch_dispute_test");
     expect((await reload(commission)).disputeOpenedAt).not.toBeNull();
@@ -533,7 +661,9 @@ describe("dispute handlers", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        paymentConnections: { create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" } },
+        paymentConnections: {
+          create: { provider: PaymentProvider.STRIPE.database, apiKeyEnc: "x" },
+        },
       },
     });
     disputesOnCharge("needs_response");
@@ -546,7 +676,15 @@ describe("dispute handlers", () => {
   describe("a one-time sale with a post-purchase invoice Stripe links to the payment", () => {
     function invoiceLinked(invoiceId: string) {
       stripeStub.invoicePayments.list.mockImplementation(async () => ({
-        data: [{ invoice: invoiceId, payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID } }],
+        data: [
+          {
+            invoice: invoiceId,
+            payment: {
+              type: "payment_intent",
+              payment_intent: PAYMENT_INTENT_ID,
+            },
+          },
+        ],
       }));
     }
 

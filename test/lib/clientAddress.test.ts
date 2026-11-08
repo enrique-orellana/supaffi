@@ -8,11 +8,15 @@ describe("clientAddress", () => {
   });
 
   it("reads a single entry", () => {
-    expect(clientAddress(new Headers({ "x-forwarded-for": " 203.0.113.9 " }))).toBe("203.0.113.9");
+    expect(
+      clientAddress(new Headers({ "x-forwarded-for": " 203.0.113.9 " })),
+    ).toBe("203.0.113.9");
   });
 
   it("falls back to x-real-ip, then to nothing", () => {
-    expect(clientAddress(new Headers({ "x-real-ip": "203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientAddress(new Headers({ "x-real-ip": "203.0.113.9" }))).toBe(
+      "203.0.113.9",
+    );
     expect(clientAddress(new Headers({ "x-forwarded-for": " , " }))).toBeNull();
     expect(clientAddress(new Headers())).toBeNull();
   });

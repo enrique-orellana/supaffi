@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { inspect } from "node:util";
 import type Stripe from "stripe";
-import { exclusionSourcesOf, listInvoiceLines, referredInvoiceBase } from "@/lib/worker/referredRevenue";
+import {
+  exclusionSourcesOf,
+  listInvoiceLines,
+  referredInvoiceBase,
+} from "@/lib/worker/referredRevenue";
 import { invoiceLine, LINE_SUBSCRIPTION_ID, PRODUCT_ID } from "./invoiceLines";
 
 const SUB = LINE_SUBSCRIPTION_ID;
@@ -20,16 +24,22 @@ function invoice(fields: Record<string, unknown>) {
   } as unknown as Stripe.Invoice;
 }
 
-const inclusive = (amount: number) => [{ amount, tax_behavior: "inclusive", taxable_amount: null }];
+const inclusive = (amount: number) => [
+  { amount, tax_behavior: "inclusive", taxable_amount: null },
+];
 
 describe("referredInvoiceBase", () => {
   describe("tax and discounts", () => {
     it("takes VAT inside the price off a subscription line", () => {
       const result = referredInvoiceBase(
-        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000) }),
+        invoice({
+          total: 12000,
+          total_excluding_tax: 10000,
+          total_taxes: inclusive(2000),
+        }),
         [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -42,10 +52,14 @@ describe("referredInvoiceBase", () => {
 
     it("leaves tax added on top out, since it was never in the line's amount", () => {
       const result = referredInvoiceBase(
-        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }] }),
+        invoice({
+          total: 12000,
+          total_excluding_tax: 10000,
+          total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }],
+        }),
         [invoiceLine({ amount: 10000, exclusiveTax: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 10000 });
     });
@@ -53,10 +67,14 @@ describe("referredInvoiceBase", () => {
     it("takes a discount off, once, when the line's amount is before discounts", () => {
       // 120.00 with 20% VAT inside, 20% off: 96.00 paid, 16.00 of it VAT.
       const result = referredInvoiceBase(
-        invoice({ total: 9600, total_excluding_tax: 8000, total_taxes: inclusive(1600) }),
+        invoice({
+          total: 9600,
+          total_excluding_tax: 8000,
+          total_taxes: inclusive(1600),
+        }),
         [invoiceLine({ amount: 12000, discount: 2400, inclusiveTax: 1600 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 8000 });
     });
@@ -66,7 +84,7 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 8000, total_excluding_tax: 8000 }),
         [invoiceLine({ amount: 8000, discount: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 8000 });
     });
@@ -74,39 +92,60 @@ describe("referredInvoiceBase", () => {
     it("reads the discount from discount_amounts when pretax_credit_amounts is absent", () => {
       const result = referredInvoiceBase(
         invoice({ total: 8000, total_excluding_tax: 8000 }),
-        [invoiceLine({ amount: 10000, discount: 2000, creditsIn: "discount_amounts_only" })],
+        [
+          invoiceLine({
+            amount: 10000,
+            discount: 2000,
+            creditsIn: "discount_amounts_only",
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 8000 });
     });
 
     it("scales the referred base to what was paid when credit balance covered part", () => {
       const result = referredInvoiceBase(
-        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000), amount_paid: 6000 }),
+        invoice({
+          total: 12000,
+          total_excluding_tax: 10000,
+          total_taxes: inclusive(2000),
+          amount_paid: 6000,
+        }),
         [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 5000 });
     });
 
     it("earns nothing when the invoice was paid entirely outside Stripe", () => {
       const result = referredInvoiceBase(
-        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000), amount_paid_off_stripe: 12000 }),
+        invoice({
+          total: 12000,
+          total_excluding_tax: 10000,
+          total_taxes: inclusive(2000),
+          amount_paid_off_stripe: 12000,
+        }),
         [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({ kind: "off_stripe" });
     });
 
     it("scales the base to the part paid through Stripe when the rest was paid outside it", () => {
       const result = referredInvoiceBase(
-        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000), amount_paid_off_stripe: 6000 }),
+        invoice({
+          total: 12000,
+          total_excluding_tax: 10000,
+          total_taxes: inclusive(2000),
+          amount_paid_off_stripe: 6000,
+        }),
         [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 5000 });
     });
@@ -116,7 +155,7 @@ describe("referredInvoiceBase", () => {
         invoice({ total_excluding_tax: null, total_taxes: null }),
         [invoiceLine({ amount: 10000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({ kind: "no_tax_breakdown" });
     });
@@ -126,9 +165,12 @@ describe("referredInvoiceBase", () => {
     it("leaves out a one-off item of the customer swept into the renewal", () => {
       const result = referredInvoiceBase(
         invoice({ total: 15000, total_excluding_tax: 15000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 5000, source: "invoice_item" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: 5000, source: "invoice_item" }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -142,9 +184,16 @@ describe("referredInvoiceBase", () => {
     it("leaves out a one-off item the merchant added to the subscription itself", () => {
       const result = referredInvoiceBase(
         invoice({ total: 15000, total_excluding_tax: 15000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 5000, source: "invoice_item", subscription: SUB })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({
+            amount: 5000,
+            source: "invoice_item",
+            subscription: SUB,
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 10000 });
     });
@@ -153,9 +202,12 @@ describe("referredInvoiceBase", () => {
       // 50.00 back for the old price's unused half, 80.00 for the new one's.
       const result = referredInvoiceBase(
         invoice({ total: 3000, total_excluding_tax: 3000 }),
-        [invoiceLine({ amount: -5000, proration: true }), invoiceLine({ amount: 8000, proration: true })],
+        [
+          invoiceLine({ amount: -5000, proration: true }),
+          invoiceLine({ amount: 8000, proration: true }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 3000 });
     });
@@ -165,10 +217,15 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 13000, total_excluding_tax: 13000 }),
         [
           invoiceLine({ amount: 10000 }),
-          invoiceLine({ amount: 3000, source: "invoice_item", subscription: SUB, proration: true }),
+          invoiceLine({
+            amount: 3000,
+            source: "invoice_item",
+            subscription: SUB,
+            proration: true,
+          }),
         ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 13000 });
     });
@@ -176,9 +233,12 @@ describe("referredInvoiceBase", () => {
     it("earns nothing on another product's price, and names it", () => {
       const result = referredInvoiceBase(
         invoice({ total: 15000, total_excluding_tax: 15000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 5000, product: "prod_other" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: 5000, product: "prod_other" }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -194,17 +254,24 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 10000, total_excluding_tax: 10000 }),
         [invoiceLine({ amount: 10000, product: "prod_other" })],
         SUB,
-        REFERRED
+        REFERRED,
       );
-      expect(result).toMatchObject({ kind: "earned", baseMinor: 0, otherProductIds: ["prod_other"] });
+      expect(result).toMatchObject({
+        kind: "earned",
+        baseMinor: 0,
+        otherProductIds: ["prod_other"],
+      });
     });
 
     it("never earns more than the invoice before tax when a credit item lowered it", () => {
       const result = referredInvoiceBase(
         invoice({ total: 7000, total_excluding_tax: 7000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -3000, source: "invoice_item" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: -3000, source: "invoice_item" }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 7000 });
     });
@@ -227,7 +294,7 @@ describe("referredInvoiceBase", () => {
           invoiceLine({ amount: -4000, source: "invoice_item" }),
         ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -241,9 +308,12 @@ describe("referredInvoiceBase", () => {
     it("lowers the referred base when the credit is the only other line on the invoice", () => {
       const result = referredInvoiceBase(
         invoice({ total: 6000, total_excluding_tax: 6000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -4000, source: "invoice_item" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: -4000, source: "invoice_item" }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -259,9 +329,16 @@ describe("referredInvoiceBase", () => {
       // subscription must not spill onto the referred base either.
       const result = referredInvoiceBase(
         invoice({ total: 8000, total_excluding_tax: 8000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -2000, proration: true, product: "prod_other" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({
+            amount: -2000,
+            proration: true,
+            product: "prod_other",
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -290,7 +367,7 @@ describe("referredInvoiceBase", () => {
         [invoiceLine({ amount: 10000, subscription: null })],
         SUB,
         REFERRED,
-        ["si_basic"]
+        ["si_basic"],
       );
       expect(result).toEqual({
         kind: "earned",
@@ -306,9 +383,15 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 10000, total_excluding_tax: 10000 }),
         [invoiceLine({ amount: 10000, subscription: null })],
         SUB,
-        REFERRED
+        REFERRED,
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 0,
+        referredChargeMinor: 0,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on a null-subscription line whose item is not in the supplied list", () => {
@@ -317,9 +400,15 @@ describe("referredInvoiceBase", () => {
         [invoiceLine({ amount: 10000, subscription: null })],
         SUB,
         REFERRED,
-        ["si_other"]
+        ["si_other"],
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 0,
+        referredChargeMinor: 0,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on a subscription line naming another subscription, without failing the whole invoice", () => {
@@ -327,17 +416,30 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 10000, total_excluding_tax: 10000 }),
         [invoiceLine({ amount: 10000, subscription: "sub_other" })],
         SUB,
-        REFERRED
+        REFERRED,
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 0,
+        referredChargeMinor: 0,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on a proration invoice item with no subscription id", () => {
       const result = referredInvoiceBase(
         invoice({ total: 3000, total_excluding_tax: 3000 }),
-        [invoiceLine({ amount: 3000, source: "invoice_item", subscription: null, proration: true })],
+        [
+          invoiceLine({
+            amount: 3000,
+            source: "invoice_item",
+            subscription: null,
+            proration: true,
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 0 });
     });
@@ -345,9 +447,16 @@ describe("referredInvoiceBase", () => {
     it("earns on a proration invoice item that names the referred subscription exactly", () => {
       const result = referredInvoiceBase(
         invoice({ total: 3000, total_excluding_tax: 3000 }),
-        [invoiceLine({ amount: 3000, source: "invoice_item", subscription: SUB, proration: true })],
+        [
+          invoiceLine({
+            amount: 3000,
+            source: "invoice_item",
+            subscription: SUB,
+            proration: true,
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toEqual({
         kind: "earned",
@@ -364,17 +473,30 @@ describe("referredInvoiceBase", () => {
         [invoiceLine({ amount: 10000, subscription: "sub_other" })],
         SUB,
         REFERRED,
-        ["si_basic"]
+        ["si_basic"],
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 0,
+        referredChargeMinor: 0,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on a proration invoice item naming another subscription", () => {
       const result = referredInvoiceBase(
         invoice({ total: 3000, total_excluding_tax: 3000 }),
-        [invoiceLine({ amount: 3000, source: "invoice_item", subscription: "sub_other", proration: true })],
+        [
+          invoiceLine({
+            amount: 3000,
+            source: "invoice_item",
+            subscription: "sub_other",
+            proration: true,
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result).toMatchObject({ kind: "earned", baseMinor: 0 });
     });
@@ -384,9 +506,12 @@ describe("referredInvoiceBase", () => {
     it("learns them from the prices it bills, not from the prorations of a change", () => {
       const result = referredInvoiceBase(
         invoice({ total: 8000, total_excluding_tax: 8000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -2000, proration: true, product: "prod_old" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: -2000, proration: true, product: "prod_old" }),
+        ],
         SUB,
-        []
+        [],
       );
       expect(result).toEqual({
         kind: "earned",
@@ -402,7 +527,7 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 3000, total_excluding_tax: 3000 }),
         [invoiceLine({ amount: 3000, proration: true })],
         SUB,
-        []
+        [],
       );
       expect(result.kind).toBe("unreadable");
     });
@@ -410,9 +535,16 @@ describe("referredInvoiceBase", () => {
     it("never widens to a line on another subscription just because the list is empty", () => {
       const result = referredInvoiceBase(
         invoice({ total: 15000, total_excluding_tax: 15000 }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 5000, subscription: "sub_other", product: "prod_widen" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({
+            amount: 5000,
+            subscription: "sub_other",
+            product: "prod_widen",
+          }),
+        ],
         SUB,
-        []
+        [],
       );
       expect(result).toEqual({
         kind: "earned",
@@ -436,11 +568,22 @@ describe("referredInvoiceBase", () => {
           total_excluding_tax: 20000,
           total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }],
         }),
-        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })],
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({
+            amount: 10000,
+            exclusiveTax: 2000,
+            product: "prod_addon",
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
-      expect(result).toMatchObject({ kind: "earned", baseMinor: 10000, referredChargeMinor: 10000 });
+      expect(result).toMatchObject({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 10000,
+      });
     });
 
     it("falls back to spreading the invoice's tax evenly, rounded down, when a line's own tax cannot be read", () => {
@@ -461,19 +604,36 @@ describe("referredInvoiceBase", () => {
           total_excluding_tax: 20000,
           total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }],
         }),
-        [unreadableTaxes, invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })],
+        [
+          unreadableTaxes,
+          invoiceLine({
+            amount: 10000,
+            exclusiveTax: 2000,
+            product: "prod_addon",
+          }),
+        ],
         SUB,
-        REFERRED
+        REFERRED,
       );
-      expect(result).toMatchObject({ kind: "earned", baseMinor: 10000, referredChargeMinor: 11000 });
+      expect(result).toMatchObject({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 11000,
+      });
     });
   });
 
   describe("lines it cannot read", () => {
     it.each([
       ["no parent", invoiceLine({ amount: 10000, source: "none" })],
-      ["a parent type it does not know", invoiceLine({ amount: 10000, source: "unknown" })],
-      ["no product on a subscription line", invoiceLine({ amount: 10000, product: null })],
+      [
+        "a parent type it does not know",
+        invoiceLine({ amount: 10000, source: "unknown" }),
+      ],
+      [
+        "no product on a subscription line",
+        invoiceLine({ amount: 10000, product: null }),
+      ],
     ])("earns nothing on a line with %s", (_label, line) => {
       const result = referredInvoiceBase(invoice({}), [line], SUB, REFERRED);
       expect(result.kind).toBe("unreadable");
@@ -488,7 +648,7 @@ describe("referredInvoiceBase", () => {
         invoice({ total: 15000, total_excluding_tax: 15000 }),
         [invoiceLine({ amount: 10000 })],
         SUB,
-        REFERRED
+        REFERRED,
       );
       expect(result.kind).toBe("unreadable");
     });
@@ -499,14 +659,22 @@ describe("listInvoiceLines", () => {
   it("reads every page of an invoice's lines through the pinned client", async () => {
     const first = invoiceLine({ id: "il_a", amount: 1 });
     const second = invoiceLine({ id: "il_b", amount: 2 });
-    const listLineItems = vi.fn(async (_id: string, params: { starting_after?: string }) =>
-      params.starting_after === "il_a" ? { data: [second], has_more: false } : { data: [first], has_more: true }
+    const listLineItems = vi.fn(
+      async (_id: string, params: { starting_after?: string }) =>
+        params.starting_after === "il_a"
+          ? { data: [second], has_more: false }
+          : { data: [first], has_more: true },
     );
     const stripe = { invoices: { listLineItems } } as unknown as Stripe;
 
-    expect((await listInvoiceLines(stripe, "in_1")).map((line) => line.id)).toEqual(["il_a", "il_b"]);
+    expect(
+      (await listInvoiceLines(stripe, "in_1")).map((line) => line.id),
+    ).toEqual(["il_a", "il_b"]);
     expect(listLineItems).toHaveBeenNthCalledWith(1, "in_1", { limit: 100 });
-    expect(listLineItems).toHaveBeenNthCalledWith(2, "in_1", { limit: 100, starting_after: "il_a" });
+    expect(listLineItems).toHaveBeenNthCalledWith(2, "in_1", {
+      limit: 100,
+      starting_after: "il_a",
+    });
   });
 
   it("throws on an empty page that still claims more, rather than reading a short list as complete", async () => {
@@ -524,10 +692,15 @@ describe("listInvoiceLines", () => {
     const listLineItems = vi.fn(async () => {
       // A permission error's raw message names the masked key and the
       // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
-      throw Object.assign(new Error("The provided key does not have the required permissions on account acct_secret123"), {
-        type: "StripePermissionError",
-        code: "permission_error",
-      });
+      throw Object.assign(
+        new Error(
+          "The provided key does not have the required permissions on account acct_secret123",
+        ),
+        {
+          type: "StripePermissionError",
+          code: "permission_error",
+        },
+      );
     });
     const stripe = { invoices: { listLineItems } } as unknown as Stripe;
 
@@ -546,15 +719,22 @@ describe("listInvoiceLines", () => {
 });
 
 describe("exclusionSourcesOf", () => {
-  const read = (fields: Record<string, unknown>) => ({ id: "in_1", metadata: {}, ...fields }) as unknown as Stripe.Invoice;
+  const read = (fields: Record<string, unknown>) =>
+    ({ id: "in_1", metadata: {}, ...fields }) as unknown as Stripe.Invoice;
 
   it("uses the subscription and customer Stripe expanded on the invoice", () => {
     const subscription = { id: "sub_1", metadata: { supaffi: "false" } };
     const customer = { id: "cus_1", metadata: {} };
     const sources = exclusionSourcesOf(
-      read({ customer, parent: { type: "subscription_details", subscription_details: { subscription, metadata: {} } } }),
+      read({
+        customer,
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription, metadata: {} },
+        },
+      }),
       "sub_1",
-      "cus_1"
+      "cus_1",
     );
 
     expect(sources.subscription).toBe(subscription);
@@ -564,9 +744,15 @@ describe("exclusionSourcesOf", () => {
 
   it("falls back to the ids when Stripe answered them unexpanded", () => {
     const sources = exclusionSourcesOf(
-      read({ customer: "cus_1", parent: { type: "subscription_details", subscription_details: { subscription: "sub_1", metadata: {} } } }),
+      read({
+        customer: "cus_1",
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription: "sub_1", metadata: {} },
+        },
+      }),
       "sub_1",
-      "cus_1"
+      "cus_1",
     );
 
     expect(sources.subscription).toBe("sub_1");
@@ -577,10 +763,16 @@ describe("exclusionSourcesOf", () => {
     const sources = exclusionSourcesOf(
       read({
         customer: { id: "cus_other", metadata: {} },
-        parent: { type: "subscription_details", subscription_details: { subscription: { id: "sub_other", metadata: {} }, metadata: {} } },
+        parent: {
+          type: "subscription_details",
+          subscription_details: {
+            subscription: { id: "sub_other", metadata: {} },
+            metadata: {},
+          },
+        },
       }),
       "sub_1",
-      "cus_1"
+      "cus_1",
     );
 
     expect(sources.subscription).toBe("sub_1");
@@ -588,6 +780,12 @@ describe("exclusionSourcesOf", () => {
   });
 
   it("has no subscription to check on an invoice outside one", () => {
-    expect(exclusionSourcesOf(read({ customer: "cus_1", parent: null }), null, "cus_1").subscription).toBeNull();
+    expect(
+      exclusionSourcesOf(
+        read({ customer: "cus_1", parent: null }),
+        null,
+        "cus_1",
+      ).subscription,
+    ).toBeNull();
   });
 });

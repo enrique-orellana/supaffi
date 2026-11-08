@@ -30,7 +30,12 @@ import {
   isCommissionDuration,
   type CommissionDurationValue,
 } from "@/lib/commissionDuration";
-import { changeProgramAction, createPasswordLinkAction, setCustomRateAction, setLinkTermAction } from "./affiliateActions";
+import {
+  changeProgramAction,
+  createPasswordLinkAction,
+  setCustomRateAction,
+  setLinkTermAction,
+} from "./affiliateActions";
 
 /**
  * Everything about one affiliate, in one place, without leaving the list.
@@ -67,7 +72,12 @@ export type SheetAffiliate = {
     attributionWindowDaysOverride: number | null;
     holdingPeriodDaysOverride: number | null;
   }[];
-  commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
+  commissions: {
+    id: string;
+    date: string;
+    amount: string;
+    status: CommissionStatus;
+  }[];
 };
 
 export function AffiliateSheet({
@@ -97,7 +107,9 @@ export function AffiliateSheet({
     >
       <SheetContent className="w-[420px] overflow-y-auto data-[side=right]:sm:max-w-[420px]">
         <SheetHeader className="pr-12">
-          <SheetTitle className="truncate">{affiliate.name ?? affiliate.email}</SheetTitle>
+          <SheetTitle className="truncate">
+            {affiliate.name ?? affiliate.email}
+          </SheetTitle>
           <SheetDescription className="truncate">
             {affiliate.email} · joined {affiliate.joinedAt}
           </SheetDescription>
@@ -109,19 +121,35 @@ export function AffiliateSheet({
             className="flex items-center justify-between gap-3 text-sm"
           >
             <span className="text-muted-foreground">Program</span>
-            <Select name="programId" items={programNames} defaultValue={affiliate.programId}>
-              <SelectTrigger className="w-40 cursor-pointer" aria-label="Program">
+            <Select
+              name="programId"
+              items={programNames}
+              defaultValue={affiliate.programId}
+            >
+              <SelectTrigger
+                className="w-40 cursor-pointer"
+                aria-label="Program"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="cursor-pointer">
+                  <SelectItem
+                    key={p.id}
+                    value={p.id}
+                    className="cursor-pointer"
+                  >
                     {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+            <Button
+              type="submit"
+              size="sm"
+              variant="secondary"
+              className="cursor-pointer"
+            >
               Change
             </Button>
           </form>
@@ -133,7 +161,9 @@ export function AffiliateSheet({
             <div className="flex items-center justify-between gap-3">
               <span className="font-medium text-foreground">Rate</span>
               <span className="flex items-center gap-2 text-right">
-                <span className="font-medium tabular-nums">{affiliate.rate}%</span>
+                <span className="font-medium tabular-nums">
+                  {affiliate.rate}%
+                </span>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                   {affiliate.rateIsOverride ? "Custom" : "Program default"}
                 </span>
@@ -150,7 +180,12 @@ export function AffiliateSheet({
                 className="w-0 flex-1"
                 aria-label="Custom rate (%)"
               />
-              <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                className="cursor-pointer"
+              >
                 Set
               </Button>
               {affiliate.rateIsOverride && (
@@ -178,15 +213,25 @@ export function AffiliateSheet({
             </span>
           </div>
 
-          <PasswordLink affiliateId={affiliate.id} hasPassword={affiliate.hasPassword} product={product} domain={productDomain} />
+          <PasswordLink
+            affiliateId={affiliate.id}
+            hasPassword={affiliate.hasPassword}
+            product={product}
+            domain={productDomain}
+          />
 
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Links</p>
             <ul className="flex flex-col text-sm">
               {affiliate.links.map((l) => (
-                <li key={l.id} className="flex flex-col gap-3 border-b border-border/70 py-4 last:border-0">
+                <li
+                  key={l.id}
+                  className="flex flex-col gap-3 border-b border-border/70 py-4 last:border-0"
+                >
                   <div className="flex min-w-0 items-center justify-between gap-3">
-                    <code className="min-w-0 truncate font-mono text-xs text-foreground">{l.url}</code>
+                    <code className="min-w-0 truncate font-mono text-xs text-foreground">
+                      {l.url}
+                    </code>
                     <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground tabular-nums">
                       {l.clicks} clicks
                     </span>
@@ -251,8 +296,12 @@ export function AffiliateSheet({
               )}
               {affiliate.commissions.map((c) => (
                 <li key={c.id} className="flex items-center gap-3">
-                  <span className="w-16 text-muted-foreground tabular-nums">{c.date}</span>
-                  <span className="flex-1 text-right tabular-nums">{c.amount}</span>
+                  <span className="w-16 text-muted-foreground tabular-nums">
+                    {c.date}
+                  </span>
+                  <span className="flex-1 text-right tabular-nums">
+                    {c.amount}
+                  </span>
                   <span className="flex w-20 justify-end">
                     <StatusBadge status={c.status} />
                   </span>
@@ -297,9 +346,13 @@ function LinkTermEditor({
       className="flex flex-col gap-2 rounded-md border border-border/70 bg-background p-3 text-xs"
     >
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="font-medium text-foreground">{label}</label>
+        <label htmlFor={inputId} className="font-medium text-foreground">
+          {label}
+        </label>
         <span className="text-right text-muted-foreground">
-          {value === null ? `Inherits ${inheritedValue}${term === "commission" ? "%" : " days"}` : `This code: ${value}${term === "commission" ? "%" : " days"}`}
+          {value === null
+            ? `Inherits ${inheritedValue}${term === "commission" ? "%" : " days"}`
+            : `This code: ${value}${term === "commission" ? "%" : " days"}`}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -315,7 +368,12 @@ function LinkTermEditor({
           className="h-8 w-24 bg-background text-right tabular-nums"
           aria-label={label}
         />
-        <Button type="submit" size="sm" variant="secondary" className="h-8 cursor-pointer">
+        <Button
+          type="submit"
+          size="sm"
+          variant="secondary"
+          className="h-8 cursor-pointer"
+        >
           Save
         </Button>
         {value !== null && (
@@ -352,23 +410,39 @@ function LinkDurationEditor({
   inheritedType: CommissionDurationType;
   inheritedMonths: number | null;
 }) {
-  const [durationType, setDurationType] = useState<CommissionDurationValue>(valueType ?? inheritedType);
-  const [months, setMonths] = useState(() => String(
-    valueMonths ?? (inheritedType === CommissionDuration.FIXED_MONTHS ? inheritedMonths : 12)
-  ));
+  const [durationType, setDurationType] = useState<CommissionDurationValue>(
+    valueType ?? inheritedType,
+  );
+  const [months, setMonths] = useState(() =>
+    String(
+      valueMonths ??
+        (inheritedType === CommissionDuration.FIXED_MONTHS
+          ? inheritedMonths
+          : 12),
+    ),
+  );
   const inputId = `${linkId}-commission-duration`;
   const effectiveType = valueType ?? inheritedType;
   const effectiveMonths = valueType ? valueMonths : inheritedMonths;
 
   return (
     <form
-      action={setLinkTermAction.bind(null, product, affiliateId, linkId, "commissionDuration")}
+      action={setLinkTermAction.bind(
+        null,
+        product,
+        affiliateId,
+        linkId,
+        "commissionDuration",
+      )}
       className="flex flex-col gap-2 rounded-md border border-border/70 bg-background p-3 text-xs"
     >
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="font-medium text-foreground">Commission duration</label>
+        <label htmlFor={inputId} className="font-medium text-foreground">
+          Commission duration
+        </label>
         <span className="text-right text-muted-foreground">
-          {valueType === null ? "Inherits" : "This code:"} {commissionDurationLabel(effectiveType, effectiveMonths)}
+          {valueType === null ? "Inherits" : "This code:"}{" "}
+          {commissionDurationLabel(effectiveType, effectiveMonths)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -378,9 +452,18 @@ function LinkDurationEditor({
           onValueChange={(next) => {
             if (isCommissionDuration(next)) setDurationType(next);
           }}
-          items={Object.fromEntries(COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [value, label]))}
+          items={Object.fromEntries(
+            COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [
+              value,
+              label,
+            ]),
+          )}
         >
-          <SelectTrigger id={inputId} className="h-8 min-w-0 flex-1 cursor-pointer" aria-label="Commission duration">
+          <SelectTrigger
+            id={inputId}
+            className="h-8 min-w-0 flex-1 cursor-pointer"
+            aria-label="Commission duration"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="w-72 max-w-[calc(100vw-2rem)]">
@@ -407,7 +490,12 @@ function LinkDurationEditor({
             <span className="text-muted-foreground">months</span>
           </div>
         )}
-        <Button type="submit" size="sm" variant="secondary" className="h-8 cursor-pointer">
+        <Button
+          type="submit"
+          size="sm"
+          variant="secondary"
+          className="h-8 cursor-pointer"
+        >
           Save
         </Button>
         {valueType !== null && (
@@ -420,9 +508,13 @@ function LinkDurationEditor({
             value="inherit"
             onClick={() => {
               setDurationType(inheritedType);
-              setMonths(String(
-                inheritedType === CommissionDuration.FIXED_MONTHS ? inheritedMonths ?? 12 : 12
-              ));
+              setMonths(
+                String(
+                  inheritedType === CommissionDuration.FIXED_MONTHS
+                    ? (inheritedMonths ?? 12)
+                    : 12,
+                ),
+              );
             }}
           >
             Use program default
@@ -457,11 +549,20 @@ function PasswordLink({
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted-foreground">Password</span>
-        {hasPassword ? <span>Set</span> : <span className="text-status-warning">Not set yet</span>}
+        {hasPassword ? (
+          <span>Set</span>
+        ) : (
+          <span className="text-status-warning">Not set yet</span>
+        )}
       </div>
       {link ? (
         <div className="flex gap-2">
-          <Input readOnly value={link} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+          <Input
+            readOnly
+            value={link}
+            className="font-mono text-xs"
+            onFocus={(e) => e.target.select()}
+          />
           <CopyLinkButton link={link} size="sm" label="Copy" />
         </div>
       ) : (
@@ -473,16 +574,26 @@ function PasswordLink({
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              const result = await createPasswordLinkAction(product, affiliateId);
+              const result = await createPasswordLinkAction(
+                product,
+                affiliateId,
+              );
               if ("error" in result) setError(result.error);
-              else setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
+              else
+                setLink(
+                  `${originFor(domain)}/affiliates/password?token=${result.token}`,
+                );
             })
           }
         >
           Create password link
         </Button>
       )}
-      {link && <p className="text-xs text-muted-foreground">Works once, for 3 days. Send it to them yourself.</p>}
+      {link && (
+        <p className="text-xs text-muted-foreground">
+          Works once, for 3 days. Send it to them yourself.
+        </p>
+      )}
       {error && <p className="text-xs text-status-danger">{error}</p>}
     </div>
   );

@@ -16,7 +16,12 @@ beforeEach(() => {
   resetLoginThrottle();
 });
 
-function attempt(times: number, address = "203.0.113.1", at = T0, email = OWNER): void {
+function attempt(
+  times: number,
+  address = "203.0.113.1",
+  at = T0,
+  email = OWNER,
+): void {
   for (let i = 0; i < times; i += 1) reserveLoginAttempt(email, address, at);
 }
 
@@ -35,7 +40,7 @@ describe("reserveLoginAttempt", () => {
     // Every request in a burst reserves before any of their hashes finish.
     // Counting only after a failure would let all of them pass the check.
     const results = Array.from({ length: 500 }, () =>
-      reserveLoginAttempt(OWNER, "203.0.113.1", T0)
+      reserveLoginAttempt(OWNER, "203.0.113.1", T0),
     );
     expect(results.filter(Boolean)).toHaveLength(PER_ADDRESS);
   });
@@ -44,12 +49,16 @@ describe("reserveLoginAttempt", () => {
 describe("the window", () => {
   it("still refuses just before it expires", () => {
     attempt(PER_ADDRESS);
-    expect(reserveLoginAttempt(OWNER, "203.0.113.1", T0 + WINDOW_MS - 1)).toBe(false);
+    expect(reserveLoginAttempt(OWNER, "203.0.113.1", T0 + WINDOW_MS - 1)).toBe(
+      false,
+    );
   });
 
   it("allows again once it has passed", () => {
     attempt(PER_ADDRESS);
-    expect(reserveLoginAttempt(OWNER, "203.0.113.1", T0 + WINDOW_MS)).toBe(true);
+    expect(reserveLoginAttempt(OWNER, "203.0.113.1", T0 + WINDOW_MS)).toBe(
+      true,
+    );
   });
 });
 
@@ -72,13 +81,16 @@ describe("lockout", () => {
     // A made-up forwarded address per batch must not add up to unlimited
     // guesses.
     for (let i = 0; i < PER_EMAIL; i += 1) {
-      expect(reserveLoginAttempt(OWNER, `10.0.${Math.floor(i / 10)}.1`, T0)).toBe(true);
+      expect(
+        reserveLoginAttempt(OWNER, `10.0.${Math.floor(i / 10)}.1`, T0),
+      ).toBe(true);
     }
     expect(reserveLoginAttempt(OWNER, "192.0.2.99", T0)).toBe(false);
   });
 
   it("keeps the email cap when a flood of addresses evicts address entries", () => {
-    for (let i = 0; i < 5000; i += 1) reserveLoginAttempt(OWNER, `flood-${i}`, T0);
+    for (let i = 0; i < 5000; i += 1)
+      reserveLoginAttempt(OWNER, `flood-${i}`, T0);
     expect(reserveLoginAttempt(OWNER, "192.0.2.99", T0)).toBe(false);
   });
 });
@@ -86,7 +98,9 @@ describe("lockout", () => {
 describe("keying", () => {
   it("treats case and surrounding space as the same email", () => {
     attempt(PER_ADDRESS, "203.0.113.1", T0, "Owner@Example.com");
-    expect(reserveLoginAttempt("  owner@example.com  ", "203.0.113.1", T0)).toBe(false);
+    expect(
+      reserveLoginAttempt("  owner@example.com  ", "203.0.113.1", T0),
+    ).toBe(false);
   });
 
   it("clears case-insensitively too", () => {

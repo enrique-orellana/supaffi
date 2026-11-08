@@ -1,7 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { TermsForm } from "@/components/TermsForm";
 import type { ProgramFormValues } from "@/lib/programValidation";
 
@@ -11,7 +16,10 @@ import type { ProgramFormValues } from "@/lib/programValidation";
  * fields do not exist twice.
  */
 
-type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
+type Action = (
+  prev: { error: string },
+  formData: FormData,
+) => Promise<{ error: string }>;
 
 export function ProgramSheet({
   title,
@@ -40,7 +48,12 @@ export function ProgramSheet({
           <SheetTitle className="truncate">{title}</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-6">
-          <TermsForm action={action} initial={initial} signupOpen={signupOpen} submitLabel={initial ? "Save" : "Create program"} />
+          <TermsForm
+            action={action}
+            initial={initial}
+            signupOpen={signupOpen}
+            submitLabel={initial ? "Save" : "Create program"}
+          />
         </div>
       </SheetContent>
     </Sheet>

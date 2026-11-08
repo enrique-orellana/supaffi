@@ -16,7 +16,10 @@ import {
 // DATABASE_URL, never the dev one.
 async function seedMerchant() {
   const owner = await db.owner.create({
-    data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
+    data: {
+      email: `owner-${crypto.randomUUID()}@example.com`,
+      passwordHash: "x",
+    },
   });
   const merchant = await db.merchant.create({
     data: {
@@ -42,7 +45,11 @@ async function seedMerchant() {
   return { merchant, program };
 }
 
-async function seedClick(merchantId: string, programId: string, stripeCustomerId?: string) {
+async function seedClick(
+  merchantId: string,
+  programId: string,
+  stripeCustomerId?: string,
+) {
   const affiliate = await db.affiliate.create({
     data: {
       merchantId,
@@ -168,7 +175,9 @@ describe("tracking celebration", () => {
       select: { trackingVerifiedSeenAt: true },
     });
 
-    expect(second!.trackingVerifiedSeenAt).toEqual(first!.trackingVerifiedSeenAt);
+    expect(second!.trackingVerifiedSeenAt).toEqual(
+      first!.trackingVerifiedSeenAt,
+    );
   });
 });
 

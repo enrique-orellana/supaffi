@@ -5,7 +5,11 @@ import { stripeApiLocation } from "@/lib/stripeApi";
 
 export type EndpointResult =
   | { ok: true; id: string; secret: string }
-  | { ok: false; reason: "permission" | "unreachable" | "error"; detail: string };
+  | {
+      ok: false;
+      reason: "permission" | "unreachable" | "error";
+      detail: string;
+    };
 
 /**
  * Creates the webhook endpoint on the owner's behalf.
@@ -38,7 +42,11 @@ export async function createWebhookEndpoint(input: {
       description: `Supaffi: ${input.productName}`,
     });
     if (!endpoint.secret) {
-      return { ok: false, reason: "error", detail: "Stripe did not return a signing secret." };
+      return {
+        ok: false,
+        reason: "error",
+        detail: "Stripe did not return a signing secret.",
+      };
     }
     return { ok: true, id: endpoint.id, secret: endpoint.secret };
   } catch (err) {
@@ -47,12 +55,24 @@ export async function createWebhookEndpoint(input: {
     // or one where the row was left on Read. The screen falls back to the
     // manual path rather than dead-ending.
     if (error?.type === "StripePermissionError" || error?.statusCode === 403) {
-      return { ok: false, reason: "permission", detail: "That key cannot create webhook endpoints." };
+      return {
+        ok: false,
+        reason: "permission",
+        detail: "That key cannot create webhook endpoints.",
+      };
     }
     if (error?.type === "StripeInvalidRequestError") {
-      return { ok: false, reason: "unreachable", detail: "Stripe rejected that address." };
+      return {
+        ok: false,
+        reason: "unreachable",
+        detail: "Stripe rejected that address.",
+      };
     }
-    return { ok: false, reason: "error", detail: `Stripe could not be reached (${stripeErrorLabel(err)}).` };
+    return {
+      ok: false,
+      reason: "error",
+      detail: `Stripe could not be reached (${stripeErrorLabel(err)}).`,
+    };
   }
 }
 
@@ -63,7 +83,10 @@ export type WebhookEndpointsClient = {
   webhookEndpoints: {
     retrieve: (id: string) => Promise<EndpointShape>;
     list: (params: { limit: number }) => Promise<{ data: EndpointShape[] }>;
-    update: (id: string, params: { enabled_events: string[] }) => Promise<unknown>;
+    update: (
+      id: string,
+      params: { enabled_events: string[] },
+    ) => Promise<unknown>;
   };
 };
 
@@ -98,7 +121,7 @@ function isPermission(err: unknown): boolean {
  */
 export async function ensureRequiredWebhookEvents(
   client: WebhookEndpointsClient,
-  target: { endpointId: string | null; url: string }
+  target: { endpointId: string | null; url: string },
 ): Promise<EventsUpgradeResult> {
   try {
     let endpoints: EndpointShape[] = [];
@@ -115,14 +138,17 @@ export async function ensureRequiredWebhookEvents(
       endpoints = page.data.filter((endpoint) => endpoint.url === target.url);
     }
     if (endpoints.length === 0) {
-      return { status: "missing", detail: "No webhook endpoint in Stripe points at this product." };
+      return {
+        status: "missing",
+        detail: "No webhook endpoint in Stripe points at this product.",
+      };
     }
 
     let updated = false;
     for (const endpoint of endpoints) {
       if (endpoint.enabled_events.includes("*")) continue;
       const missing = REQUIRED_STRIPE_WEBHOOK_EVENTS.filter(
-        (event) => !endpoint.enabled_events.includes(event)
+        (event) => !endpoint.enabled_events.includes(event),
       );
       if (missing.length === 0) continue;
       await client.webhookEndpoints.update(endpoint.id, {
@@ -133,14 +159,20 @@ export async function ensureRequiredWebhookEvents(
     return { status: updated ? "updated" : "current" };
   } catch (err) {
     if (isPermission(err)) {
-      return { status: "permission", detail: "The key cannot change webhook endpoints." };
+      return {
+        status: "permission",
+        detail: "The key cannot change webhook endpoints.",
+      };
     }
     return { status: "error", detail: `Stripe error ${stripeErrorLabel(err)}` };
   }
 }
 
 /** Removes an endpoint Supaffi created, so a replace does not leave a duplicate behind. */
-export async function deleteWebhookEndpoint(secretKey: string, endpointId: string): Promise<void> {
+export async function deleteWebhookEndpoint(
+  secretKey: string,
+  endpointId: string,
+): Promise<void> {
   const stripe = new Stripe(secretKey, stripeApiLocation());
   try {
     await stripe.webhookEndpoints.del(endpointId);

@@ -54,25 +54,37 @@ describe("checkState", () => {
   it("waits for a script the owner has not pasted yet", () => {
     // The state every owner is in when the tracking step opens. Red before
     // they have done anything is the thing this whole track exists to stop.
-    expect(checkState(no(DETAIL.scriptMissing), trackingPending)).toBe("pending");
+    expect(checkState(no(DETAIL.scriptMissing), trackingPending)).toBe(
+      "pending",
+    );
   });
 
   it("fails when an answer arrived and it is wrong, and carries its own words", () => {
     const wrong = no(DETAIL.wrongAddress);
     expect(checkState(wrong, dnsPending)).toBe("failed");
-    expect(dnsCheckRows({ resolves: wrong, https: no(DETAIL.nothingAnswered), certificate: no("Waiting") })[0].failed).toBe(
-      DETAIL.wrongAddress
-    );
+    expect(
+      dnsCheckRows({
+        resolves: wrong,
+        https: no(DETAIL.nothingAnswered),
+        certificate: no("Waiting"),
+      })[0].failed,
+    ).toBe(DETAIL.wrongAddress);
 
-    expect(checkState(no(DETAIL.siteUnreachable), trackingPending)).toBe("failed");
+    expect(checkState(no(DETAIL.siteUnreachable), trackingPending)).toBe(
+      "failed",
+    );
   });
 
   it("waits, rather than failing, when no Stripe key is stored yet", () => {
-    expect(checkState(no(DETAIL.notConnected), stripeKeyPending)).toBe("pending");
+    expect(checkState(no(DETAIL.notConnected), stripeKeyPending)).toBe(
+      "pending",
+    );
   });
 
   it("waits when Stripe never answered, because no answer is not a wrong answer", () => {
-    expect(checkState(no(DETAIL.stripeUnreachable), stripeKeyPending)).toBe("pending");
+    expect(checkState(no(DETAIL.stripeUnreachable), stripeKeyPending)).toBe(
+      "pending",
+    );
   });
 });
 

@@ -1,7 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { PasteField } from "@/components/PasteField";
 
@@ -15,7 +21,10 @@ import { PasteField } from "@/components/PasteField";
  * sheet closes.
  */
 
-type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
+type Action = (
+  prev: { error: string },
+  formData: FormData,
+) => Promise<{ error: string }>;
 
 export function ConnectionSheet({
   title,

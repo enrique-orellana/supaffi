@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,7 +67,7 @@ export function EditableField({
 
   const row = cn(
     "flex h-14 items-center justify-between gap-3 pr-2.5 pl-4",
-    !bare && "rounded-(--radius) border border-neutral-300 bg-card"
+    !bare && "rounded-(--radius) border border-neutral-300 bg-card",
   );
   const text = cn("text-[15px]", mono && "font-mono");
 
@@ -103,7 +109,10 @@ export function EditableField({
 
   return (
     <div>
-      <form action={formAction} className={cn(row, "focus-within:border-accent-400")}>
+      <form
+        action={formAction}
+        className={cn(row, "focus-within:border-accent-400")}
+      >
         {/* Borderless: the row is already the field. A bordered input inside a
             bordered row is two boxes for one value. */}
         <span className="flex min-w-0 flex-1 items-baseline">
@@ -122,16 +131,29 @@ export function EditableField({
             onKeyDown={(e) => {
               if (e.key === "Escape") setEditing(false);
             }}
-            className={cn(text, "min-w-0 bg-transparent outline-none", suffix ? "w-auto" : "flex-1")}
+            className={cn(
+              text,
+              "min-w-0 bg-transparent outline-none",
+              suffix ? "w-auto" : "flex-1",
+            )}
           />
-          {suffix && <span className={cn(text, "shrink-0 text-muted-foreground")}>{suffix}</span>}
+          {suffix && (
+            <span className={cn(text, "shrink-0 text-muted-foreground")}>
+              {suffix}
+            </span>
+          )}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button type="submit" size="sm" disabled={pending}>
             {pending && <Loader2 className="animate-spin" />}
             {pending ? "Saving" : "Save"}
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(false)}
+          >
             Cancel
           </Button>
         </div>

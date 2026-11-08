@@ -32,7 +32,7 @@ if (process.env.DATABASE_URL) {
 if (!hasDatabase) {
   // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/lib/program.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/lib/program.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests.",
   );
 }
 
@@ -111,7 +111,10 @@ describe.skipIf(!hasDatabase)("program", () => {
     merchantId2 = merchant2.id;
 
     const otherOwner = await db.owner.create({
-      data: { email: "program-test-other-owner@example.com", passwordHash: "x" },
+      data: {
+        email: "program-test-other-owner@example.com",
+        passwordHash: "x",
+      },
     });
     otherOwnerId = otherOwner.id;
     const otherMerchant = await db.merchant.create({
@@ -153,7 +156,9 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   it("refuses to create a Program under a Merchant the Owner doesn't own", async () => {
-    await expect(createProgram(ownerId, otherMerchantId, baseInput)).rejects.toThrow();
+    await expect(
+      createProgram(ownerId, otherMerchantId, baseInput),
+    ).rejects.toThrow();
   });
 
   it("lists only Programs for the given, owned Merchant", async () => {
@@ -237,10 +242,17 @@ describe.skipIf(!hasDatabase)("program", () => {
 
   it("updateProgram throws when the Merchant isn't owned by the caller", async () => {
     const { id } = await db.program.create({
-      data: { merchantId: otherMerchantId, slug: crypto.randomUUID(), ...baseInput },
+      data: {
+        merchantId: otherMerchantId,
+        slug: crypto.randomUUID(),
+        ...baseInput,
+      },
     });
     await expect(
-      updateProgram(ownerId, otherMerchantId, id, { ...baseInput, name: "Hijacked" })
+      updateProgram(ownerId, otherMerchantId, id, {
+        ...baseInput,
+        name: "Hijacked",
+      }),
     ).rejects.toThrow();
   });
 
@@ -252,22 +264,39 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   it("getProgramForSignup returns null for a Program whose signup is closed, and an update without the flag keeps it closed", async () => {
-    const { id, slug } = await createProgram(ownerId, merchantId, { ...baseInput, signupOpen: false });
+    const { id, slug } = await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      signupOpen: false,
+    });
     expect(await getProgramForSignup(merchantId, slug)).toBeNull();
 
     // Onboarding saves the terms without the flag.
-    await updateProgram(ownerId, merchantId, id, { ...baseInput, name: "Standard" });
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      name: "Standard",
+    });
     expect(await getProgramForSignup(merchantId, slug)).toBeNull();
 
-    await updateProgram(ownerId, merchantId, id, { ...baseInput, signupOpen: true });
-    expect((await getProgramForSignup(merchantId, slug))?.name).toBe("Standard");
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      signupOpen: true,
+    });
+    expect((await getProgramForSignup(merchantId, slug))?.name).toBe(
+      "Standard",
+    );
   });
 
   it("getClosedProgramName names a closed Program on its own Merchant only", async () => {
-    const closed = await createProgram(ownerId, merchantId, { ...baseInput, name: "Creators", signupOpen: false });
+    const closed = await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      name: "Creators",
+      signupOpen: false,
+    });
     const open = await createProgram(ownerId, merchantId, baseInput);
 
-    expect(await getClosedProgramName(merchantId, closed.slug)).toBe("Creators");
+    expect(await getClosedProgramName(merchantId, closed.slug)).toBe(
+      "Creators",
+    );
     expect(await getClosedProgramName(merchantId, open.slug)).toBeNull();
     expect(await getClosedProgramName(merchantId2, closed.slug)).toBeNull();
     expect(await getClosedProgramName(merchantId, "missing")).toBeNull();
@@ -276,10 +305,23 @@ describe.skipIf(!hasDatabase)("program", () => {
   it("getDefaultProgramSlug is this Merchant's oldest open Program", async () => {
     expect(await getDefaultProgramSlug(merchantId)).toBeNull();
 
-    const closed = await createProgram(ownerId, merchantId, { ...baseInput, name: "Creators", signupOpen: false });
-    const first = await createProgram(ownerId, merchantId, { ...baseInput, name: "Partners" });
-    await createProgram(ownerId, merchantId, { ...baseInput, name: "Agencies" });
-    await createProgram(ownerId, merchantId2, { ...baseInput, name: "Elsewhere" });
+    const closed = await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      name: "Creators",
+      signupOpen: false,
+    });
+    const first = await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      name: "Partners",
+    });
+    await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      name: "Agencies",
+    });
+    await createProgram(ownerId, merchantId2, {
+      ...baseInput,
+      name: "Elsewhere",
+    });
 
     expect(await getDefaultProgramSlug(merchantId)).toBe(first.slug);
     expect(closed.slug).not.toBe(first.slug);

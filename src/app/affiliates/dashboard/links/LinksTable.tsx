@@ -75,7 +75,10 @@ export function LinksTable({
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-36">
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setEditing(link)}>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => setEditing(link)}
+          >
             <Pencil />
             <span>Edit</span>
           </DropdownMenuItem>
@@ -110,7 +113,9 @@ export function LinksTable({
                   <RowMenu link={link} />
                 </span>
               </div>
-              <code className="truncate font-mono text-xs text-muted-foreground">{url}</code>
+              <code className="truncate font-mono text-xs text-muted-foreground">
+                {url}
+              </code>
               {/* The counts give way before the money does. */}
               <div className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 truncate text-[13px] text-muted-foreground tabular-nums">
@@ -156,7 +161,10 @@ export function LinksTable({
             const url = linkUrl(websiteUrl, link);
             const hint = moneyHint(link.earned);
             return (
-              <TableRow key={link.id} className="border-neutral-200 hover:bg-neutral-50">
+              <TableRow
+                key={link.id}
+                className="border-neutral-200 hover:bg-neutral-50"
+              >
                 <TableCell className="py-3">
                   <span className="flex items-center gap-2">
                     <span className="truncate font-medium">{link.code}</span>
@@ -220,8 +228,8 @@ export function LinksTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.code}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The link stops working straight away. The clicks and commissions it already
-              brought in stay on your account.
+              The link stops working straight away. The clicks and commissions
+              it already brought in stay on your account.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
