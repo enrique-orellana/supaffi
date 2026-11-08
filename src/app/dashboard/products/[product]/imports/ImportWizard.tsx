@@ -199,7 +199,9 @@ export function ImportWizard({
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <input
+            id="import-bundle"
             type="file"
+            aria-label="Affiliate import bundle"
             accept="application/json,.json"
             disabled={report?.status === "APPLYING"}
             onChange={(event) => {

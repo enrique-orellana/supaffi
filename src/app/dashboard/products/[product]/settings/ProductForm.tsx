@@ -58,13 +58,23 @@ export function ProductForm({
   return (
     <form action={action} className="flex flex-col gap-4">
       <Row label="Name" htmlFor="name">
-        <Input id="name" name="name" defaultValue={values.name} required />
+        <Input
+          id="name"
+          name="name"
+          defaultValue={values.name}
+          autoComplete="organization"
+          required
+        />
       </Row>
       <Row label="Website" htmlFor="websiteUrl">
         <Input
           id="websiteUrl"
           name="websiteUrl"
           defaultValue={values.websiteUrl}
+          inputMode="url"
+          autoComplete="url"
+          autoCapitalize="off"
+          spellCheck={false}
           placeholder="example.com"
           required
         />
@@ -75,6 +85,9 @@ export function ProductForm({
             id="domain"
             name="domain"
             defaultValue={values.domain}
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
             className="font-mono lg:max-w-80"
             required
           />

@@ -12,7 +12,13 @@ type Action = (
   formData: FormData,
 ) => Promise<{ error: string }>;
 
-export function SetPasswordForm({ action }: { action: Action }) {
+export function SetPasswordForm({
+  action,
+  email,
+}: {
+  action: Action;
+  email: string | null;
+}) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
 
   return (
@@ -22,6 +28,20 @@ export function SetPasswordForm({ action }: { action: Action }) {
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
+          {email && (
+            <div className="sr-only">
+              <Label htmlFor="affiliate-username">Account email</Label>
+              <Input
+                id="affiliate-username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                value={email}
+                readOnly
+                tabIndex={-1}
+              />
+            </div>
+          )}
           {state.error && (
             <p role="alert" className="text-[13px] text-status-danger">
               {state.error}

@@ -74,12 +74,32 @@ function Result({
   return null;
 }
 
+function UsernameHint({ id, email }: { id: string; email: string }) {
+  if (!email) return null;
+
+  return (
+    <div className="sr-only">
+      <Label htmlFor={id}>Account email</Label>
+      <Input
+        id={id}
+        name="username"
+        type="text"
+        autoComplete="username"
+        value={email}
+        readOnly
+        tabIndex={-1}
+      />
+    </div>
+  );
+}
+
 export function EmailForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(changeEmailAction, EMPTY);
 
   return (
     <Section title="Email">
       <form action={action} className="flex flex-col gap-4">
+        <UsernameHint id="current-username-email" email={email} />
         <Field
           id="email"
           label="New email"
@@ -109,12 +129,13 @@ export function EmailForm({ email }: { email: string }) {
   );
 }
 
-export function PasswordForm() {
+export function PasswordForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(changePasswordAction, EMPTY);
 
   return (
     <Section title="Password">
       <form action={action} className="flex flex-col gap-4">
+        <UsernameHint id="password-username-email" email={email} />
         <Field
           id="current"
           label="Current password"

@@ -123,9 +123,13 @@ export function EditableField({
               the field is monospaced. */}
           <input
             name="value"
+            type="text"
             aria-label={label}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
             size={suffix ? Math.max(draft.length, 1) : undefined}
             autoFocus
             onKeyDown={(e) => {

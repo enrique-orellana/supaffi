@@ -580,6 +580,7 @@ function PasswordLink({
       {link ? (
         <div className="flex gap-2">
           <Input
+            aria-label="One-time affiliate password link"
             readOnly
             value={link}
             className="font-mono text-xs"

@@ -126,6 +126,9 @@ export function AffiliateFilters({
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           name="q"
+          type="search"
+          aria-label="Search affiliates"
+          autoComplete="off"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Name, email or code"

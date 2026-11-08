@@ -75,15 +75,17 @@ export function NowPaymentsConnectionPanel({
         )}
       </div>
 
-      <form action={formAction} className="grid gap-3">
+      <form action={formAction} autoComplete="off" className="grid gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="nowpayments-api-key">API key</Label>
             <Input
               id="nowpayments-api-key"
               name="apiKey"
-              type="password"
-              autoComplete="new-password"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
               placeholder={
                 apiKeyStored ? "Saved — blank keeps it" : "Paste API key"
               }
@@ -95,8 +97,10 @@ export function NowPaymentsConnectionPanel({
             <Input
               id="nowpayments-ipn-secret"
               name="ipnSecret"
-              type="password"
-              autoComplete="new-password"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
               placeholder={
                 hasIpnSecret ? "Saved — blank keeps it" : "Paste IPN secret"
               }

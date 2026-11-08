@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { CommissionStatus } from "@/lib/commission";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
@@ -349,13 +350,17 @@ export function CommissionSheet({
               action={voidAction.bind(null, listHref, product, commission.id)}
               className="flex flex-col gap-2"
             >
-              <span className="text-sm font-medium">Void this commission</span>
+              <Label htmlFor="void-reason" className="text-sm font-medium">
+                Reason for void
+              </Label>
               <div className="flex gap-2">
                 <Input
+                  id="void-reason"
                   name="reason"
-                  placeholder="Reason"
+                  placeholder="Add a note"
                   maxLength={200}
                   className="flex-1"
+                  autoComplete="off"
                 />
                 <Button
                   type="submit"

@@ -161,6 +161,8 @@ export function PayoutDetailsForm({
                 aria-label="Crypto coin and network"
                 placeholder="e.g. USDC on Base"
                 className="h-9"
+                autoComplete="off"
+                autoCapitalize="none"
                 spellCheck={false}
               />
             </label>
@@ -171,6 +173,8 @@ export function PayoutDetailsForm({
                 onChange={(e) => setCryptoWalletAddress(e.target.value)}
                 aria-label="Crypto wallet address"
                 className="h-9 font-mono"
+                autoComplete="off"
+                autoCapitalize="none"
                 spellCheck={false}
               />
             </label>
@@ -183,6 +187,8 @@ export function PayoutDetailsForm({
               onChange={(e) => setValue(e.target.value)}
               aria-label={METHOD_LABELS[method]}
               placeholder={PAYOUT_METHODS[method].placeholder}
+              autoComplete="off"
+              autoCapitalize="off"
               spellCheck={false}
               className="h-9"
             />

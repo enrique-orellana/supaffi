@@ -19,6 +19,7 @@ export function ProductForm() {
             name="name"
             required
             autoFocus
+            autoComplete="organization"
             placeholder="Your product"
           />
         </Field>
@@ -27,6 +28,7 @@ export function ProductForm() {
             id="product-website"
             name="websiteUrl"
             inputMode="url"
+            autoComplete="url"
             autoCapitalize="off"
             spellCheck={false}
             required

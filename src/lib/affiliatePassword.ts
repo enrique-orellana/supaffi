@@ -96,6 +96,34 @@ export async function createAffiliateResetLink(
 }
 
 /**
+ * Supplies the account name to the password manager on the password-link
+ * form. Reading a link never spends it; redemption remains in the submit
+ * action, where the password and token are checked atomically.
+ */
+export async function affiliateEmailForResetLink(
+  rawToken: string,
+  merchantId: string,
+): Promise<string | null> {
+  const record = await db.affiliateLoginToken.findUnique({
+    where: { tokenHash: hashToken(rawToken) },
+    select: {
+      expiresAt: true,
+      usedAt: true,
+      affiliate: { select: { email: true, merchantId: true } },
+    },
+  });
+  if (
+    !record ||
+    record.usedAt ||
+    record.expiresAt < new Date() ||
+    record.affiliate.merchantId !== merchantId
+  ) {
+    return null;
+  }
+  return record.affiliate.email;
+}
+
+/**
  * Spends a password link and saves the new password. The link must belong to
  * an Affiliate of the product it was opened on. Ends every session the
  * Affiliate already had. Answers the Affiliate's email, so the caller can log
