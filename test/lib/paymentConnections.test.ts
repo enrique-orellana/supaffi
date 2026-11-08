@@ -6,7 +6,6 @@ const {
   queryRaw,
   upsert,
   updateMany,
-  updateAttributions,
   findFirst,
   findExisting,
   encrypt,
@@ -16,18 +15,15 @@ const {
   const findFirst = vi.fn();
   const findExisting = vi.fn();
   const updateMany = vi.fn();
-  const updateAttributions = vi.fn();
   const tx = {
     $queryRaw: queryRaw,
     paymentConnection: { findUnique: findExisting, upsert, updateMany },
-    checkoutAttribution: { updateMany: updateAttributions },
   };
   return {
     tx,
     queryRaw,
     upsert,
     updateMany,
-    updateAttributions,
     findFirst,
     findExisting,
     encrypt: vi.fn((value: string) => `encrypted:${value}`),
@@ -41,7 +37,7 @@ vi.mock("@/lib/db", () => ({
     paymentConnection: { findFirst },
   },
 }));
-vi.mock("@/lib/crypto", () => ({ encrypt, decrypt: (value: string) => value }));
+vi.mock("@/lib/crypto", () => ({ encrypt }));
 vi.mock("@/lib/instance", () => ({ instanceDomain: () => "supaffi.example" }));
 
 const {
@@ -49,7 +45,6 @@ const {
   disconnectNowPayments,
   getNowPaymentsConnectionStatus,
   nowPaymentsCallbackUrl,
-  testNowPaymentsLookupAccess,
 } = await import("@/lib/paymentConnections");
 
 describe("NOWPayments connection credentials", () => {
@@ -63,7 +58,6 @@ describe("NOWPayments connection credentials", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
   });
 
   it("uses a public webhook origin independently of the admin domain", () => {
@@ -80,51 +74,32 @@ describe("NOWPayments connection credentials", () => {
     expect(nowPaymentsCallbackUrl("stable-route-id")).toBeNull();
   });
 
-  it("encrypts and saves the API, IPN, and account lookup credentials", async () => {
+  it("encrypts and saves only the API key and IPN secret", async () => {
     await connectNowPayments("owner-1", "merchant-1", {
       apiKey: "merchant-api-key",
       webhookSecret: "merchant-ipn-secret",
-      apiAccountEmail: "read-only@example.test",
-      apiAccountPassword: "view-only-password",
     });
 
     expect(encrypt).toHaveBeenNthCalledWith(1, "merchant-api-key");
     expect(encrypt).toHaveBeenNthCalledWith(2, "merchant-ipn-secret");
-    expect(encrypt).toHaveBeenNthCalledWith(3, "read-only@example.test");
-    expect(encrypt).toHaveBeenNthCalledWith(4, "view-only-password");
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
           apiKeyEnc: "encrypted:merchant-api-key",
           webhookSecretEnc: "encrypted:merchant-ipn-secret",
-          apiAccountEmailEnc: "encrypted:read-only@example.test",
-          apiAccountPasswordEnc: "encrypted:view-only-password",
         }),
         update: expect.objectContaining({
           apiKeyEnc: "encrypted:merchant-api-key",
           webhookSecretEnc: "encrypted:merchant-ipn-secret",
-          apiAccountEmailEnc: "encrypted:read-only@example.test",
-          apiAccountPasswordEnc: "encrypted:view-only-password",
-        }),
-      }),
-    );
-    expect(updateAttributions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          merchantId: "merchant-1",
-          pollClosedAt: null,
-          pollNextAt: null,
         }),
       }),
     );
   });
 
-  it("preserves the saved API key when only rotating the IPN secret", async () => {
+  it("preserves the API key when rotating the IPN secret", async () => {
     findExisting.mockResolvedValue({
       apiKeyEnc: "encrypted:existing-api-key",
       webhookSecretEnc: "encrypted:existing-ipn-secret",
-      apiAccountEmailEnc: "encrypted:existing-email",
-      apiAccountPasswordEnc: "encrypted:existing-password",
     });
 
     await connectNowPayments("owner-1", "merchant-1", {
@@ -137,19 +112,15 @@ describe("NOWPayments connection credentials", () => {
         update: expect.objectContaining({
           apiKeyEnc: "encrypted:existing-api-key",
           webhookSecretEnc: "encrypted:replacement-ipn-secret",
-          apiAccountEmailEnc: "encrypted:existing-email",
-          apiAccountPasswordEnc: "encrypted:existing-password",
         }),
       }),
     );
   });
 
-  it("considers an enabled API connection connected without requiring an IPN secret", async () => {
+  it("requires both credentials for a ready connection", async () => {
     findFirst.mockResolvedValue({
       apiKeyEnc: "encrypted:merchant-api-key",
       webhookSecretEnc: "encrypted:merchant-ipn-secret",
-      apiAccountEmailEnc: "encrypted:read-only@example.test",
-      apiAccountPasswordEnc: "encrypted:view-only-password",
       status: "CONNECTED",
       enabled: true,
       webhookRouteId: "stable-route-id",
@@ -159,7 +130,7 @@ describe("NOWPayments connection credentials", () => {
       getNowPaymentsConnectionStatus("owner-1", "merchant-1"),
     ).resolves.toEqual({
       connected: true,
-      invoiceLookupReady: true,
+      hasApiKey: true,
       hasIpnSecret: true,
       hasCallbackId: true,
       callbackUrl:
@@ -167,10 +138,8 @@ describe("NOWPayments connection credentials", () => {
     });
 
     findFirst.mockResolvedValue({
-      apiKeyEnc: null,
-      webhookSecretEnc: "encrypted:merchant-ipn-secret",
-      apiAccountEmailEnc: null,
-      apiAccountPasswordEnc: null,
+      apiKeyEnc: "encrypted:merchant-api-key",
+      webhookSecretEnc: null,
       status: "CONNECTED",
       enabled: true,
       webhookRouteId: "stable-route-id",
@@ -180,158 +149,31 @@ describe("NOWPayments connection credentials", () => {
       getNowPaymentsConnectionStatus("owner-1", "merchant-1"),
     ).resolves.toMatchObject({
       connected: false,
-      invoiceLookupReady: false,
-      hasIpnSecret: true,
-    });
-
-    findFirst.mockResolvedValue({
-      apiKeyEnc: "encrypted:merchant-api-key",
-      webhookSecretEnc: null,
-      apiAccountEmailEnc: "encrypted:read-only@example.test",
-      apiAccountPasswordEnc: "encrypted:view-only-password",
-      status: "CONNECTED",
-      enabled: true,
-      webhookRouteId: "stable-route-id",
-    });
-
-    await expect(
-      getNowPaymentsConnectionStatus("owner-1", "merchant-1"),
-    ).resolves.toMatchObject({
-      connected: true,
-      invoiceLookupReady: true,
+      hasApiKey: true,
       hasIpnSecret: false,
     });
   });
 
-  it("connects the invoice API without requiring an IPN secret", async () => {
-    await connectNowPayments("owner-1", "merchant-1", {
-      apiKey: "merchant-api-key",
-      apiAccountEmail: "read-only@example.test",
-      apiAccountPassword: "view-only-password",
-    });
-
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          apiKeyEnc: "encrypted:merchant-api-key",
-          webhookSecretEnc: null,
-        }),
-      }),
-    );
-  });
-
-  it("rejects incomplete account lookup credentials", async () => {
+  it("requires an IPN secret before enabling the API connection", async () => {
     await expect(
       connectNowPayments("owner-1", "merchant-1", {
         apiKey: "merchant-api-key",
-        webhookSecret: "merchant-ipn-secret",
-        apiAccountEmail: "read-only@example.test",
       }),
-    ).rejects.toThrow(
-      "NOWPayments account email and password must be provided together",
-    );
+    ).rejects.toThrow("NOWPayments IPN secret is required");
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it("clears encrypted lookup credentials when disconnected", async () => {
+  it("clears both credentials when disconnected", async () => {
     await disconnectNowPayments("owner-1", "merchant-1");
 
     expect(updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          apiAccountEmailEnc: null,
-          apiAccountPasswordEnc: null,
+          apiKeyEnc: null,
+          webhookSecretEnc: null,
+          status: "DISCONNECTED",
+          enabled: false,
         }),
-      }),
-    );
-    expect(updateAttributions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          merchantId: "merchant-1",
-          provider: "NOWPAYMENTS",
-          pollClosedAt: null,
-        },
-        data: { pollNextAt: null },
-      }),
-    );
-  });
-
-  it("checks invoice-list permission using the saved API key and returns no payment data", async () => {
-    findFirst.mockResolvedValue({ apiKeyEnc: "saved-api-key" });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ token: "read-token" }), {
-          status: 200,
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [], pagesCount: 0 }), {
-          status: 200,
-        }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      testNowPaymentsLookupAccess("owner-1", "merchant-1", {
-        accountEmail: "read-only@example.test",
-        accountPassword: "view-only-password",
-      }),
-    ).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://api.nowpayments.io/v1/payment/?limit=1&page=0",
-      expect.objectContaining({
-        headers: {
-          "x-api-key": "saved-api-key",
-          Authorization: "Bearer read-token",
-        },
-      }),
-    );
-  });
-
-  it("validates a replacement API key with the saved read-only account", async () => {
-    findFirst.mockResolvedValue({
-      apiKeyEnc: "old-api-key",
-      apiAccountEmailEnc: "saved-read-only@example.test",
-      apiAccountPasswordEnc: "saved-view-password",
-    });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ token: "read-token" }), {
-          status: 200,
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: [], pagesCount: 0 }), {
-          status: 200,
-        }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await testNowPaymentsLookupAccess("owner-1", "merchant-1", {
-      apiKey: "replacement-api-key",
-    });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "https://api.nowpayments.io/v1/auth",
-      expect.objectContaining({
-        body: JSON.stringify({
-          email: "saved-read-only@example.test",
-          password: "saved-view-password",
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "https://api.nowpayments.io/v1/payment/?limit=1&page=0",
-      expect.objectContaining({
-        headers: {
-          "x-api-key": "replacement-api-key",
-          Authorization: "Bearer read-token",
-        },
       }),
     );
   });

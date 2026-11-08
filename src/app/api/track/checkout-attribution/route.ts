@@ -221,7 +221,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         providerCheckoutRef: checkoutReference,
         clickId: click.id,
         createdAt: receivedAt,
-        pollNextAt: receivedAt,
       },
     });
   } catch (error) {

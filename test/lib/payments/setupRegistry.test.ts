@@ -38,7 +38,7 @@ describe("payment provider setup registry", () => {
     });
     vi.mocked(getNowPaymentsConnectionStatus).mockResolvedValue({
       connected: true,
-      invoiceLookupReady: true,
+      hasApiKey: true,
       hasIpnSecret: true,
       hasCallbackId: true,
       callbackUrl: "https://supaffi.example/api/webhooks/nowpayments/route-id",
@@ -97,7 +97,7 @@ describe("payment provider setup registry", () => {
     expect(getIntegrationStatus).toHaveBeenCalledWith("owner-1", "merchant-1");
   });
 
-  it("exposes the callback URL and safe invoice lookup status", async () => {
+  it("exposes the callback URL and safe credential status", async () => {
     const setup = getPaymentProviderSetup(PaymentProvider.NOWPAYMENTS.id);
 
     expect(setup?.checkSections).toEqual([]);
@@ -106,7 +106,7 @@ describe("payment provider setup registry", () => {
       details: {
         callbackUrl:
           "https://supaffi.example/api/webhooks/nowpayments/route-id",
-        invoiceLookupReady: true,
+        hasApiKey: true,
         hasIpnSecret: true,
       },
     });

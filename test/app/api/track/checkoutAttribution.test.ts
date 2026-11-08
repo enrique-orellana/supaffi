@@ -99,7 +99,6 @@ describe("POST /api/track/checkout-attribution", () => {
         providerCheckoutRef: CHECKOUT_REFERENCE,
         clickId: "click-1",
         createdAt: expect.any(Date),
-        pollNextAt: expect.any(Date),
       }),
     });
     expect(reconcileAttribution).toHaveBeenCalledWith({

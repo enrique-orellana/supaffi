@@ -25,14 +25,20 @@ export function NowPaymentsConnectionPanel({
     status.details && "callbackUrl" in status.details
       ? status.details.callbackUrl
       : null;
-  const invoiceLookupReady =
-    status.details && "invoiceLookupReady" in status.details
-      ? status.details.invoiceLookupReady
+  const apiKeyStored =
+    status.details && "hasApiKey" in status.details
+      ? status.details.hasApiKey
       : false;
   const hasIpnSecret =
     status.details && "hasIpnSecret" in status.details
       ? status.details.hasIpnSecret
       : false;
+  const hasCredentials = apiKeyStored || hasIpnSecret;
+  const connectionStatus = status.connected
+    ? "Connected"
+    : hasCredentials
+      ? "Setup incomplete"
+      : "Not connected";
   const saveAction =
     surface === "onboarding"
       ? saveNowPaymentsOnboardingAction
@@ -52,10 +58,10 @@ export function NowPaymentsConnectionPanel({
         <div className="flex flex-col gap-0.5">
           <span className="text-sm">{label}</span>
           <span className="text-xs text-muted-foreground">
-            {status.connected ? "Connected" : "Not connected"}
+            {connectionStatus}
           </span>
         </div>
-        {status.connected && (
+        {(apiKeyStored || hasIpnSecret) && (
           <form action={disconnectAction.bind(null, product)}>
             <Button
               type="submit"
@@ -79,94 +85,29 @@ export function NowPaymentsConnectionPanel({
               type="password"
               autoComplete="new-password"
               placeholder={
-                status.connected
-                  ? "Enter a replacement API key"
-                  : "Paste API key"
+                apiKeyStored ? "Saved — blank keeps it" : "Paste API key"
               }
-              required={!status.connected}
+              required={!apiKeyStored}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="nowpayments-ipn-secret">
-              IPN secret{" "}
-              <span className="text-muted-foreground">(optional)</span>
-            </Label>
+            <Label htmlFor="nowpayments-ipn-secret">IPN secret</Label>
             <Input
               id="nowpayments-ipn-secret"
               name="ipnSecret"
               type="password"
               autoComplete="new-password"
               placeholder={
-                status.connected
-                  ? "Enter a replacement secret"
-                  : "Paste IPN secret if using callbacks"
+                hasIpnSecret ? "Saved — blank keeps it" : "Paste IPN secret"
               }
+              required={!hasIpnSecret}
             />
           </div>
         </div>
-        <div className="grid gap-2 rounded-(--radius) border border-neutral-200 bg-background p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm">Invoice status checks</span>
-            <span className="text-xs text-muted-foreground">
-              {invoiceLookupReady ? "Enabled" : "Needs setup"}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Supaffi uses a NOWPayments account with payment viewing access to
-            find payment IDs for tracked invoices. Use a separate team account
-            with View permission. Supaffi verifies payment status with the API
-            key before recording a sale; it does not use payout access. This
-            works without an IPN callback.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="nowpayments-account-email">
-                NOWPayments account email
-              </Label>
-              <Input
-                id="nowpayments-account-email"
-                name="apiAccountEmail"
-                type="email"
-                autoComplete="username"
-                placeholder={
-                  invoiceLookupReady
-                    ? "Enter a replacement email"
-                    : "Email for the view-only account"
-                }
-                required={!invoiceLookupReady}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="nowpayments-account-password">
-                NOWPayments account password
-              </Label>
-              <Input
-                id="nowpayments-account-password"
-                name="apiAccountPassword"
-                type="password"
-                autoComplete="new-password"
-                placeholder={
-                  invoiceLookupReady
-                    ? "Enter a replacement password"
-                    : "Password for the view-only account"
-                }
-                required={!invoiceLookupReady}
-              />
-            </div>
-          </div>
-          {invoiceLookupReady && (
-            <p className="text-xs text-muted-foreground">
-              Leave both account fields empty to keep the saved login. Supaffi
-              encrypts it and caches NOWPayments’ short-lived token in memory.
-            </p>
-          )}
-        </div>
-        {status.connected && (
-          <p className="text-xs text-muted-foreground">
-            Leave a field empty to keep its saved value. Supaffi encrypts all
-            saved credentials.
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground">
+          The API key checks payment status; the IPN secret verifies signed
+          callbacks.
+        </p>
         <div className="flex flex-col gap-2">
           {state.error && (
             <p role="alert" className="text-sm text-status-danger">
@@ -179,37 +120,28 @@ export function NowPaymentsConnectionPanel({
             className="w-fit cursor-pointer"
             disabled={pending}
           >
-            {pending
-              ? "Saving"
-              : status.connected
-                ? "Update credentials"
-                : "Connect NOWPayments"}
+            {pending ? "Saving" : status.connected ? "Save" : "Connect"}
           </Button>
         </div>
       </form>
 
       <div className="grid gap-1.5 border-t border-neutral-200 pt-3">
-        <span className="text-xs text-muted-foreground">
-          Optional NOWPayments IPN callback URL
-        </span>
-        {callbackUrl && hasIpnSecret ? (
+        <span className="text-sm">Callback URL</span>
+        {callbackUrl && status.connected ? (
           <CopyValue value={callbackUrl} className="font-mono text-xs" />
         ) : callbackUrl ? (
           <p className="text-xs text-muted-foreground">
-            Add an IPN secret above to enable callbacks. API invoice checks work
-            without this URL.
+            Save both credentials to enable signed payment verification.
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            A saved connection and a public instance domain are required to
-            generate this URL.
+            Connect NOWPayments and configure a public domain to generate the
+            URL.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          The API checks run without changing your checkout or callback. If you
-          enable IPN callbacks, NOWPayments can send faster updates here. If an
-          invoice has its own callback URL, NOWPayments uses that URL for its
-          notifications.
+          Add this URL in NOWPayments. To keep another webhook, route
+          notifications through the relay.
         </p>
       </div>
     </div>

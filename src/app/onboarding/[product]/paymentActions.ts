@@ -12,8 +12,8 @@ import {
   connectNowPayments,
   disconnectNowPayments,
   getNowPaymentsConnectionStatus,
-  testNowPaymentsLookupAccess,
 } from "@/lib/paymentConnections";
+import { testNowPaymentsApiKeyAccess } from "@/lib/payments/providers/nowpaymentsApi";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
@@ -107,35 +107,24 @@ export async function saveNowPaymentsOnboardingAction(
   const ownerId = await owner();
   const apiKey = String(formData.get("apiKey") ?? "").trim();
   const ipnSecret = String(formData.get("ipnSecret") ?? "").trim();
-  const apiAccountEmail = String(formData.get("apiAccountEmail") ?? "").trim();
-  const apiAccountPassword = String(formData.get("apiAccountPassword") ?? "");
-  const hasAccountEmail = Boolean(apiAccountEmail);
-  const hasAccountPassword = Boolean(apiAccountPassword.trim());
-  if (hasAccountEmail !== hasAccountPassword)
-    return { error: "Enter both the NOWPayments account email and password." };
 
   const status = await getNowPaymentsConnectionStatus(ownerId, product.id);
-  if (!status.connected && !apiKey)
+  if (!status.hasApiKey && !apiKey)
     return { error: "Enter the NOWPayments API key." };
-  if (!status.invoiceLookupReady && !hasAccountEmail)
+  if (!status.hasIpnSecret && !ipnSecret)
     return {
-      error:
-        "Enter a NOWPayments account with payment viewing access to enable invoice checks.",
+      error: "Enter the NOWPayments IPN secret to verify signed notifications.",
     };
-  if (status.connected && !apiKey && !ipnSecret && !hasAccountEmail)
+  if (status.connected && !apiKey && !ipnSecret)
     return { error: "Enter at least one credential to update." };
 
-  if (apiKey || hasAccountEmail) {
+  if (apiKey) {
     try {
-      await testNowPaymentsLookupAccess(ownerId, product.id, {
-        apiKey,
-        accountEmail: apiAccountEmail,
-        accountPassword: apiAccountPassword,
-      });
+      await testNowPaymentsApiKeyAccess(apiKey);
     } catch {
       return {
         error:
-          "Supaffi could not verify payment-list access. Check the login and its NOWPayments viewing permissions.",
+          "Supaffi could not verify this NOWPayments API key. Check the key and API environment.",
       };
     }
   }
@@ -143,8 +132,6 @@ export async function saveNowPaymentsOnboardingAction(
   await connectNowPayments(ownerId, product.id, {
     apiKey,
     webhookSecret: ipnSecret,
-    apiAccountEmail,
-    apiAccountPassword,
   });
   revalidatePath(stepPath(product.slug, "payments"));
   return { error: "" };

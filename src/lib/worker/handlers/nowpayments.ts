@@ -246,6 +246,16 @@ async function verifyEventWithNowPayments(
 
   const kind = PAYMENT_STATUS_KIND[verified.payment_status];
   if (!kind) throw new Error("NOWPayments API returned an unsupported status");
+  if (
+    PAYMENT_STATUS_PRIORITY[verified.payment_status] <
+    PAYMENT_STATUS_PRIORITY[event.providerStatus]
+  ) {
+    // The signed IPN can arrive before the payment status endpoint catches up.
+    // Keep this unique event retryable instead of acknowledging a stale result.
+    throw new Error(
+      "NOWPayments API has not caught up with the signed payment notification",
+    );
+  }
   const rawPayload: JsonObject = {
     ...event.rawPayload,
     payment_id: verified.payment_id,

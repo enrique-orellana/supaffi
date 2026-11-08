@@ -451,8 +451,6 @@ model PaymentConnection {
   enabled             Boolean          @default(false)
   apiKeyEnc           String?
   webhookSecretEnc    String?
-  apiAccountEmailEnc  String?
-  apiAccountPasswordEnc String?
   externalEndpointId String?
   webhookRouteId      String          @unique @default(cuid())
   createdAt           DateTime        @default(now())
@@ -519,17 +517,10 @@ model CheckoutAttribution {
   providerCheckoutRef String         @db.VarChar(255)
   clickId             String
   click               Click          @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
-  pollNextAt          DateTime?
-  pollAttempts        Int            @default(0)
-  pollFailures         Int            @default(0)
-  pollLastError       String?
-  pollLastAttemptAt   DateTime?
-  pollClosedAt        DateTime?
   createdAt           DateTime       @default(now())
 
   @@unique([merchantId, provider, providerCheckoutRef], map: "CheckoutAttribution_merchant_provider_ref_key")
   @@index([clickId])
-  @@index([provider, pollClosedAt, pollNextAt])
 }
 
 /// Provider-neutral facts about a payment, separate from the affiliate ledger.

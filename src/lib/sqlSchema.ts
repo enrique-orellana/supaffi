@@ -34,8 +34,6 @@ export const SqlSchema = {
       "enabled",
       "status",
       "apiKeyEnc",
-      "apiAccountEmailEnc",
-      "apiAccountPasswordEnc",
     ]),
     CheckoutAttribution: defineTable("CheckoutAttribution", [
       "id",
@@ -44,12 +42,6 @@ export const SqlSchema = {
       "providerCheckoutRef",
       "clickId",
       "createdAt",
-      "pollNextAt",
-      "pollAttempts",
-      "pollFailures",
-      "pollLastError",
-      "pollLastAttemptAt",
-      "pollClosedAt",
     ]),
     Commission: defineTable("Commission", [
       "id",

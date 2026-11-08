@@ -18,11 +18,9 @@ import {
   reconcileNowPaymentsCheckoutAttribution,
 } from "@/lib/worker/handlers/nowpayments";
 
-const { getNowPaymentsPaymentMock, listNowPaymentsPaymentsByInvoiceMock } =
-  vi.hoisted(() => ({
-    getNowPaymentsPaymentMock: vi.fn(),
-    listNowPaymentsPaymentsByInvoiceMock: vi.fn(),
-  }));
+const { getNowPaymentsPaymentMock } = vi.hoisted(() => ({
+  getNowPaymentsPaymentMock: vi.fn(),
+}));
 
 vi.mock("@/lib/payments/providers/nowpaymentsApi", async (importOriginal) => {
   const actual =
@@ -32,7 +30,6 @@ vi.mock("@/lib/payments/providers/nowpaymentsApi", async (importOriginal) => {
   return {
     ...actual,
     getNowPaymentsPayment: getNowPaymentsPaymentMock,
-    listNowPaymentsPaymentsByInvoice: listNowPaymentsPaymentsByInvoiceMock,
   };
 });
 
@@ -542,31 +539,50 @@ describe("NOWPayments checkout attribution", () => {
     expect(await db.commission.count()).toBe(0);
   });
 
-  it("uses the live NOWPayments API status before creating a commission", async () => {
+  it("retries a terminal IPN when the status API has not caught up", async () => {
     await registerCheckout();
     const notification = queuedEvent("finished");
-    getNowPaymentsPaymentMock.mockResolvedValue({
-      payment_id: notification.paymentRef,
+    await persistEvent(notification);
+    activeApiPayload = {
+      ...notification.rawPayload,
       payment_status: "waiting",
-      invoice_id: INVOICE_REFERENCE,
-      order_id: "local-order-21",
-      price_amount: "31.25",
-      price_currency: "eur",
-      pay_amount: "0.00123456",
-      pay_currency: "btc",
-      actually_paid: "0.00123456",
-      network: "btc",
-      updated_at: notification.occurredAt.toISOString(),
-    });
+    };
 
-    await processEvent(notification);
+    await runTick();
 
     expect(getNowPaymentsPaymentMock).toHaveBeenCalledWith(
       "payment-21",
       "mock-api-key",
     );
-    expect((await getPayment()).status).toBe("waiting");
+    const queued = await db.webhookEvent.findUniqueOrThrow({
+      where: {
+        merchantId_provider_providerEventId: {
+          merchantId: merchant.id,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+          providerEventId: notification.eventId,
+        },
+      },
+    });
+    expect(queued.status).toBe("PENDING");
+    expect(queued.attempts).toBe(1);
+    expect(await db.paymentRecord.count()).toBe(0);
     expect(await db.commission.count()).toBe(0);
+
+    activeApiPayload = notification.rawPayload;
+    await db.webhookEvent.update({
+      where: { id: queued.id },
+      data: { nextAttemptAt: new Date(0) },
+    });
+    await runTick();
+
+    expect(
+      await db.webhookEvent.findUniqueOrThrow({ where: { id: queued.id } }),
+    ).toMatchObject({ status: "PROCESSED", attempts: 2 });
+    const payment = await getPayment();
+    expect(payment.status).toBe("finished");
+    expect(
+      await db.commission.count({ where: { paymentRecordId: payment.id } }),
+    ).toBe(1);
   });
 
   it("does not credit later payments made against a reused invoice", async () => {
