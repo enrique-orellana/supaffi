@@ -73,11 +73,11 @@ jobs:
       - name: Apply migrations
         run: pnpm exec prisma migrate deploy
 
-      # The database the migrations just built has to match the schema. If it
-      # does not, a schema change shipped without its migration, and every
-      # install would start on code that expects columns it does not have.
+      # Check that migrations match the Prisma schema, while requiring the
+      # composite tenant constraints and accounting for one historical
+      # PostgreSQL-truncated index name.
       - name: Check for a missing migration
-        run: pnpm exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: node scripts/check-prisma-schema-drift.mjs
 
       - name: Typecheck
         run: pnpm run typecheck
