@@ -1,5 +1,5 @@
-// Limit on /api/track, which anyone on the internet can call and which writes
-// a Click row for every valid code.
+// Limit on the referral-resolution endpoint, which anyone on the internet can
+// call and which writes a Click row for every valid code.
 //
 // One address can only start so many new clicks per window. Repeat visits are
 // not recognised here: an address is shared by an office or a mobile carrier,

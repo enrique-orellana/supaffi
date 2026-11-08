@@ -26,7 +26,8 @@ const nextConfig: NextConfig = {
       // The tracking script and the endpoint it calls are loaded cross-site by
       // each Merchant's own pages, so they are left out of the page rules.
       {
-        source: "/:path((?!track\\.js$|api/track$).*)",
+        source:
+          "/:path((?!track\\.js$|api/track$|api/resolve$|api/checkout/attribution$).*)",
         headers: pageSecurityHeaders,
       },
     ];

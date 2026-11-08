@@ -29,8 +29,7 @@ vi.mock("@/lib/worker/handlers/nowpayments", () => ({
   reconcileNowPaymentsCheckoutAttribution: reconcileAttribution,
 }));
 
-const { POST, OPTIONS } =
-  await import("@/app/api/track/checkout-attribution/route");
+const { POST, OPTIONS } = await import("@/app/api/checkout/attribution/route");
 
 const MERCHANT_DOMAIN = "affiliates.example.test";
 const MERCHANT_ID = "merchant-1";
@@ -43,7 +42,7 @@ function request(
   options: { origin?: string; host?: string; method?: string } = {},
 ) {
   return new Request(
-    `https://${options.host ?? MERCHANT_DOMAIN}/api/track/checkout-attribution`,
+    `https://${options.host ?? MERCHANT_DOMAIN}/api/checkout/attribution`,
     {
       method: options.method ?? "POST",
       headers: {
@@ -56,7 +55,7 @@ function request(
   );
 }
 
-describe("POST /api/track/checkout-attribution", () => {
+describe("POST /api/checkout/attribution", () => {
   beforeEach(() => {
     findMerchant
       .mockReset()

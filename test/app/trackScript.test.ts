@@ -324,7 +324,11 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     // Baking that in points every Merchant's site at a hostname that only
     // resolves inside the Docker network, and nothing is ever tracked.
     const code = await script();
-    expect(code).toContain('"https://affiliates.acme.test/api/track?"');
+    expect(code).toContain('"https://affiliates.acme.test/api/resolve?"');
+    expect(code).toContain(
+      '"https://affiliates.acme.test/api/checkout/attribution"',
+    );
+    expect(code).not.toContain("/api/track");
     expect(code).not.toContain("c0ffee1234ab");
   });
 
@@ -334,13 +338,13 @@ describe.skipIf(!hasDatabase)("track.js", () => {
       await serve(DOMAIN, { "x-forwarded-proto": 'x";alert(1);//' })
     ).text();
     expect(code).not.toContain("alert");
-    expect(code).toContain('"https://affiliates.acme.test/api/track?"');
+    expect(code).toContain('"https://affiliates.acme.test/api/resolve?"');
   });
 
   it("uses http for a local development domain", async () => {
     await seedMerchant("localhost:3600");
     const code = await (await serve("localhost:3600")).text();
-    expect(code).toContain('"http://localhost:3600/api/track?"');
+    expect(code).toContain('"http://localhost:3600/api/resolve?"');
   });
 
   it("serves nothing for a host that is not a Merchant", async () => {
@@ -657,7 +661,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
         const url = new URL(String(input), "https://acme.test");
         calls.push({ url: url.href, init });
         if (url.pathname === "/api/commerce/checkouts") return checkoutResponse;
-        if (url.pathname === "/api/track/checkout-attribution")
+        if (url.pathname === "/api/checkout/attribution")
           return registrationPending;
         throw new Error(`unexpected fetch ${url.href}`);
       },
@@ -675,7 +679,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(checkoutResolved).toBe(false);
     expect(calls).toHaveLength(2);
     expect(calls[1].url).toBe(
-      "https://affiliates.acme.test/api/track/checkout-attribution",
+      "https://affiliates.acme.test/api/checkout/attribution",
     );
     expect(calls[1].init).toMatchObject({
       method: "POST",
@@ -767,7 +771,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     });
 
     expect(
-      await pageFetch("https://affiliates.acme.test/api/track?via=sarah", {
+      await pageFetch("https://affiliates.acme.test/api/resolve?via=sarah", {
         method: "POST",
       }),
     ).toBe(trackingResponse);
@@ -787,7 +791,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
         const url = new URL(String(input), "https://acme.test");
         calls.push({ url: url.href, init });
         if (url.origin === "https://api.acme.test") return checkoutResponse;
-        if (url.pathname === "/api/track/checkout-attribution")
+        if (url.pathname === "/api/checkout/attribution")
           return jsonResponse({});
         throw new Error(`unexpected fetch ${url.href}`);
       },
@@ -801,7 +805,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(returned).toBe(checkoutResponse);
     expect(calls).toHaveLength(2);
     expect(calls[1].url).toBe(
-      "https://affiliates.acme.test/api/track/checkout-attribution",
+      "https://affiliates.acme.test/api/checkout/attribution",
     );
     expect(JSON.parse(String(calls[1].init?.body))).toEqual({
       provider: "nowpayments",
@@ -995,9 +999,9 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     );
     expect(calls).toEqual([
       "/api/commerce/checkouts",
-      "/api/track/checkout-attribution",
-      "/api/track/checkout-attribution",
-      "/api/track/checkout-attribution",
+      "/api/checkout/attribution",
+      "/api/checkout/attribution",
+      "/api/checkout/attribution",
     ]);
   });
 

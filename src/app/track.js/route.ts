@@ -7,6 +7,7 @@ import {
 } from "@/lib/referral";
 import { originFor } from "@/lib/url";
 import { listPaymentProviderAdapters } from "@/lib/payments/registry";
+import { TRACKING_ENDPOINTS } from "@/lib/trackingEndpoints";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -47,9 +48,15 @@ export async function GET(req: NextRequest) {
     ),
   ];
   const trackingOrigin = originFor(merchant.domain);
-  const trackUrl = JSON.stringify(`${trackingOrigin}/api/track?`);
+  const referralResolutionUrl = JSON.stringify(
+    `${trackingOrigin}${TRACKING_ENDPOINTS.referralResolution}?`,
+  );
   const checkoutAttributionUrl = JSON.stringify(
-    `${trackingOrigin}/api/track/checkout-attribution`,
+    `${trackingOrigin}${TRACKING_ENDPOINTS.checkoutAttribution}`,
+  );
+  const supaffiTrackingOrigin = JSON.stringify(trackingOrigin);
+  const supaffiTrackingPaths = JSON.stringify(
+    Object.values(TRACKING_ENDPOINTS),
   );
   const checkoutTrackingAdapters = JSON.stringify(
     listPaymentProviderAdapters().flatMap((adapter) =>
@@ -75,8 +82,9 @@ export async function GET(req: NextRequest) {
   });
 
   // The token this browser already holds, read by exact cookie name. Sent
-  // back to /api/track so a reload keeps its Click rather than starting a new
-  // referral, and re-read later so a newer affiliate click is picked up.
+  // back to the referral-resolution endpoint so a reload keeps its Click
+  // rather than starting a new referral, and re-read later so a newer
+  // affiliate click is picked up.
   function readHeld() {
     var held = document.cookie.split("; ").filter(function (c) {
       return c.indexOf(${JSON.stringify(`${REFERRAL_COOKIE}=`)}) === 0;
@@ -95,6 +103,8 @@ export async function GET(req: NextRequest) {
   // which click opened an invoice; the signed provider IPN remains the sole
   // source of payment status.
   var checkoutAttributionUrl = ${checkoutAttributionUrl};
+  var supaffiTrackingOrigin = ${supaffiTrackingOrigin};
+  var supaffiTrackingPaths = new Set(${supaffiTrackingPaths});
   var checkoutTrackingAdapters = ${checkoutTrackingAdapters};
   var checkoutAttributionTimeoutMs = 800;
 
@@ -103,8 +113,7 @@ export async function GET(req: NextRequest) {
     if (!href) return false;
     try {
       var requestUrl = new URL(href, window.location.origin);
-      var trackingUrl = new URL(checkoutAttributionUrl);
-      return requestUrl.origin === trackingUrl.origin && requestUrl.pathname.indexOf("/api/track") === 0;
+      return requestUrl.origin === supaffiTrackingOrigin && supaffiTrackingPaths.has(requestUrl.pathname);
     } catch (e) {
       return false;
     }
@@ -461,7 +470,7 @@ export async function GET(req: NextRequest) {
   // replaces the held one, so links are tagged once it has arrived.
   if (!attributionParams.toString()) return run(token);
 
-  fetch(${trackUrl} + attributionParams.toString() + (token ? "&token=" + encodeURIComponent(token) : ""))
+  fetch(${referralResolutionUrl} + attributionParams.toString() + (token ? "&token=" + encodeURIComponent(token) : ""))
     .then(function (res) { return res.ok ? res.json() : null; })
     .catch(function () { return null; })
     .then(function (data) {

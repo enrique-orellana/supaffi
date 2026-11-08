@@ -9,7 +9,7 @@ import {
 } from "@/lib/payments/types";
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
-import { POST as registerCheckoutRoute } from "@/app/api/track/checkout-attribution/route";
+import { POST as registerCheckoutRoute } from "@/app/api/checkout/attribution/route";
 import { POST as receiveNowPaymentsIpn } from "@/app/api/webhooks/nowpayments/[connectionId]/route";
 import { runTick } from "@/lib/worker/tick";
 import { createLocalRelayServer } from "../../../integrations/nowpayments-webhook-relay/local-dev-relay.mjs";
@@ -426,22 +426,19 @@ describe("NOWPayments checkout attribution", () => {
         "iid",
       );
       const attributionResponse = await registerCheckoutRoute(
-        new Request(
-          `https://${merchant.domain}/api/track/checkout-attribution`,
-          {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              host: merchant.domain,
-              origin: merchant.websiteUrl,
-            },
-            body: JSON.stringify({
-              provider: "nowpayments",
-              checkoutReference,
-              referralToken: REFERRAL_TOKEN,
-            }),
+        new Request(`https://${merchant.domain}/api/checkout/attribution`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            host: merchant.domain,
+            origin: merchant.websiteUrl,
           },
-        ),
+          body: JSON.stringify({
+            provider: "nowpayments",
+            checkoutReference,
+            referralToken: REFERRAL_TOKEN,
+          }),
+        }),
       );
       expect(attributionResponse.status).toBe(204);
 
@@ -632,22 +629,19 @@ describe("NOWPayments checkout attribution", () => {
       },
     });
     const registrationResponse = await registerCheckoutRoute(
-      new Request(
-        "https://" + merchant.domain + "/api/track/checkout-attribution",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            host: merchant.domain,
-            origin: merchant.websiteUrl,
-          },
-          body: JSON.stringify({
-            provider: "nowpayments",
-            checkoutReference: INVOICE_REFERENCE,
-            referralToken: otherClick.referralToken,
-          }),
+      new Request("https://" + merchant.domain + "/api/checkout/attribution", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: merchant.domain,
+          origin: merchant.websiteUrl,
         },
-      ),
+        body: JSON.stringify({
+          provider: "nowpayments",
+          checkoutReference: INVOICE_REFERENCE,
+          referralToken: otherClick.referralToken,
+        }),
+      }),
     );
 
     expect(registrationResponse.status).toBe(409);

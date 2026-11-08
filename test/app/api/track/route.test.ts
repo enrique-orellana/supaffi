@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { GET } from "@/app/api/track/route";
+import { GET } from "@/app/api/resolve/route";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { resetTrackThrottle } from "@/lib/trackThrottle";
 
@@ -78,14 +78,14 @@ function requestFor(
   headers: Record<string, string> = {},
 ): NextRequest {
   return new NextRequest(
-    `http://${host}/api/track?${REFERRAL_QUERY_PARAM}=${code}`,
+    `http://${host}/api/resolve?${REFERRAL_QUERY_PARAM}=${code}`,
     {
       headers: { host, ...headers },
     },
   );
 }
 
-describe.skipIf(!hasDatabase)("GET /api/track", () => {
+describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
   beforeEach(async () => {
     resetTrackThrottle();
     await db.referredSubscription.deleteMany();

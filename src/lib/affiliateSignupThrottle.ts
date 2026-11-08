@@ -15,9 +15,10 @@ const perAddressHour = windowLimit({
 
 /**
  * Counts one signup from this address on this product and says whether it
- * may go ahead. Only an internet visitor is counted, as in /api/track: a
- * missing or private address means the proxy in front did not report the
- * visitor, and counting it would put every visitor in one shared budget.
+ * may go ahead. Only an internet visitor is counted, as in the referral
+ * resolution API: a missing or private address means the proxy in front did
+ * not report the visitor, and counting it would put every visitor in one
+ * shared budget.
  */
 export function reserveAffiliateSignup(
   merchantId: string,
