@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
+import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { slugify } from "@/lib/slugify";
 import { validateCode } from "./validation";
 
@@ -90,7 +91,7 @@ export function SignupForm({ action, linkHost }: Props) {
             <Label htmlFor="code">Your referral link</Label>
             <div className="flex h-9 items-center gap-1 rounded-(--radius) border border-input bg-card px-3 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
               <span className="shrink-0 font-mono text-sm whitespace-nowrap text-muted-foreground">
-                {linkHost}/?via=
+                {linkHost}/?{REFERRAL_QUERY_PARAM}=
               </span>
               <input
                 id="code"

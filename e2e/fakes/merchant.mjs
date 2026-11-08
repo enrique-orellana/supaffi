@@ -1,6 +1,6 @@
 // The merchant's own website, for the end-to-end suite only.
 //
-// It does what the onboarding tells a merchant to do: load track.js in the
+// It does what the onboarding tells a merchant to do: load Supaffi's script in the
 // page head, and pass the referral cookie into the checkout as metadata. It
 // also carries a Stripe Payment Link, which the owner leaves alone. The
 // checkout itself is the fake Stripe's /_test/checkout, which stands in for a
@@ -16,7 +16,7 @@ const REFERRAL_METADATA_KEY = "supaffi_referral";
 
 const page = (body) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Shop</title>
-<script src="${TRACK_ORIGIN}/track.js" referrerpolicy="no-referrer" async></script>
+<script src="${TRACK_ORIGIN}/supaffi.js" referrerpolicy="no-referrer" async></script>
 </head><body>${body}</body></html>`;
 
 const home = page(`<h1>Shop</h1>

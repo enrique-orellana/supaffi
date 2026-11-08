@@ -8,7 +8,7 @@ import {
 describe("trackingScriptTag", () => {
   it("suppresses the merchant page referrer on the script request", () => {
     expect(trackingScriptTag("https://affiliates.instantgradient.com")).toBe(
-      '<script src="https://affiliates.instantgradient.com/track.js" referrerpolicy="no-referrer" async></script>',
+      '<script src="https://affiliates.instantgradient.com/supaffi.js" referrerpolicy="no-referrer" async></script>',
     );
   });
 });

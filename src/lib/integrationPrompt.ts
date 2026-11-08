@@ -1,3 +1,5 @@
+import { TRACKING_SCRIPT_PATH } from "@/lib/trackingEndpoints";
+
 /**
  * The text behind "Copy AI prompt", one per snippet.
  *
@@ -8,7 +10,7 @@
  * as an instruction to that assistant rather than as a note to a human.
  */
 export function trackingScriptTag(origin: string): string {
-  return `<script src="${origin}/track.js" referrerpolicy="no-referrer" async></script>`;
+  return `<script src="${origin}${TRACKING_SCRIPT_PATH}" referrerpolicy="no-referrer" async></script>`;
 }
 
 export function trackingScriptPrompt(input: {

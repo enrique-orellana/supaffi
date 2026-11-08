@@ -1,4 +1,5 @@
 import type { CheckResult } from "@/lib/checks/dns";
+import { TRACKING_SCRIPT_PATH } from "@/lib/trackingEndpoints";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -77,8 +78,11 @@ export async function scriptFound(
   }
 
   const escaped = trackingDomain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const scriptPaths = [TRACKING_SCRIPT_PATH, "/track.js"]
+    .map((path) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
   const tag = new RegExp(
-    `<script[^>]*src\\s*=\\s*["']https?://${escaped}/track\\.js["'][^>]*>`,
+    `<script[^>]*src\\s*=\\s*["']https?://${escaped}(?:${scriptPaths})["'][^>]*>`,
     "i",
   );
   return tag.test(html)

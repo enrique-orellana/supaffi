@@ -18,6 +18,17 @@
  */
 export const REFERRAL_COOKIE = "__supaffi_referral";
 
+/** First-party state used to reuse a browser's click when the page reloads. */
+export const REFERRAL_VISIT_COOKIE = "__supaffi_visit";
+
+/** Server idempotency window and the slightly shorter browser storage window. */
+export const REFERRAL_RELOAD_WINDOW_MS = 10 * 60 * 1000;
+export const REFERRAL_VISIT_WINDOW_MS = REFERRAL_RELOAD_WINDOW_MS - 60 * 1000;
+
+/** UUID v4 values are the browser-generated click idempotency keys. */
+export const REFERRAL_TOKEN_PATTERN =
+  "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
 /**
  * Key the token travels under in the Checkout Session's `metadata`.
  *
@@ -51,9 +62,6 @@ export const REFERRAL_CLIENT_REFERENCE_PREFIX = "supaffi_";
  * Query parameter carrying an Affiliate's referral code on their link, e.g.
  * `https://merchant.com/pricing?via=sarah`.
  *
- * `via` rather than `ref`: `ref` is already taken on most sites, by analytics
- * tools, generic referrer plumbing, and the merchant's own campaign tags, so
- * an affiliate link would collide with whatever is there. `via` is also what
- * Rewardful uses, which is the spelling affiliates already recognise.
+ * `via` is the public referral parameter used in affiliate links.
  */
 export const REFERRAL_QUERY_PARAM = "via";

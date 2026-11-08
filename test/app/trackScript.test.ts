@@ -5,10 +5,11 @@ import { NextRequest } from "next/server";
 import vm from "node:vm";
 
 import { db } from "@/lib/db";
-import { GET } from "@/app/track.js/route";
+import { GET } from "@/app/supaffi.js/route";
 import {
   REFERRAL_CLIENT_REFERENCE_PREFIX,
   REFERRAL_COOKIE,
+  REFERRAL_VISIT_COOKIE,
 } from "@/lib/referral";
 
 let hasDatabase = false;
@@ -48,7 +49,7 @@ async function seedMerchant(domain = DOMAIN) {
 
 function serve(host: string, headers: Record<string, string> = {}) {
   return GET(
-    new NextRequest("http://c0ffee1234ab:3000/track.js", {
+    new NextRequest("http://c0ffee1234ab:3000/supaffi.js", {
       headers: { host, ...headers },
     }),
   );
@@ -138,6 +139,7 @@ async function runOn(
   opts: {
     search?: string;
     cookie?: string;
+    generatedToken?: string;
     blockCookieWrites?: boolean;
     build?: (body: FakeEl) => void;
     consoleImpl?: { warn: (...args: unknown[]) => void };
@@ -161,7 +163,15 @@ async function runOn(
       return jar;
     },
     set cookie(v: string) {
-      if (!opts.blockCookieWrites) jar = v;
+      if (opts.blockCookieWrites) return;
+      const pair = v.split(";", 1)[0].trim();
+      const name = pair.slice(0, pair.indexOf("="));
+      jar = [
+        ...jar
+          .split("; ")
+          .filter((existing) => existing && !existing.startsWith(`${name}=`)),
+        pair,
+      ].join("; ");
     },
     addEventListener: (type: string, fn: (e: { target: FakeEl }) => void) =>
       listeners.push({ type, fn }),
@@ -185,6 +195,10 @@ async function runOn(
     TextDecoder,
     TextEncoder,
     Uint8Array,
+    crypto: {
+      randomUUID: () =>
+        opts.generatedToken ?? "11111111-1111-4111-8111-111111111111",
+    },
   };
   sandbox.location = {
     search: opts.search ?? "",
@@ -200,6 +214,9 @@ async function runOn(
     listeners.filter((l) => l.type === type).forEach((l) => l.fn({ target }));
   return {
     body,
+    get cookie() {
+      return jar;
+    },
     click: (target: FakeEl) => fire("click", target),
     // The visitor comes back to this page after following another affiliate
     // link elsewhere, which replaced the cookie.
@@ -258,6 +275,19 @@ function jsonResponse(
   };
 }
 
+function emptyResponse(status = 204): FakeResponse {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    body: null,
+    clone: () => emptyResponse(status),
+    json: async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    },
+  };
+}
+
 function streamedResponse(
   makeBody: () => ReadableStream<Uint8Array>,
   sourceHeaders: Record<string, string> = {
@@ -284,11 +314,12 @@ function streamedResponse(
 }
 
 const HELD = `${REFERRAL_COOKIE}=held_token`;
+const VISIT_COOKIE = REFERRAL_VISIT_COOKIE;
 const REF = REFERRAL_CLIENT_REFERENCE_PREFIX;
 const stripeLink = (href = "https://buy.stripe.com/test_abc") =>
   new FakeEl("a", { href });
 
-describe.skipIf(!hasDatabase)("track.js", () => {
+describe.skipIf(!hasDatabase)("tracking script", () => {
   beforeEach(clear);
   afterAll(clear);
 
@@ -300,7 +331,56 @@ describe.skipIf(!hasDatabase)("track.js", () => {
 
   it("sends back the token this browser already holds, so a reload keeps its click", async () => {
     const code = await script();
-    expect(code).toContain('"&token=" + encodeURIComponent(token)');
+    expect(code).toContain("var requestToken = candidateToken || token;");
+    expect(code).toContain('"&token=" + encodeURIComponent(requestToken)');
+  });
+
+  it("keeps the browser-generated token when the browser returns an empty 204", async () => {
+    const token = "11111111-1111-4111-8111-111111111111";
+    const requests: string[] = [];
+    const code = await script();
+    const first = await runOn(code, {
+      search: "?via=sarah",
+      cookie: HELD,
+      generatedToken: token,
+      fetchImpl: async (input) => {
+        requests.push(String(input));
+        return emptyResponse();
+      },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toContain(`token=${token}`);
+    expect(first.cookie).toContain(`${REFERRAL_COOKIE}=${token}`);
+    expect(first.cookie).toContain(`${VISIT_COOKIE}=`);
+
+    const reload = await runOn(code, {
+      search: "?via=sarah",
+      cookie: first.cookie,
+      generatedToken: "22222222-2222-4222-8222-222222222222",
+      fetchImpl: async (input) => {
+        requests.push(String(input));
+        return emptyResponse();
+      },
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toContain(`token=${token}`);
+    expect(reload.cookie).toContain(`${REFERRAL_COOKIE}=${token}`);
+  });
+
+  it("resolves the via referral query parameter", async () => {
+    let calls = 0;
+    await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      fetchImpl: async () => {
+        calls++;
+        return jsonResponse({ referralToken: "unexpected" });
+      },
+    });
+
+    expect(calls).toBe(1);
   });
 
   it("never sends SameSite=None, which would make the cookie cross-site", async () => {
@@ -466,7 +546,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     );
   });
 
-  it("tags on a page without ?via= from the held cookie", async () => {
+  it("tags on a page without an affiliate parameter from the held cookie", async () => {
     const link = stripeLink();
     await runOn(await script(), {
       cookie: `a=1; ${HELD}`,
@@ -608,7 +688,7 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     );
   });
 
-  it("still follows a genuinely newer cookie after a ?via= click", async () => {
+  it("still follows a genuinely newer cookie after an affiliate click", async () => {
     const link = stripeLink();
     const { click, setCookie } = await runOn(await script(), {
       search: "?via=sarah",

@@ -4,13 +4,16 @@ import {
   REFERRAL_CLIENT_REFERENCE_PREFIX,
   REFERRAL_COOKIE,
   REFERRAL_QUERY_PARAM,
+  REFERRAL_TOKEN_PATTERN,
+  REFERRAL_VISIT_COOKIE,
+  REFERRAL_VISIT_WINDOW_MS,
 } from "@/lib/referral";
 import { originFor } from "@/lib/url";
 import { listPaymentProviderAdapters } from "@/lib/payments/registry";
 import { TRACKING_ENDPOINTS } from "@/lib/trackingEndpoints";
 
-// Served at /track.js on the Merchant's own Supaffi domain, embedded on
-// the Merchant's actual site with a plain <script src="..."> tag — a
+// Served at /supaffi.js (and legacy /track.js) on the Merchant's Supaffi
+// domain, embedded on the Merchant's actual site with a plain script tag — a
 // third-party script like Google Analytics or Meta Pixel (see CONTEXT.md:
 // cookie consent is the Merchant's responsibility, same as any other
 // third-party script, not something Supaffi builds a consent API for).
@@ -46,7 +49,7 @@ export async function GET(req: NextRequest) {
         link.legacyQueryParamAliases.map((name) => name.toLowerCase()),
       ),
     ),
-  ];
+  ].filter((name) => name !== REFERRAL_QUERY_PARAM.toLowerCase());
   const trackingOrigin = originFor(merchant.domain);
   const referralResolutionUrl = JSON.stringify(
     `${trackingOrigin}${TRACKING_ENDPOINTS.referralResolution}?`,
@@ -76,7 +79,7 @@ export async function GET(req: NextRequest) {
   var legacyNames = new Set(${legacyParams});
   params.forEach(function (value, parameter) {
     var normalizedParameter = parameter.toLowerCase();
-    if (legacyNames.has(normalizedParameter) && value) {
+    if (normalizedParameter !== ${JSON.stringify(REFERRAL_QUERY_PARAM.toLowerCase())} && legacyNames.has(normalizedParameter) && value) {
       attributionParams.append(normalizedParameter, value);
     }
   });
@@ -86,12 +89,79 @@ export async function GET(req: NextRequest) {
   // rather than starting a new referral, and re-read later so a newer
   // affiliate click is picked up.
   function readHeld() {
-    var held = document.cookie.split("; ").filter(function (c) {
+    var held = document.cookie.split(/;\\s*/).filter(function (c) {
       return c.indexOf(${JSON.stringify(`${REFERRAL_COOKIE}=`)}) === 0;
     })[0];
     return held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
   }
   var token = readHeld();
+
+  // Persist an idempotency token before the request leaves the browser. If a
+  // reload, privacy filter, or proxy hides the response body, this browser can
+  // still ask Supaffi to reuse the same Click instead of creating another.
+  var visitCookieName = ${JSON.stringify(REFERRAL_VISIT_COOKIE)};
+  var visitWindowMs = ${REFERRAL_VISIT_WINDOW_MS};
+  var referralTokenPattern = new RegExp(${JSON.stringify(REFERRAL_TOKEN_PATTERN)}, "i");
+  function readCookie(name) {
+    var entry = document.cookie.split(/;\\s*/).filter(function (c) {
+      return c.indexOf(name + "=") === 0;
+    })[0];
+    if (!entry) return "";
+    try { return decodeURIComponent(entry.slice(name.length + 1)); } catch (e) { return ""; }
+  }
+  function writeCookie(name, value, maxAge) {
+    document.cookie = name + "=" + encodeURIComponent(value) +
+      "; path=/; max-age=" + maxAge + "; SameSite=Lax" +
+      (window.location.protocol === "https:" ? "; Secure" : "");
+  }
+  function createVisitToken() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      if (!window.crypto || typeof window.crypto.getRandomValues !== "function") return "";
+      var bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 15) | 64;
+      bytes[8] = (bytes[8] & 63) | 128;
+      var hex = Array.prototype.map.call(bytes, function (byte) {
+        return byte.toString(16).padStart(2, "0");
+      }).join("");
+      return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
+    } catch (e) {
+      return "";
+    }
+  }
+  var visitKey = attributionParams.toString();
+  function getVisitToken(key) {
+    if (!key) return "";
+    var now = Date.now();
+    function parseVisit(value) {
+      try {
+        var parsed = JSON.parse(value);
+        if (parsed && parsed.key === key && typeof parsed.token === "string" &&
+            referralTokenPattern.test(parsed.token) &&
+            typeof parsed.createdAt === "number" && now >= parsed.createdAt && now - parsed.createdAt < visitWindowMs) {
+          return parsed;
+        }
+      } catch (e) {}
+      return null;
+    }
+    var saved = [parseVisit(readCookie(visitCookieName))];
+    try { saved.push(parseVisit(window.localStorage.getItem(visitCookieName) || "")); } catch (e) {}
+    saved = saved.filter(Boolean).sort(function (a, b) { return b.createdAt - a.createdAt; });
+    if (saved.length) return saved[0].token;
+    var fresh = createVisitToken();
+    if (fresh) saveVisitToken(key, fresh);
+    return fresh;
+  }
+  var candidateToken = getVisitToken(visitKey);
+  function saveVisitToken(key, value) {
+    if (!key || !value) return;
+    var state = JSON.stringify({ key: key, token: value, createdAt: Date.now() });
+    writeCookie(visitCookieName, state, Math.floor(visitWindowMs / 1000));
+    try { window.localStorage.setItem(visitCookieName, state); } catch (e) {}
+  }
   // The cookie value last seen or written by this script. A re-read only moves
   // the links when the cookie has changed since, so a fresh token whose cookie
   // write was blocked (or shadowed by a same-named cookie) is not undone by
@@ -466,15 +536,29 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Without ?via= the held token is all there is. With it, the fresh token
-  // replaces the held one, so links are tagged once it has arrived.
+  // Without ?via= the held token is all there is. With it, a stable
+  // browser token is saved before resolving so reloads reuse the same Click.
   if (!attributionParams.toString()) return run(token);
 
-  fetch(${referralResolutionUrl} + attributionParams.toString() + (token ? "&token=" + encodeURIComponent(token) : ""))
-    .then(function (res) { return res.ok ? res.json() : null; })
+  var requestToken = candidateToken || token;
+  fetch(${referralResolutionUrl} + attributionParams.toString() + (requestToken ? "&token=" + encodeURIComponent(requestToken) : ""))
+    .then(function (res) {
+      if (!res.ok) return null;
+      if (res.status === 204) return candidateToken ? { referralToken: candidateToken } : null;
+      return res.json().then(function (data) {
+        return data && data.referralToken ? data : (candidateToken ? { referralToken: candidateToken } : null);
+      }, function () {
+        return candidateToken ? { referralToken: candidateToken } : null;
+      });
+    })
     .catch(function () { return null; })
     .then(function (data) {
       if (!data || !data.referralToken) return run(token);
+      // Keep the original visit start time when the server returns the same
+      // token. Repeated refreshes must not extend one click forever.
+      if (data.referralToken !== candidateToken) {
+        saveVisitToken(visitKey, data.referralToken);
+      }
       window.supaffi = window.supaffi || {};
       window.supaffi.referralToken = data.referralToken;
       // A generous fixed client-side lifetime, just so the browser doesn't
@@ -486,11 +570,7 @@ export async function GET(req: NextRequest) {
       // by the Merchant's own checkout code on their own domain. Secure is
       // added only over HTTPS, because a Secure cookie on a plain-HTTP dev
       // site is silently dropped and tracking would fail with no error.
-      document.cookie =
-        ${JSON.stringify(`${REFERRAL_COOKIE}=`)} + data.referralToken +
-        "; path=/; max-age=" + (60 * 60 * 24 * 90) +
-        "; SameSite=Lax" +
-        (window.location.protocol === "https:" ? "; Secure" : "");
+       writeCookie(${JSON.stringify(REFERRAL_COOKIE)}, data.referralToken, 60 * 60 * 24 * 90);
       seen = readHeld();
       run(data.referralToken);
     });

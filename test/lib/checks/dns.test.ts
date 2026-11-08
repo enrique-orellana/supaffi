@@ -246,7 +246,7 @@ describe("httpsReachable", () => {
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://affiliates.instantgradient.com/track.js",
+      "https://affiliates.instantgradient.com/supaffi.js",
       expect.anything(),
     );
   });

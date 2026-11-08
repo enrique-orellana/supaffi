@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import {
+  REFERRAL_QUERY_PARAM,
+  REFERRAL_RELOAD_WINDOW_MS,
+  REFERRAL_TOKEN_PATTERN,
+} from "@/lib/referral";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
+import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 import { isClickLimited, rememberClick } from "@/lib/trackThrottle";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
-/** How long a browser's own token counts as the same visit. */
-const RELOAD_WINDOW_MS = 10 * 60 * 1000;
+const referralTokenPattern = new RegExp(REFERRAL_TOKEN_PATTERN, "i");
 
 // Called cross-origin, from the Merchant's own site (wherever the tracking
 // script is embedded), not from this Merchant's own domain — so this is
@@ -168,12 +172,12 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
-  // A reload sends back the token this browser was just given, and keeps that
-  // Click rather than writing another. Only the browser's own token is trusted
-  // for this, never the address, which many customers can share. A later visit
-  // is a new click: it restarts the attribution window and, after a purchase,
-  // starts a new referral, the same as it always has.
+  // The browser creates and stores its own token before sending this request.
+  // That makes the request idempotent even if a browser, proxy, or filter drops
+  // the JSON body: a reload still sends the same token and finds the same Click.
+  // We never deduplicate by IP, which many customers can share.
   const heldToken = req.nextUrl.searchParams.get("token");
+  let newBrowserToken: string | null = null;
   if (heldToken) {
     const held = await db.click.findUnique({
       where: { referralToken: heldToken },
@@ -183,9 +187,12 @@ export async function GET(req: NextRequest) {
       held &&
       held.linkId === link.id &&
       held.fraudConfirmedAt === null &&
-      Date.now() - held.createdAt.getTime() < RELOAD_WINDOW_MS
+      Date.now() - held.createdAt.getTime() < REFERRAL_RELOAD_WINDOW_MS
     ) {
       return NextResponse.json({ referralToken: heldToken }, { headers: CORS });
+    }
+    if (!held && referralTokenPattern.test(heldToken)) {
+      newBrowserToken = heldToken;
     }
   }
 
@@ -200,7 +207,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 429, headers: CORS });
   }
 
-  const referralToken = randomUUID();
+  const referralToken = newBrowserToken ?? randomUUID();
   const createdAt = new Date();
   const attributionWindowDays =
     link.attributionWindowDaysOverride ??
@@ -224,21 +231,45 @@ export async function GET(req: NextRequest) {
     createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000,
   );
 
+  try {
+    await db.click.create({
+      data: {
+        merchantId: merchant.id,
+        affiliateId: link.affiliate.id,
+        linkId: link.id,
+        referralToken,
+        expiresAt,
+        commissionRateSnapshot,
+        commissionDurationTypeSnapshot,
+        commissionDurationMonthsSnapshot,
+        holdingPeriodDaysSnapshot,
+        createdAt,
+      },
+    });
+  } catch (error) {
+    // Two tabs can start the same visit at once. The unique referral token is
+    // the database idempotency key, so the second insert returns the first row.
+    if (newBrowserToken && isUniqueConstraintErrorOn(error, "referralToken")) {
+      const winner = await db.click.findUnique({
+        where: { referralToken: newBrowserToken },
+        select: { linkId: true, createdAt: true, fraudConfirmedAt: true },
+      });
+      if (
+        winner &&
+        winner.linkId === link.id &&
+        winner.fraudConfirmedAt === null &&
+        Date.now() - winner.createdAt.getTime() < REFERRAL_RELOAD_WINDOW_MS
+      ) {
+        return NextResponse.json(
+          { referralToken: newBrowserToken },
+          { headers: CORS },
+        );
+      }
+    }
+    throw error;
+  }
+
   if (throttled) rememberClick(throttled);
-  await db.click.create({
-    data: {
-      merchantId: merchant.id,
-      affiliateId: link.affiliate.id,
-      linkId: link.id,
-      referralToken,
-      expiresAt,
-      commissionRateSnapshot,
-      commissionDurationTypeSnapshot,
-      commissionDurationMonthsSnapshot,
-      holdingPeriodDaysSnapshot,
-      createdAt,
-    },
-  });
 
   return NextResponse.json({ referralToken }, { headers: CORS });
 }

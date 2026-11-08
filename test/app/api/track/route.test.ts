@@ -134,6 +134,43 @@ describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 
+  it("uses a browser-generated token as an idempotency key across reloads", async () => {
+    const a = await seedMerchantWithAffiliate("reload");
+    const token = crypto.randomUUID();
+    const url = `${a.link.code}&token=${token}`;
+
+    const first = await GET(requestFor(a.merchant.domain, url));
+    expect(first.status).toBe(200);
+    expect((await first.json()).referralToken).toBe(token);
+
+    const reload = await GET(requestFor(a.merchant.domain, url));
+    expect(reload.status).toBe(200);
+    expect((await reload.json()).referralToken).toBe(token);
+    expect(await db.click.count()).toBe(1);
+  });
+
+  it("accepts via for imported legacy links", async () => {
+    const a = await seedMerchantWithAffiliate("via-legacy");
+    await db.affiliateLink.update({
+      where: { id: a.link.id },
+      data: {
+        importSourceIdentity: "legacy-import-via-legacy",
+        legacyAliases: ["older-track-route-code"],
+        legacyQueryParamAliases: ["via"],
+      },
+    });
+
+    const response = await GET(
+      new NextRequest(
+        `http://${a.merchant.domain}/api/resolve?via=older-track-route-code`,
+        { headers: { host: a.merchant.domain } },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await db.click.count()).toBe(1);
+  });
+
   it("snapshots the code's commission terms on each new click", async () => {
     const a = await seedMerchantWithAffiliate("terms");
     await db.affiliateLink.update({

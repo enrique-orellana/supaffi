@@ -1,5 +1,6 @@
 import { Resolver, resolve4, resolveNs } from "node:dns/promises";
 import { connect, type PeerCertificate } from "node:tls";
+import { TRACKING_SCRIPT_PATH } from "@/lib/trackingEndpoints";
 
 export type CheckResult = { ok: boolean; detail: string };
 
@@ -280,11 +281,14 @@ export async function httpsReachable(
   }
 
   try {
-    const response = await fetchFn(`https://${hostname}/track.js`, {
-      method: "HEAD",
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
+    const response = await fetchFn(
+      `https://${hostname}${TRACKING_SCRIPT_PATH}`,
+      {
+        method: "HEAD",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      },
+    );
     if (response.status >= 500) {
       return {
         reachable: {

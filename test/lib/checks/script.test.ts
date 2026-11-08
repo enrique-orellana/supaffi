@@ -22,7 +22,7 @@ describe("scriptFound", () => {
       "https://instantgradient.com",
       "affiliates.instantgradient.com",
       page(
-        `<html><head><script src="https://affiliates.instantgradient.com/track.js" async></script></head></html>`,
+        `<html><head><script src="https://affiliates.instantgradient.com/supaffi.js" async></script></head></html>`,
       ),
     );
     expect(result.ok).toBe(true);
@@ -33,7 +33,18 @@ describe("scriptFound", () => {
       "https://instantgradient.com",
       "affiliates.instantgradient.com",
       page(
-        `<script defer data-x='1' src='https://affiliates.instantgradient.com/track.js'></script>`,
+        `<script defer data-x='1' src='https://affiliates.instantgradient.com/supaffi.js'></script>`,
+      ),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("continues to recognize the previous script URL", async () => {
+    const result = await scriptFound(
+      "https://instantgradient.com",
+      "affiliates.instantgradient.com",
+      page(
+        `<script src="https://affiliates.instantgradient.com/track.js"></script>`,
       ),
     );
     expect(result.ok).toBe(true);
@@ -43,7 +54,7 @@ describe("scriptFound", () => {
     const result = await scriptFound(
       "https://instantgradient.com",
       "affiliates.instantgradient.com",
-      page(`<script src="https://affiliates.mokkit.co/track.js"></script>`),
+      page(`<script src="https://affiliates.mokkit.co/supaffi.js"></script>`),
     );
     expect(result.ok).toBe(false);
     expect(result.detail).toMatch(/not found/i);
@@ -72,7 +83,7 @@ describe("scriptFound", () => {
 
   it("caps the read at 2 MB while streaming, not after", async () => {
     const pad = "x".repeat(512 * 1024); // 512 KB
-    const tag = `<script src="https://affiliates.instantgradient.com/track.js"></script>`;
+    const tag = `<script src="https://affiliates.instantgradient.com/supaffi.js"></script>`;
 
     // Four 512 KB chunks land the tag chunk right at the 2 MB mark: a real
     // cap stops reading before it, a slice-after-the-fact would still see it.

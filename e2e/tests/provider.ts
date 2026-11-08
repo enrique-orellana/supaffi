@@ -72,7 +72,7 @@ export async function sale(
     : "https://shop.test/";
   await buyer.goto(landing);
   if (input.via) {
-    // track.js has asked the app for a token and stored it first-party.
+    // Supaffi's script has asked the app for a token and stored it first-party.
     await expect
       .poll(async () =>
         (await buyer.context().cookies("https://shop.test")).some(

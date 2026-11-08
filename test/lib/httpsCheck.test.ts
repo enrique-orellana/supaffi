@@ -63,7 +63,7 @@ describe("httpsReachable", () => {
         reason: "ENOTFOUND",
       }),
     );
-    expect(asked).toBe("https://affiliates.example.com/track.js");
+    expect(asked).toBe("https://affiliates.example.com/supaffi.js");
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
   });
