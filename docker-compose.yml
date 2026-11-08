@@ -15,6 +15,7 @@ services:
       AUTH_SECRET: ${AUTH_SECRET} # signs Owner session JWTs (Auth.js)
       AUTH_TRUST_HOST: "true" # Instance is served on many Merchant domains (ADR 0006), so there is no single AUTH_URL to pin; Caddy's on_demand_tls ask endpoint already gates which domains reach the app
       SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # the domain this Instance's own dashboard is served on; a Merchant may not claim it (src/lib/instance.ts)
+      SUPAFFI_WEBHOOK_BASE_URL: ${SUPAFFI_WEBHOOK_BASE_URL:-} # public HTTPS origin for payment callbacks when the admin dashboard is private
       SUPAFFI_HOST_IP: ${SUPAFFI_HOST_IP:-} # the address the startup banner tells the operator to open, when there is no domain
       SUPAFFI_DASHBOARD_PORT: ${SUPAFFI_DASHBOARD_PORT:-3443} # where caddy-dashboard serves it
       SUPAFFI_UPDATE_CHECK: ${SUPAFFI_UPDATE_CHECK:-} # off to stop the dashboard reading GitHub's releases page

@@ -114,6 +114,7 @@ Both proxy modes and how HTTPS works are covered in [Reverse proxy and HTTPS](ht
 | Variable | Effect |
 | --- | --- |
 | `SUPAFFI_DOMAIN=supaffi.example.com` | Serves the owner dashboard on a domain. Optional, the address keeps working. |
+| `SUPAFFI_WEBHOOK_BASE_URL=https://hooks.example.com` | Public HTTPS origin for payment callbacks when the owner dashboard is private. Optional; defaults to `SUPAFFI_DOMAIN`. |
 | `SUPAFFI_UPDATE_CHECK=off` | Stops the dashboard checking GitHub for new releases. |
 | `SUPAFFI_BUILD_FROM_SOURCE=yes` | Builds the image on the server instead of pulling it. Needs about 2 GB of RAM. |
 | `SUPAFFI_VERSION=x.y.z` | Installs that exact version. |

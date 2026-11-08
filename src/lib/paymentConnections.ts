@@ -17,6 +17,24 @@ function requiredCredential(value: string, label: string): string {
 
 /** The public callback URL for a connection's opaque, stable route ID. */
 export function nowPaymentsCallbackUrl(webhookRouteId: string): string | null {
+  const configuredBaseUrl = process.env.SUPAFFI_WEBHOOK_BASE_URL?.trim();
+  if (configuredBaseUrl) {
+    if (!URL.canParse(configuredBaseUrl)) return null;
+    const url = new URL(configuredBaseUrl);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+
+    return `${url.origin}/api/webhooks/nowpayments/${encodeURIComponent(webhookRouteId)}`;
+  }
+
   const domain = instanceDomain();
   if (!domain) return null;
   return `https://${domain}/api/webhooks/nowpayments/${encodeURIComponent(webhookRouteId)}`;

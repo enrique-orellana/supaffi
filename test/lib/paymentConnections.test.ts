@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { tx, transaction, queryRaw, upsert, findFirst, encrypt } = vi.hoisted(
   () => {
@@ -30,8 +30,11 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/crypto", () => ({ encrypt, decrypt: (value: string) => value }));
 vi.mock("@/lib/instance", () => ({ instanceDomain: () => "supaffi.example" }));
 
-const { connectNowPayments, getNowPaymentsConnectionStatus } =
-  await import("@/lib/paymentConnections");
+const {
+  connectNowPayments,
+  getNowPaymentsConnectionStatus,
+  nowPaymentsCallbackUrl,
+} = await import("@/lib/paymentConnections");
 
 describe("NOWPayments connection credentials", () => {
   beforeEach(() => {
@@ -39,6 +42,24 @@ describe("NOWPayments connection credentials", () => {
     transaction.mockImplementation(async (callback) => callback(tx));
     queryRaw.mockResolvedValue([{ id: "merchant-1" }]);
     upsert.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses a public webhook origin independently of the admin domain", () => {
+    vi.stubEnv("SUPAFFI_WEBHOOK_BASE_URL", "https://hooks.example.test/");
+
+    expect(nowPaymentsCallbackUrl("stable-route-id")).toBe(
+      "https://hooks.example.test/api/webhooks/nowpayments/stable-route-id",
+    );
+  });
+
+  it("rejects an insecure configured webhook origin", () => {
+    vi.stubEnv("SUPAFFI_WEBHOOK_BASE_URL", "http://hooks.example.test");
+
+    expect(nowPaymentsCallbackUrl("stable-route-id")).toBeNull();
   });
 
   it("saves only the IPN secret and clears any stored API key", async () => {

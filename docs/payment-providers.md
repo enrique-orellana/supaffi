@@ -32,7 +32,7 @@ The browser registers only which referral belongs to a newly created hosted invo
 4. Route NOWPayments IPNs through the relay. Change the existing callback destination setting to the relay URL, or place the relay in front of the existing callback address. This is callback routing configuration; it does not require a change to checkout or webhook code.
 5. The relay forwards the original request body and `x-nowpayments-sig` unchanged to both destinations. Supaffi verifies the provider's HMAC-SHA-512 with the saved IPN secret; the merchant's existing webhook continues its own verification and order handling.
 
-The Supaffi receiver URL uses the instance's public `SUPAFFI_DOMAIN` and has this form:
+The Supaffi receiver URL uses `SUPAFFI_WEBHOOK_BASE_URL` when configured, otherwise the public `SUPAFFI_DOMAIN`, and has this form:
 
 ```text
 https://supaffi.example.test/api/webhooks/nowpayments/<opaque-route-id>
