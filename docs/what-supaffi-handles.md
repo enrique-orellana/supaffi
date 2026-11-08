@@ -17,7 +17,7 @@ A SaaS founder or small team that:
 
 - One install runs several products, each with its own affiliate domain, payment connections, program and affiliates.
 - Stripe is connected with a restricted key, or a full secret key if you prefer. Supaffi creates the Stripe webhook itself and subscribes to exactly the events it needs.
-- NOWPayments can be connected with its IPN secret. The merchant keeps its existing checkout and webhook. A tracking script associates a supported hosted invoice with the referral before payment, and a merchant-owned relay copies the original signed IPN to both the existing webhook and Supaffi. No merchant backend code changes are required. See [Payment providers](payment-providers.md).
+- NOWPayments can be connected with its API key and IPN secret. The merchant keeps its existing checkout and webhook. A tracking script associates a supported hosted invoice with the referral before payment, and a merchant-owned relay copies the original signed IPN to both the existing webhook and Supaffi. Supaffi verifies the signature and confirms payment facts with NOWPayments' API; no account password or merchant backend access is required. See [Payment providers](payment-providers.md).
 - Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site and neither site links to the other's Payment Links, buy buttons or pricing tables.
 
 ### Tracking a referral
@@ -31,7 +31,7 @@ A SaaS founder or small team that:
 
 - A one-time purchase through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
-- A NOWPayments one-time payment reported by a verified `finished` notification when its invoice reference matches the referral recorded by the tracking script.
+- A NOWPayments one-time payment confirmed as `finished` by the API after a verified notification, when its invoice reference matches the referral recorded by the tracking script.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
 - The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
@@ -41,10 +41,10 @@ A SaaS founder or small team that:
 
 - A percentage set per program, with an optional custom rate per affiliate.
 - Paid once, for a set number of months from the first payment, or for as long as the subscription pays.
-- For Stripe, on the price after discounts, before tax and shipping. For NOWPayments, on the sale amount and currency in its verified notification.
-- For Stripe, only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing. NOWPayments uses the sale amount reported by the provider.
+- For Stripe, on the price after discounts, before tax and shipping. For NOWPayments, on the sale amount and currency confirmed by its API.
+- For Stripe, only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing. NOWPayments uses the sale amount confirmed by its API.
 - For Stripe subscriptions, only on the subscription the affiliate referred. One-off charges added to its invoices, manual invoices, and a switch to another Stripe product earn nothing.
-- A Stripe invoice marked as paid outside Stripe earns nothing for the part paid outside Stripe. A NOWPayments payment must arrive through a verified provider notification; the browser only associates the invoice with a referral and never reports payment success.
+- A Stripe invoice marked as paid outside Stripe earns nothing for the part paid outside Stripe. A NOWPayments payment must arrive through a verified provider notification and be confirmed by NOWPayments' API; the browser only associates the invoice with a referral and never reports payment success.
 - In the currency of the sale. Amounts in different currencies are never converted or added together. Very large amounts, like the Vietnamese dong, are supported.
 - A Stripe payment can be excluded from commissions by setting `supaffi` to `false`, in lowercase, in the metadata of the invoice, subscription or customer. Set it before the customer pays, for example in `subscription_data.metadata` when you create the Checkout Session. A flag added after payment excludes later renewals only. A one-time purchase can only be excluded through its customer or its post-purchase invoice.
 
