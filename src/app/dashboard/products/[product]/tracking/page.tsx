@@ -5,7 +5,10 @@ import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { clickedRecently, getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
-import { trackingScriptPrompt } from "@/lib/integrationPrompt";
+import {
+  trackingScriptPrompt,
+  trackingScriptTag,
+} from "@/lib/integrationPrompt";
 import { originFor } from "@/lib/url";
 import { TrackingStatus } from "./TrackingStatus";
 import {
@@ -41,7 +44,7 @@ export default async function TrackingPage({
 
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
-  const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
+  const scriptTag = trackingScriptTag(originFor(merchant.domain));
 
   // A flag, not a value: anything but the one string it is set to reads as
   // off, so a URL somebody made up cannot ask for anything else.

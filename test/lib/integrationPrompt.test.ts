@@ -1,15 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
+import {
+  trackingScriptPrompt,
+  trackingScriptTag,
+  checkoutPrompt,
+} from "@/lib/integrationPrompt";
+
+describe("trackingScriptTag", () => {
+  it("suppresses the merchant page referrer on the script request", () => {
+    expect(trackingScriptTag("https://affiliates.instantgradient.com")).toBe(
+      '<script src="https://affiliates.instantgradient.com/track.js" referrerpolicy="no-referrer" async></script>',
+    );
+  });
+});
 
 describe("trackingScriptPrompt", () => {
   it("carries the snippet and the site it belongs on", () => {
+    const scriptTag = trackingScriptTag(
+      "https://affiliates.instantgradient.com",
+    );
     const prompt = trackingScriptPrompt({
       websiteUrl: "https://instantgradient.com",
-      scriptTag:
-        '<script src="https://affiliates.instantgradient.com/track.js" async></script>',
+      scriptTag,
     });
     expect(prompt).toContain("https://instantgradient.com");
-    expect(prompt).toContain("track.js");
+    expect(prompt).toContain(scriptTag);
+    expect(prompt).toContain('referrerpolicy="no-referrer"');
     // Written at an assistant, not at a colleague.
     expect(prompt).not.toMatch(/developer/i);
   });

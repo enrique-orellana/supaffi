@@ -7,6 +7,10 @@
  * assistant. So the prompt sits on the code it describes, and it is written
  * as an instruction to that assistant rather than as a note to a human.
  */
+export function trackingScriptTag(origin: string): string {
+  return `<script src="${origin}/track.js" referrerpolicy="no-referrer" async></script>`;
+}
+
 export function trackingScriptPrompt(input: {
   websiteUrl: string;
   scriptTag: string;

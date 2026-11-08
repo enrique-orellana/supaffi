@@ -18,6 +18,7 @@ import {
   TaskCardSection,
 } from "@/components/onboarding/TaskCard";
 import { FinishedModal } from "@/components/onboarding/FinishedModal";
+import { trackingScriptTag } from "@/lib/integrationPrompt";
 import {
   CommissionTable,
   type LedgerRow,
@@ -52,7 +53,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const SCRIPT = `<script src="https://affiliates.instantgradient.com/track.js" async></script>`;
+const SCRIPT = trackingScriptTag("https://affiliates.instantgradient.com");
 const CHECKOUT = `const referralToken = cookies.get("supaffi_ref");
 
 await stripe.checkout.sessions.create({

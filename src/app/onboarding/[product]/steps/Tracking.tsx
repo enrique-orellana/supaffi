@@ -4,7 +4,10 @@ import { checkState, trackingPending } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
-import { trackingScriptPrompt } from "@/lib/integrationPrompt";
+import {
+  trackingScriptPrompt,
+  trackingScriptTag,
+} from "@/lib/integrationPrompt";
 import { displayStep, siteHost } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { FinishedModal } from "@/components/onboarding/FinishedModal";
@@ -23,7 +26,7 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
   );
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
-  const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
+  const scriptTag = trackingScriptTag(originFor(merchant.domain));
   const site = siteHost(merchant.websiteUrl);
   const found = checks.tracking.script.ok;
   // Finishing happens on this screen, so the reward does too. The step stays

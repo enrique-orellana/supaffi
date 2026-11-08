@@ -16,7 +16,7 @@ const REFERRAL_METADATA_KEY = "supaffi_referral";
 
 const page = (body) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Shop</title>
-<script src="${TRACK_ORIGIN}/track.js" async></script>
+<script src="${TRACK_ORIGIN}/track.js" referrerpolicy="no-referrer" async></script>
 </head><body>${body}</body></html>`;
 
 const home = page(`<h1>Shop</h1>
