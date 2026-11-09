@@ -1,11 +1,24 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAffiliate } from "@/lib/affiliateAuth";
-import { AFFILIATE_COMMISSION_STATUSES } from "@/lib/commissionStatus";
+import { getAffiliateDisplaySettings } from "@/lib/affiliateDisplaySettings";
+import { formatDate, formatMoney } from "@/lib/format";
+import {
+  convertCurrencyTotals,
+  formatCurrencyAtMinorUnitPrecision,
+  formatReferenceRateLabel,
+  getEcbReferenceRates,
+} from "@/lib/currency";
+import {
+  AFFILIATE_COMMISSION_STATUSES,
+  COMMISSION_STATUS,
+} from "@/lib/commissionStatus";
 import {
   listAffiliateCommissions,
   getAffiliateCommissionTotals,
+  getAffiliateCommissionDetail,
   type AffiliateCommissionStatus,
+  type AffiliateCommissionDetail,
 } from "@/lib/affiliate";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +29,7 @@ import {
   toLedgerRow,
   type LedgerRow,
 } from "./CommissionLedger";
+import { AffiliateCommissionSheet } from "./AffiliateCommissionSheet";
 
 /**
  * Every commission, and why each one is the amount it is.
@@ -43,24 +57,100 @@ function sanitizePage(raw: string | undefined): number {
   return Math.min(n, 1_000_000);
 }
 
+function detailStateLabel(detail: AffiliateCommissionDetail): string {
+  switch (detail.status) {
+    case COMMISSION_STATUS.PENDING:
+      return detail.payableAt.getTime() <= Date.now()
+        ? "Checking availability"
+        : `Available ${formatDate(detail.payableAt)}`;
+    case COMMISSION_STATUS.PAYABLE:
+      return "Ready to pay";
+    case COMMISSION_STATUS.PAID:
+      return detail.paidAt ? `Paid ${formatDate(detail.paidAt)}` : "Paid";
+    case COMMISSION_STATUS.VOIDED:
+      return "Voided";
+  }
+}
+
 export default async function AffiliateCommissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    page?: string;
+    commission?: string;
+  }>;
 }) {
-  const { affiliateId } = await requireAffiliate();
+  const { affiliateId, merchant } = await requireAffiliate();
   const query = await searchParams;
   const status = parseStatus(query.status);
   const page = sanitizePage(query.page);
 
-  const [{ rows, total }, totals] = await Promise.all([
-    listAffiliateCommissions(affiliateId, {
-      page,
-      pageSize: PAGE_SIZE,
-      status,
-    }),
-    getAffiliateCommissionTotals(affiliateId),
-  ]);
+  const [{ rows: sourceRows, total }, totals, displaySettings, rates, detail] =
+    await Promise.all([
+      listAffiliateCommissions(affiliateId, {
+        page,
+        pageSize: PAGE_SIZE,
+        status,
+      }),
+      getAffiliateCommissionTotals(affiliateId),
+      getAffiliateDisplaySettings(affiliateId, merchant.id),
+      getEcbReferenceRates(),
+      query.commission
+        ? getAffiliateCommissionDetail(
+            affiliateId,
+            merchant.id,
+            query.commission,
+          )
+        : Promise.resolve(null),
+    ]);
+  const currency = displaySettings?.effectiveCurrency ?? "eur";
+  const rows = sourceRows.map((row) => {
+    const converted = convertCurrencyTotals(
+      [{ currency: row.currency, total: row.amount }],
+      currency,
+      rates,
+    );
+    const convertedSale =
+      row.saleAmount === null
+        ? null
+        : convertCurrencyTotals(
+            [{ currency: row.currency, total: row.saleAmount }],
+            currency,
+            rates,
+          );
+    return {
+      ...row,
+      convertedAmount:
+        converted.isEstimate && converted.total !== null
+          ? `≈ ${formatCurrencyAtMinorUnitPrecision(converted.total, currency)}`
+          : null,
+      convertedSaleAmount:
+        convertedSale?.isEstimate && convertedSale.total !== null
+          ? `≈ ${formatCurrencyAtMinorUnitPrecision(convertedSale.total, currency)}`
+          : null,
+      conversionUnavailable: converted.total === null,
+    };
+  });
+  const estimated = rows.some((row) => row.convertedAmount !== null);
+  const missingRates = [
+    ...new Set(
+      rows
+        .filter((row) => row.conversionUnavailable)
+        .map((row) => row.currency),
+    ),
+  ].sort();
+  const rateNote = [
+    `Dashboard currency: ${currency.toUpperCase()}`,
+    estimated && rates.rateDate
+      ? formatReferenceRateLabel(rates.rateDate)
+      : null,
+    missingRates.length
+      ? `No ECB rate for ${missingRates.join(", ")}; source amounts remain visible.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -68,7 +158,11 @@ export default async function AffiliateCommissionsPage({
   // thing, so paging through a filtered view does not silently drop it.
   function hrefWith(changes: Record<string, string | null>): string {
     const params = new URLSearchParams();
-    const current: Record<string, string | null> = { status, ...changes };
+    const current: Record<string, string | null> = {
+      status,
+      page: page > 1 ? String(page) : null,
+      ...changes,
+    };
     for (const [key, value] of Object.entries(current)) {
       if (value) params.set(key, value);
     }
@@ -101,7 +195,37 @@ export default async function AffiliateCommissionsPage({
     })),
   ];
 
-  const ledgerRows: LedgerRow[] = rows.map(toLedgerRow);
+  const ledgerRows: LedgerRow[] = rows.map((row) => ({
+    ...toLedgerRow(row),
+    href: hrefWith({ commission: row.id }),
+  }));
+
+  const detailView = detail
+    ? {
+        amount: `${formatMoney(detail.amount, detail.currency)} ${detail.currency.toUpperCase()}`,
+        saleAmount:
+          detail.saleAmount === null
+            ? null
+            : `${formatMoney(detail.saleAmount, detail.currency)} ${detail.currency.toUpperCase()}`,
+        grossAmount:
+          detail.grossAmount === null
+            ? null
+            : `${formatMoney(detail.grossAmount, detail.currency)} ${detail.currency.toUpperCase()}`,
+        status: detail.status,
+        stateLabel: detailStateLabel(detail),
+        createdLabel: formatDate(detail.createdAt),
+        payableLabel: formatDate(detail.payableAt),
+        paidLabel: detail.paidAt ? formatDate(detail.paidAt) : null,
+        voidedLabel: detail.voidedAt ? formatDate(detail.voidedAt) : null,
+        linkCode: detail.linkCode,
+        isAdjustment: detail.isAdjustment,
+        voidReason: detail.voidReason,
+        paymentProvider: detail.paymentProvider,
+      }
+    : null;
+
+  const unselected = hrefWith({ commission: null });
+  const listHref = `/affiliates/dashboard/commissions${unselected === "?" ? "" : unselected}`;
 
   const statusTabs = (
     <Tabs value={status ?? "all"}>
@@ -131,6 +255,7 @@ export default async function AffiliateCommissionsPage({
     <Page>
       <PageTitle
         title="Commissions"
+        subtitle={rateNote}
         actions={<div className="hidden md:block">{statusTabs}</div>}
       />
 
@@ -152,6 +277,10 @@ export default async function AffiliateCommissionsPage({
         total={total}
         hrefFor={(p) => hrefWith({ page: p > 1 ? String(p) : null })}
       />
+
+      {detailView && (
+        <AffiliateCommissionSheet commission={detailView} listHref={listHref} />
+      )}
     </Page>
   );
 }

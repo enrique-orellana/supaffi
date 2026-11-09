@@ -25,6 +25,18 @@ export const CHART_RANGES: { id: ChartRange; label: string }[] = [
 
 export const DEFAULT_RANGE: ChartRange = "30d";
 
+/**
+ * Change from one period to the previous one, as a percentage of the earlier
+ * value. A missing or non-positive baseline has no meaningful percentage.
+ */
+export function change(
+  current: number,
+  previous: number | null | undefined,
+): number | null {
+  if (previous === null || previous === undefined || previous <= 0) return null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
 export function isChartRange(value: unknown): value is ChartRange {
   return CHART_RANGES.some((range) => range.id === value);
 }

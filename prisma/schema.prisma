@@ -12,6 +12,8 @@ model Owner {
   id                String     @id @default(cuid())
   email             String     @unique
   passwordHash      String
+  /// The currency used to visualize owner dashboard totals. Recorded amounts keep their source currency.
+  displayCurrency   String   @default("eur") @db.VarChar(3)
   // Set on every password change. Owner sessions issued before it are
   // refused, the only way to end a JWT session with no adapter behind it.
   passwordChangedAt DateTime?
@@ -83,6 +85,8 @@ model Program {
   slug       String
 
   defaultCommissionRate    Decimal                @db.Decimal(5, 2) // percentage, e.g. 20.00
+  /// The default currency affiliates use to display dashboard amounts. Stored amounts remain unchanged.
+  currency                 String                 @default("eur") @db.VarChar(3)
   commissionDurationType   CommissionDurationType
   commissionDurationMonths Int? // only set when commissionDurationType = FIXED_MONTHS
   attributionWindowDays    Int                    @default(60)
@@ -117,6 +121,8 @@ model Affiliate {
   // Left null at signup: the session that signup starts is the one to keep.
   passwordChangedAt    DateTime?
   importSourceIdentity String? @unique
+  /// Null follows the current Program's currency; otherwise an affiliate-chosen dashboard display currency.
+  displayCurrency      String? @db.VarChar(3)
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 

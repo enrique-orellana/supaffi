@@ -1,13 +1,17 @@
 import type { CurrencyTotal } from "@/lib/analytics";
-import { currencyMinorUnitExponent } from "@/lib/currency";
+import {
+  formatCurrencyAmount,
+  formatCurrencyAtMinorUnitPrecision,
+  formatCurrencySymbol,
+} from "@/lib/currency";
 
 /**
  * Money formatting shared by every screen that prints an amount.
  *
- * Supaffi never converts across currencies (CONTEXT.md), so a total is
- * always a list, one entry per currency it was ever paid in. The first
- * currency is the headline figure; the rest become the hint line
- * underneath, rather than a second number competing for the same spot.
+ * This formatter handles one amount in one currency at a time. Affiliate
+ * dashboards may pass it a presentation-only conversion from `currency.ts`;
+ * commission and payout records continue to keep their original currency.
+ * The owner dashboard keeps multi-currency totals as one entry per currency.
  *
  * Amounts print with the currency's own symbol and thousands grouping,
  * the way a person writes them: $1,220.00, €60.00, £19.00. A currency the
@@ -15,37 +19,9 @@ import { currencyMinorUnitExponent } from "@/lib/currency";
  * rather than throwing.
  */
 
-const formatters = new Map<string, Intl.NumberFormat>();
-
-function formatterFor(
-  currency: string,
-  fractionDigits = 2,
-): Intl.NumberFormat | null {
-  const code = currency.toUpperCase();
-  const cacheKey = `${code}:${fractionDigits}`;
-  if (formatters.has(cacheKey)) return formatters.get(cacheKey)!;
-  try {
-    const formatter = new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: code,
-      currencyDisplay: "narrowSymbol",
-      minimumFractionDigits: fractionDigits,
-      maximumFractionDigits: fractionDigits,
-    });
-    formatters.set(cacheKey, formatter);
-    return formatter;
-  } catch {
-    return null;
-  }
-}
-
 /** One amount in one currency: "$1,220.00", "€60.00", "-£5.70". */
 export function formatMoney(amount: number | string, currency: string): string {
-  const value = typeof amount === "string" ? Number(amount) : amount;
-  const formatter = formatterFor(currency);
-  if (!formatter || Number.isNaN(value))
-    return `${amount} ${currency.toUpperCase()}`;
-  return formatter.format(value);
+  return formatCurrencyAmount(amount, currency);
 }
 
 /** One amount with the number of fraction digits used by its currency. */
@@ -53,21 +29,12 @@ export function formatMoneyAtCurrencyPrecision(
   amount: number | string,
   currency: string,
 ): string {
-  const value = typeof amount === "string" ? Number(amount) : amount;
-  const formatter = formatterFor(currency, currencyMinorUnitExponent(currency));
-  if (!formatter || Number.isNaN(value))
-    return `${amount} ${currency.toUpperCase()}`;
-  return formatter.format(value);
+  return formatCurrencyAtMinorUnitPrecision(amount, currency);
 }
 
 /** The symbol alone, for an axis or a column head: "$", "€", "CHF". */
 export function currencySymbol(currency: string): string {
-  const formatter = formatterFor(currency);
-  if (!formatter) return currency.toUpperCase();
-  return (
-    formatter.formatToParts(0).find((part) => part.type === "currency")
-      ?.value ?? currency.toUpperCase()
-  );
+  return formatCurrencySymbol(currency);
 }
 
 /**

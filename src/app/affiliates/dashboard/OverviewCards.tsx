@@ -2,22 +2,13 @@ import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { cn } from "@/lib/utils";
-import {
-  change,
-  earnedTrend,
-  rangeLabel,
-  type Bucket,
-  type ChartRange,
-  type CurrencyTotal,
-  type DayPoint,
-  type Period,
-} from "@/lib/analytics";
-import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
+import { change, rangeLabel } from "@/lib/analyticsShared";
+import type { Bucket, ChartRange, DayPoint } from "@/lib/analytics";
+import { formatCount } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ActivityChart } from "@/components/charts/ActivityChart";
 import { RangePicker } from "@/components/charts/RangePicker";
-import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
 import { CopyField } from "@/components/onboarding/CodeBlock";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -43,21 +34,27 @@ export type OverviewView = {
   referralUrl: string | null;
   /** What they earn under, as one line. See `termsLine`. */
   terms: string;
-  recent: AffiliateCommissionRow[];
+  recent: (AffiliateCommissionRow & {
+    convertedAmount: string | null;
+    conversionUnavailable: boolean;
+  })[];
   series: DayPoint[];
+  unconvertedByBucket: Record<string, readonly string[]>;
+  chartIsEstimate: boolean;
   bucket: Bucket;
-  /** The window's figures and the window before, for the tiles. */
-  current: Period;
-  previous: Period | null;
-  /** The one currency the chart draws. Null when nothing was earned yet. */
-  currency: string | null;
-  /** Every currency earned in, for the switcher. One or none hides it. */
-  currencies: string[];
+  /** The affiliate's Settings choice or current Program default. */
+  currency: string;
+  currentClicks: number;
+  previousClicks: number | null;
+  currentEarned: number;
+  currentEarnedDisplay: MoneyDisplay;
+  previousEarned: number | null;
   range: ChartRange;
-  earned: CurrencyTotal[];
-  pending: CurrencyTotal[];
-  payable: CurrencyTotal[];
-  paid: CurrencyTotal[];
+  rateNote: string | null;
+  earned: MoneyDisplay;
+  pending: MoneyDisplay;
+  payable: MoneyDisplay;
+  paid: MoneyDisplay;
   /** Counts only. Which customers they are is never the affiliate's to see. */
   referrals: { total: number; active: number };
   /**
@@ -66,6 +63,12 @@ export type OverviewView = {
    * answer, so the card is not shown at all.
    */
   recurring: boolean;
+};
+
+export type MoneyDisplay = {
+  value: string;
+  hint: string | null;
+  hasAmount: boolean;
 };
 
 /**
@@ -110,12 +113,17 @@ export function OverviewScreen({
   terms,
   recent,
   series,
+  unconvertedByBucket,
+  chartIsEstimate,
   bucket,
-  current,
-  previous,
   currency,
-  currencies,
+  currentClicks,
+  previousClicks,
+  currentEarned,
+  currentEarnedDisplay,
+  previousEarned,
   range,
+  rateNote,
   earned,
   pending,
   payable,
@@ -139,12 +147,13 @@ export function OverviewScreen({
     range === "all"
       ? undefined
       : { percent: change(now, before ?? 0), against };
-  const earnedNow = currency ? (current.amounts[currency]?.gross ?? 0) : 0;
-  const earnedBefore = currency ? previous?.amounts[currency]?.gross : null;
-
   return (
     <Page>
-      <PageTitle title="Overview" actions={<RangePicker value={range} />} />
+      <PageTitle
+        title="Overview"
+        subtitle={rateNote ?? undefined}
+        actions={<RangePicker value={range} />}
+      />
 
       {/* The thing they came for, at the top and on the copy treatment every
           value in the product is copied from. Not a row in a table. */}
@@ -168,35 +177,39 @@ export function OverviewScreen({
       <Tiles>
         <StatTile
           label="Clicks"
-          value={formatCount(current.clicks)}
+          value={formatCount(currentClicks)}
           series={series.map((d) => d.clicks)}
-          delta={delta(current.clicks, previous?.clicks)}
+          delta={delta(currentClicks, previousClicks)}
         />
         <StatTile
           label="Earned"
-          value={currency ? formatMoney(earnedNow, currency) : "0.00"}
-          series={currency ? earnedTrend(series, currency) : undefined}
-          delta={currency ? delta(earnedNow, earnedBefore) : undefined}
+          value={currentEarnedDisplay.value}
+          hint={currentEarnedDisplay.hint ?? undefined}
+          series={series.map((d) => d.amounts[currency]?.gross ?? 0)}
+          delta={delta(currentEarned, previousEarned)}
         />
         <StatTile
           label="Payable"
-          value={money(payable)}
-          hint={
-            moneyHint(payable) ??
-            (pending.length > 0
-              ? `${money(pending)} still on hold`
-              : "Nothing on hold")
-          }
-          tone={payable.length > 0 ? "accent" : "neutral"}
+          value={payable.value}
+          hint={[
+            payable.hint,
+            pending.hasAmount ? "Still on hold" : "Nothing on hold",
+            pending.hint,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          tone={payable.hasAmount ? "accent" : "neutral"}
           href="/affiliates/dashboard/payouts"
         />
         {/* Green is the ledger's colour for money already paid, and it says the
             same thing here. */}
         <StatTile
           label="Paid out"
-          value={money(paid)}
-          hint={moneyHint(paid) ?? `${money(earned)} earned in total`}
-          tone={paid.length > 0 ? "success" : "neutral"}
+          value={paid.value}
+          hint={[paid.hint, `${earned.value} earned in total`, earned.hint]
+            .filter(Boolean)
+            .join(" · ")}
+          tone={paid.hasAmount ? "success" : "neutral"}
           href="/affiliates/dashboard/payouts"
         />
       </Tiles>
@@ -208,9 +221,6 @@ export function OverviewScreen({
             is a stacked column with no height to give, so it gets a floor. */}
         <Section
           title="Clicks and earnings"
-          actions={
-            <CurrencyPicker value={currency ?? ""} options={currencies} />
-          }
           className="min-h-[300px] lg:min-h-0"
           fill
         >
@@ -220,8 +230,9 @@ export function OverviewScreen({
             points={series}
             bucket={bucket}
             currency={currency}
-            barLabel="Earned"
+            barLabel={chartIsEstimate ? "Estimated earned" : "Earned"}
             countLabel="Commissions"
+            unconverted={unconvertedByBucket}
           />
         </Section>
 
@@ -279,6 +290,7 @@ export function OverviewScreen({
                     </div>
                     <span
                       className={cn(
+                        "flex flex-col",
                         "ml-auto shrink-0 text-right text-[13px] font-medium tabular-nums",
                         row.isAdjustment
                           ? "text-destructive"
@@ -288,6 +300,16 @@ export function OverviewScreen({
                       )}
                     >
                       {row.amount}
+                      {row.convertedAmount && (
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          {row.convertedAmount}
+                        </span>
+                      )}
+                      {row.conversionUnavailable && (
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          Not converted
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}

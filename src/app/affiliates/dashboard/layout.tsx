@@ -5,6 +5,8 @@ import {
 } from "@/components/ui/sidebar";
 import { requireAffiliate } from "@/lib/affiliateAuth";
 import { getAffiliatePayoutDetails } from "@/lib/affiliate";
+import { getAffiliateDisplaySettings } from "@/lib/affiliateDisplaySettings";
+import { getEcbReferenceRates } from "@/lib/currency";
 import { AffiliateSidebar } from "./AffiliateSidebar";
 
 /**
@@ -28,7 +30,14 @@ export default async function AffiliateDashboardLayout({
   children: React.ReactNode;
 }) {
   const { affiliateId, email, merchant } = await requireAffiliate();
-  const payoutDetails = await getAffiliatePayoutDetails(affiliateId);
+  // Warm the request-scoped settings read and the one-day rate snapshot here.
+  // Affiliate pages reuse them through React's request cache and Next's fetch
+  // cache instead of each view independently resolving currency context.
+  const [payoutDetails] = await Promise.all([
+    getAffiliatePayoutDetails(affiliateId),
+    getAffiliateDisplaySettings(affiliateId, merchant.id),
+    getEcbReferenceRates(),
+  ]);
 
   return (
     <SidebarProvider

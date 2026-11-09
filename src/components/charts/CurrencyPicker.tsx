@@ -15,18 +15,20 @@ import { cn } from "@/lib/utils";
 /**
  * Which currency the chart is drawn in.
  *
- * Only rendered when there is more than one, which for almost every product
- * is never. Money is not converted anywhere in Supaffi, so two currencies
- * are two charts to flip between rather than one chart of a made-up total.
+ * A chart-only override for the account's saved display currency. The saved
+ * setting remains the default when the owner returns without a query override.
  */
 export function CurrencyPicker({
   value,
+  defaultValue,
   options,
   className,
 }: {
   value: string;
-  /** Every currency sold in, most sales first. */
-  options: string[];
+  /** The preference used when no explicit view override is in the URL. */
+  defaultValue: string;
+  /** Supported currencies the chart can convert into. */
+  options: readonly string[];
   className?: string;
 }) {
   const router = useRouter();
@@ -39,8 +41,8 @@ export function CurrencyPicker({
   function choose(next: string | null) {
     if (!next || next === value || !options.includes(next)) return;
     const query = new URLSearchParams(params);
-    // The first is the default, so it stays out of the URL.
-    if (next === options[0]) query.delete("currency");
+    // The saved preference is the default, so it stays out of the URL.
+    if (next === defaultValue) query.delete("currency");
     else query.set("currency", next);
     const search = query.toString();
     startTransition(() =>

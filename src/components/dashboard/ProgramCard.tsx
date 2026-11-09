@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Clock, Link2, Pencil, Users } from "lucide-react";
+import { CalendarDays, Clock, Pencil, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 
@@ -15,6 +15,7 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 export function ProgramCard({
   name,
   rate,
+  dashboardCurrency,
   duration,
   attributionDays,
   holdingDays,
@@ -24,6 +25,7 @@ export function ProgramCard({
 }: {
   name: string;
   rate: string;
+  dashboardCurrency: string;
   /** "forever", "for 12 months", "on the first payment". */
   duration: string;
   attributionDays: number;
@@ -59,6 +61,9 @@ export function ProgramCard({
           </span>
           <span className="mt-1 text-[13px] font-medium text-accent-700">
             {duration}
+          </span>
+          <span className="mt-1 text-[11px] leading-tight font-medium text-accent-700">
+            currency · {dashboardCurrency.toUpperCase()}
           </span>
         </div>
       </div>

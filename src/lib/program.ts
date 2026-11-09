@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import type { CommissionDurationType } from "@prisma/client";
 import { uniqueSlug } from "@/lib/slug";
+import { SUPPORTED_DISPLAY_CURRENCY_CODES } from "@/lib/displayCurrencyOptions";
+
+export type DisplayCurrency = (typeof SUPPORTED_DISPLAY_CURRENCY_CODES)[number];
 
 export type ProgramInput = {
   name: string;
@@ -9,6 +12,8 @@ export type ProgramInput = {
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  /** Omitted by legacy callers; the database default is EUR. */
+  currency?: DisplayCurrency;
   /** Left out by onboarding, which keeps the stored value (open by default). */
   signupOpen?: boolean;
 };
@@ -61,6 +66,7 @@ export async function listProgramsForMerchant(
     commissionDurationMonths: number | null;
     attributionWindowDays: number;
     holdingPeriodDays: number;
+    currency: string;
     signupOpen: boolean;
     affiliateCount: number;
   }[]
@@ -78,6 +84,7 @@ export async function listProgramsForMerchant(
       commissionDurationMonths: true,
       attributionWindowDays: true,
       holdingPeriodDays: true,
+      currency: true,
       signupOpen: true,
       _count: { select: { affiliates: true } },
     },
@@ -107,6 +114,7 @@ export async function getProgramForMerchant(
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  currency: string;
 } | null> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
@@ -125,6 +133,7 @@ export async function getProgramForMerchant(
       commissionDurationMonths: true,
       attributionWindowDays: true,
       holdingPeriodDays: true,
+      currency: true,
     },
   });
 }

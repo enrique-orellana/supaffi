@@ -20,6 +20,7 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
           : "",
         attributionWindowDays: String(first.attributionWindowDays),
         holdingPeriodDays: String(first.holdingPeriodDays),
+        currency: first.currency,
       }
     : TERMS_DEFAULTS;
 

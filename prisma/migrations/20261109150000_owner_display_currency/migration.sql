@@ -1,0 +1,2 @@
+ALTER TABLE "Owner"
+ADD COLUMN "displayCurrency" VARCHAR(3) NOT NULL DEFAULT 'eur';

@@ -72,9 +72,8 @@ function stateLabel(row: CommissionRow): string {
     case COMMISSION_STATUS.PENDING:
       if (row.disputed)
         return "Sale confirmed · payout paused while dispute is open";
-      if (row.payableAt.getTime() <= Date.now())
-        return "Sale confirmed · availability is being checked";
-      return `Sale confirmed · expected availability ${formatDate(row.payableAt)}`;
+      if (row.payableAt.getTime() <= Date.now()) return "Checking availability";
+      return `Available ${formatDate(row.payableAt)}`;
     case COMMISSION_STATUS.PAYABLE:
       return "Ready to pay";
     case COMMISSION_STATUS.FLAGGED:

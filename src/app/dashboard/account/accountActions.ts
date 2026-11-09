@@ -1,8 +1,11 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { normalizeDisplayCurrency } from "@/lib/displayCurrencyOptions";
 import { changeOwnerEmail, changeOwnerPassword } from "@/lib/owner";
+import { updateOwnerDisplayCurrency } from "@/lib/ownerDisplaySettings";
 
 /**
  * The two things an owner can change about their own account.
@@ -45,4 +48,38 @@ export async function changePasswordAction(
   return result
     ? { error: result.error, done: false }
     : { error: "", done: true };
+}
+
+export type OwnerDisplayCurrencyState = {
+  error: string;
+  saved: boolean;
+  savedCurrency: string | null;
+};
+
+export async function updateOwnerDisplayCurrencyAction(
+  _previous: OwnerDisplayCurrencyState,
+  formData: FormData,
+): Promise<OwnerDisplayCurrencyState> {
+  const ownerId = await owner();
+  const submitted = formData.get("displayCurrency");
+  const displayCurrency = normalizeDisplayCurrency(submitted);
+  if (!displayCurrency) {
+    return {
+      error: "Choose a supported dashboard currency",
+      saved: false,
+      savedCurrency: null,
+    };
+  }
+
+  const updated = await updateOwnerDisplayCurrency(ownerId, displayCurrency);
+  if (!updated) {
+    return {
+      error: "Your dashboard currency could not be updated",
+      saved: false,
+      savedCurrency: null,
+    };
+  }
+
+  revalidatePath("/dashboard", "layout");
+  return { error: "", saved: true, savedCurrency: displayCurrency };
 }

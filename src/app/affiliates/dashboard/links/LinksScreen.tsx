@@ -1,8 +1,5 @@
 import { Plus } from "lucide-react";
-import {
-  MAX_LINKS_PER_AFFILIATE,
-  type AffiliateLinkStats,
-} from "@/lib/affiliateLink";
+import { MAX_LINKS_PER_AFFILIATE } from "@/lib/affiliateLinkShared";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -10,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
-import { LinksTable } from "./LinksTable";
+import { LinksTable, type AffiliateLinkDisplayStats } from "./LinksTable";
 import { LinkDialog } from "./LinkDialog";
 
 /**
@@ -31,24 +28,28 @@ const NEAR_THE_CEILING = 3;
 export function LinksScreen({
   links,
   websiteUrl,
+  rateNote,
 }: {
-  links: AffiliateLinkStats[];
+  links: AffiliateLinkDisplayStats[];
   websiteUrl: string;
+  rateNote: string;
 }) {
   const atMax = links.length >= MAX_LINKS_PER_AFFILIATE;
   // Silent until it is nearly a problem. A hard limit nobody is near is a fact
   // about the software, not about them.
   const near = links.length >= MAX_LINKS_PER_AFFILIATE - NEAR_THE_CEILING;
+  const subtitle = [
+    rateNote,
+    near ? `${links.length} of ${MAX_LINKS_PER_AFFILIATE} used` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Page>
       <PageTitle
         title="Links"
-        subtitle={
-          near
-            ? `${links.length} of ${MAX_LINKS_PER_AFFILIATE} used`
-            : undefined
-        }
+        subtitle={subtitle || undefined}
         actions={
           atMax ? (
             // A disabled button swallows its own pointer events, so the

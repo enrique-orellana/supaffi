@@ -1,7 +1,5 @@
 import { Wallet } from "lucide-react";
-import type { AffiliatePaymentGroup } from "@/lib/affiliate";
-import type { CurrencyTotal } from "@/lib/analytics";
-import { money, moneyHint, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -20,14 +18,27 @@ import { PayoutDetailsForm } from "../PayoutDetailsForm";
 /**
  * One row per payout, at the moment it was made. Two payouts made the same
  * day are two rows, each with its own time, because they were two transfers.
- * A row can carry more than one currency, so the amount is `money()` plus
- * `moneyHint()`, never a sum across them.
+ * A row can carry more than one source currency. Its estimated dashboard-
+ * currency total is shown separately from the original amounts and currencies.
  */
-function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
+type PaymentDisplay = {
+  paidAt: Date;
+  count: number;
+  estimate: string | null;
+  sourceAmounts: string[];
+  unconverted: string[];
+};
+
+type MoneyDisplay = {
+  value: string;
+  hint: string | null;
+  hasAmount: boolean;
+};
+
+function PaymentRows({ payments }: { payments: PaymentDisplay[] }) {
   return (
     <ul className="flex flex-col">
       {payments.map((payment) => {
-        const hint = moneyHint(payment.totals);
         return (
           <li
             key={payment.paidAt.toISOString()}
@@ -43,12 +54,23 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             </span>
             <span className="flex-1 sm:hidden" />
             <span className="flex shrink-0 flex-col items-end">
-              <span className="text-[15px] font-medium text-neutral-900 tabular-nums">
-                {money(payment.totals)}
+              {payment.estimate ? (
+                <span className="text-[15px] font-medium text-neutral-900 tabular-nums">
+                  {payment.estimate}
+                </span>
+              ) : null}
+              <span
+                className={
+                  payment.estimate
+                    ? "text-right text-[11px] text-muted-foreground tabular-nums"
+                    : "text-[15px] font-medium text-neutral-900 tabular-nums"
+                }
+              >
+                Paid in {payment.sourceAmounts.join(" · ")}
               </span>
-              {hint && (
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {hint}
+              {payment.unconverted.length > 0 && (
+                <span className="text-right text-[11px] text-muted-foreground tabular-nums">
+                  Not converted: {payment.unconverted.join(" · ")}
                 </span>
               )}
             </span>
@@ -62,10 +84,11 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
 export type PayoutsView = {
   merchantName: string;
   payoutDetails: string | null;
-  payments: AffiliatePaymentGroup[];
-  pending: CurrencyTotal[];
-  payable: CurrencyTotal[];
-  paid: CurrencyTotal[];
+  payments: PaymentDisplay[];
+  pending: MoneyDisplay;
+  payable: MoneyDisplay;
+  paid: MoneyDisplay;
+  rateNote: string;
 };
 
 export function PayoutsScreen({
@@ -75,30 +98,31 @@ export function PayoutsScreen({
   pending,
   payable,
   paid,
+  rateNote,
 }: PayoutsView) {
   return (
     <Page>
-      <PageTitle title="Payouts" />
+      <PageTitle title="Payouts" subtitle={rateNote} />
 
       {/* The same three words the ledger's badges use, so one state is one word
           everywhere on this dashboard. */}
       <Tiles columns={3}>
         <StatTile
           label="Pending"
-          value={money(pending)}
-          hint={moneyHint(pending)}
+          value={pending.value}
+          hint={pending.hint ?? undefined}
         />
         <StatTile
           label="Payable"
-          value={money(payable)}
-          hint={moneyHint(payable)}
-          tone={payable.length > 0 ? "accent" : "neutral"}
+          value={payable.value}
+          hint={payable.hint ?? undefined}
+          tone={payable.hasAmount ? "accent" : "neutral"}
         />
         <StatTile
           label="Paid"
-          value={money(paid)}
-          hint={moneyHint(paid)}
-          tone={paid.length > 0 ? "success" : "neutral"}
+          value={paid.value}
+          hint={paid.hint ?? undefined}
+          tone={paid.hasAmount ? "success" : "neutral"}
         />
       </Tiles>
 

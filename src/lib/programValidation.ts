@@ -1,5 +1,9 @@
 import type { ProgramInput } from "@/lib/program";
 import { isCommissionDuration } from "@/lib/commissionDuration";
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  normalizeDisplayCurrency,
+} from "@/lib/displayCurrencyOptions";
 
 export type ProgramFormValues = {
   name: string;
@@ -8,6 +12,7 @@ export type ProgramFormValues = {
   commissionDurationMonths: string;
   attributionWindowDays: string;
   holdingPeriodDays: string;
+  currency?: string;
 };
 
 export function validateProgramInput(
@@ -16,6 +21,14 @@ export function validateProgramInput(
   | { error: string; parsed?: undefined }
   | { error: null; parsed: ProgramInput } {
   if (!input.name.trim()) return { error: "Name is required" };
+
+  const submittedCurrency = input.currency?.trim();
+  const currency = submittedCurrency
+    ? normalizeDisplayCurrency(submittedCurrency)
+    : DEFAULT_DISPLAY_CURRENCY;
+  if (!currency) {
+    return { error: "Choose a supported affiliate display currency" };
+  }
 
   const rate = Number(input.defaultCommissionRate);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
@@ -67,6 +80,7 @@ export function validateProgramInput(
       commissionDurationMonths,
       attributionWindowDays,
       holdingPeriodDays,
+      currency,
     },
   };
 }

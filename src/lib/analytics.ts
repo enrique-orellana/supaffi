@@ -12,6 +12,7 @@ import type { ChartRange } from "@/lib/analyticsShared";
 export {
   CHART_RANGES,
   DEFAULT_RANGE,
+  change,
   isChartRange,
   rangeFromQuery,
   rangeLabel,
@@ -199,20 +200,6 @@ export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
     }
   }
   return out;
-}
-
-/**
- * Change from one period to the next, as a share of the earlier one. Null
- * when there is nothing earlier to compare against, or the earlier figure
- * was zero or below. Growth from nothing is not a percentage, and dividing by
- * a negative would flip the sign.
- */
-export function change(
-  current: number,
-  previous: number | null | undefined,
-): number | null {
-  if (previous === null || previous === undefined || previous <= 0) return null;
-  return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
 /**

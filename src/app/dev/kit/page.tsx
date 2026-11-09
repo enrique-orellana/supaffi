@@ -945,7 +945,12 @@ const E_LINKS = [
     earned: [
       { currency: "usd", total: "180.00" },
       { currency: "eur", total: "60.00" },
+      { currency: "btc", total: "0.0020" },
     ],
+    displayEarnings: "≈ $245.40",
+    unconvertedEarnings: ["0.002 BTC"],
+    unconvertedCurrencies: ["BTC"],
+    earningsAreEstimate: true,
   },
   {
     id: "l2",
@@ -955,6 +960,10 @@ const E_LINKS = [
     clicks: 119,
     conversions: 4,
     earned: [{ currency: "usd", total: "60.00" }],
+    displayEarnings: "$60.00",
+    unconvertedEarnings: [],
+    unconvertedCurrencies: [],
+    earningsAreEstimate: false,
   },
   {
     id: "l3",
@@ -964,6 +973,10 @@ const E_LINKS = [
     clicks: 27,
     conversions: 0,
     earned: [],
+    displayEarnings: "—",
+    unconvertedEarnings: [],
+    unconvertedCurrencies: [],
+    earningsAreEstimate: false,
   },
 ];
 
@@ -973,6 +986,7 @@ const E_RECENT = [
   {
     id: "e1",
     amount: "8.70",
+    saleAmount: null,
     currency: "usd",
     status: "PAYABLE" as const,
     createdAt: day("2026-09-02"),
@@ -983,10 +997,13 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: null,
     voidedAt: null,
+    convertedAmount: null,
+    conversionUnavailable: false,
   },
   {
     id: "e2",
     amount: "12.00",
+    saleAmount: null,
     currency: "usd",
     status: "PENDING" as const,
     createdAt: day("2026-09-01"),
@@ -997,10 +1014,13 @@ const E_RECENT = [
     grossAmount: "20.00",
     voidReason: "partial refund",
     voidedAt: null,
+    convertedAmount: null,
+    conversionUnavailable: false,
   },
   {
     id: "e3",
     amount: "24.00",
+    saleAmount: null,
     currency: "eur",
     status: "PAID" as const,
     createdAt: day("2026-08-14"),
@@ -1011,10 +1031,13 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: null,
     voidedAt: null,
+    convertedAmount: "≈ $26.16",
+    conversionUnavailable: false,
   },
   {
     id: "e4",
     amount: "31.50",
+    saleAmount: null,
     currency: "usd",
     status: "VOIDED" as const,
     createdAt: day("2026-08-11"),
@@ -1025,6 +1048,8 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: "refund",
     voidedAt: day("2026-08-19"),
+    convertedAmount: null,
+    conversionUnavailable: false,
   },
 ];
 
@@ -1035,27 +1060,37 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
       terms="30% for 12 months · 60-day cookie · 30-day hold"
       recent={E_RECENT}
       series={E_SERIES}
+      unconvertedByBucket={{ "2026-08-27": ["0.001 BTC"] }}
+      chartIsEstimate
       bucket="day"
-      current={{
-        clicks: 412,
-        conversions: 46,
-        amounts: { usd: { gross: 1104, commission: 1104, sales: 46 } },
+      currentClicks={412}
+      previousClicks={366}
+      currentEarned={1104}
+      currentEarnedDisplay={{
+        value: "≈ $1,104.00",
+        hint: "Not converted: 0.001 BTC",
+        hasAmount: true,
       }}
-      previous={{
-        clicks: 366,
-        conversions: 38,
-        amounts: { usd: { gross: 912, commission: 912, sales: 38 } },
-      }}
+      previousEarned={912}
       currency="usd"
-      currencies={["usd"]}
       range="30d"
-      earned={[
-        { currency: "usd", total: "1220.00" },
-        { currency: "eur", total: "60.00" },
-      ]}
-      pending={[{ currency: "usd", total: "72.00" }]}
-      payable={[{ currency: "usd", total: "180.00" }]}
-      paid={[{ currency: "usd", total: "980.00" }]}
+      rateNote="Dashboard currency: USD · ECB reference rates dated 6 Nov 2026 · BTC amounts remain in source currency."
+      earned={{
+        value: "≈ $1,285.40",
+        hint: "Not converted: 0.002 BTC",
+        hasAmount: true,
+      }}
+      pending={{
+        value: "≈ $72.00",
+        hint: "Not converted: 0.0004 BTC",
+        hasAmount: true,
+      }}
+      payable={{ value: "$180.00", hint: null, hasAmount: true }}
+      paid={{
+        value: "≈ $980.00",
+        hint: "Not converted: 0.001 BTC",
+        hasAmount: true,
+      }}
       referrals={{ total: 41, active: 31 }}
       recurring={recurring}
     />
@@ -1064,7 +1099,11 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
 
 function ELinks() {
   return (
-    <LinksScreen links={E_LINKS} websiteUrl="https://instantgradient.com" />
+    <LinksScreen
+      links={E_LINKS}
+      websiteUrl="https://instantgradient.com"
+      rateNote="Dashboard currency: USD · ECB reference rates dated 6 Nov 2026 · BTC earnings remain in source currency."
+    />
   );
 }
 
@@ -1084,21 +1123,31 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
               {
                 paidAt: new Date("2026-08-28T14:35:00.000Z"),
                 count: 6,
-                totals: [
-                  { currency: "usd", total: "420.00" },
-                  { currency: "eur", total: "60.00" },
-                ],
+                estimate: "≈ $485.40",
+                sourceAmounts: ["$420.00 USD", "€60.00 EUR"],
+                unconverted: ["0.001 BTC"],
               },
               {
                 paidAt: new Date("2026-07-30T09:10:00.000Z"),
                 count: 3,
-                totals: [{ currency: "usd", total: "180.00" }],
+                estimate: null,
+                sourceAmounts: ["$180.00 USD"],
+                unconverted: [],
               },
             ]
       }
-      pending={[{ currency: "usd", total: "72.00" }]}
-      payable={[{ currency: "usd", total: "180.00" }]}
-      paid={[{ currency: "usd", total: "980.00" }]}
+      pending={{
+        value: "≈ $72.00",
+        hint: "Not converted: 0.0004 BTC",
+        hasAmount: true,
+      }}
+      payable={{ value: "$180.00", hint: null, hasAmount: true }}
+      paid={{
+        value: "≈ $980.00",
+        hint: "Not converted: 0.001 BTC",
+        hasAmount: true,
+      }}
+      rateNote="Dashboard currency: USD · ECB reference rates dated 6 Nov 2026 · BTC amounts remain in source currency."
     />
   );
 }
@@ -1108,6 +1157,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e1",
     dateLabel: "2 Sept 2026",
     amount: "8.70 USD",
+    convertedAmount: null,
+    conversionUnavailable: false,
     grossAmount: null,
     status: "PAYABLE",
     linkCode: "sarah",
@@ -1120,6 +1171,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e2",
     dateLabel: "1 Sept 2026",
     amount: "12.00 USD",
+    convertedAmount: null,
+    conversionUnavailable: false,
     grossAmount: "20.00 USD",
     status: "PENDING",
     linkCode: "sarah-pricing-comparison-2026",
@@ -1132,6 +1185,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e3",
     dateLabel: "28 Aug 2026",
     amount: "96.00 EUR",
+    convertedAmount: "≈ $104.64",
+    conversionUnavailable: false,
     grossAmount: null,
     status: "PENDING",
     linkCode: "sarah",
@@ -1144,6 +1199,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e4",
     dateLabel: "14 Aug 2026",
     amount: "24.00 EUR",
+    convertedAmount: "≈ $26.16",
+    conversionUnavailable: false,
     grossAmount: null,
     status: "PAID",
     linkCode: "sarah",
@@ -1156,6 +1213,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e5",
     dateLabel: "11 Aug 2026",
     amount: "31.50 USD",
+    convertedAmount: null,
+    conversionUnavailable: false,
     grossAmount: null,
     status: "VOIDED",
     linkCode: "newsletter",
@@ -1168,6 +1227,8 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     id: "e7",
     dateLabel: "4 Aug 2026",
     amount: "140.00 USD",
+    convertedAmount: null,
+    conversionUnavailable: false,
     grossAmount: null,
     status: "VOIDED",
     linkCode: "sarah",
@@ -1179,7 +1240,9 @@ const E_LEDGER: AffiliateLedgerRow[] = [
   {
     id: "e8",
     dateLabel: "1 Aug 2026",
-    amount: "42.00 USD",
+    amount: "0.0004 BTC",
+    convertedAmount: null,
+    conversionUnavailable: true,
     grossAmount: null,
     status: "VOIDED",
     linkCode: "sarah",
@@ -1280,6 +1343,7 @@ function BProgramWarning() {
         <ProgramCard
           name="Standard"
           rate="20"
+          dashboardCurrency="eur"
           duration="forever"
           attributionDays={60}
           holdingDays={30}
@@ -1290,6 +1354,7 @@ function BProgramWarning() {
         <ProgramCard
           name="Launch partners, first ninety days"
           rate="35"
+          dashboardCurrency="usd"
           duration="for 12 months"
           attributionDays={30}
           holdingDays={14}

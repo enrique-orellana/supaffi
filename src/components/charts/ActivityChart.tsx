@@ -209,6 +209,7 @@ export function ActivityChart({
   barLabel,
   countLabel,
   splitLabel,
+  unconverted = {},
   className,
 }: {
   points: DayPoint[];
@@ -226,6 +227,9 @@ export function ActivityChart({
    * with nothing to take out of them.
    */
   splitLabel?: string;
+  /** Per-bucket source totals with no reference rate. Affiliate charts pass
+   * these so a converted bar never hides money that stayed in its source currency. */
+  unconverted?: Record<string, readonly string[]>;
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -531,6 +535,16 @@ export function ActivityChart({
                   )}
                 </dd>
               </div>
+              {(unconverted[active.date]?.length ?? 0) > 0 && (
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="text-muted-foreground">Not converted</dt>
+                  <dd className="flex max-w-[125px] flex-col items-end text-right text-muted-foreground tabular-nums">
+                    {unconverted[active.date].map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
+                  </dd>
+                </div>
+              )}
               {costLines.length > 0 && (
                 <div className="flex items-start justify-between gap-3">
                   <dt className="flex items-center gap-1.5 text-muted-foreground">

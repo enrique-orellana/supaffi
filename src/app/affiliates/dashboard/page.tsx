@@ -1,11 +1,14 @@
 import { db } from "@/lib/db";
 import { requireAffiliate } from "@/lib/affiliateAuth";
+import { getAffiliateDisplaySettings } from "@/lib/affiliateDisplaySettings";
 import {
-  getAffiliateMetrics,
-  pickCurrency,
-  rangeFromQuery,
-  type CurrencyTotal,
-} from "@/lib/analytics";
+  convertCurrencyChart,
+  convertCurrencyTotals,
+  formatCurrencyAtMinorUnitPrecision,
+  formatReferenceRateLabel,
+  getEcbReferenceRates,
+} from "@/lib/currency";
+import { getAffiliateMetrics, rangeFromQuery } from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";
 import { termsLine } from "@/lib/format";
@@ -19,38 +22,58 @@ import { OverviewScreen } from "./OverviewCards";
 /** Enough rows to fill the card at any height the band can take. */
 const RECENT_COMMISSIONS = 6;
 
-/**
- * One list of totals from several. Money is never converted, so a total is a
- * list with one entry per currency, and adding two of them is a merge on
- * currency rather than a sum. In minor units, so the cents of two decimal
- * strings do not drift through a float.
- */
-function addTotals(...lists: CurrencyTotal[][]): CurrencyTotal[] {
-  const minor = new Map<string, number>();
-  for (const list of lists) {
-    for (const entry of list) {
-      minor.set(
-        entry.currency,
-        (minor.get(entry.currency) ?? 0) +
-          Math.round(Number(entry.total) * 100),
-      );
-    }
-  }
-  return [...minor.entries()]
-    .map(([currency, total]) => ({ currency, total: (total / 100).toFixed(2) }))
-    .sort((a, b) => a.currency.localeCompare(b.currency));
+function periodTotals(
+  amounts: Record<
+    string,
+    { gross: number; commission: number; sales: number }
+  > | null,
+  field: "gross" | "commission",
+) {
+  return Object.entries(amounts ?? {}).map(([currency, values]) => ({
+    currency,
+    total: String(values[field]),
+  }));
+}
+
+function moneyDisplay(
+  total: ReturnType<typeof convertCurrencyTotals>,
+  hasAmount: boolean,
+) {
+  const value =
+    total.total === null
+      ? "—"
+      : `${total.isEstimate ? "≈ " : ""}${formatCurrencyAtMinorUnitPrecision(total.total, total.targetCurrency)}`;
+  const unconverted = total.unconverted.map(
+    (row) =>
+      `${formatCurrencyAtMinorUnitPrecision(row.total, row.currency)} ${row.currency}`,
+  );
+  return {
+    value,
+    hint: unconverted.length
+      ? `Not converted: ${unconverted.join(" · ")}`
+      : null,
+    hasAmount,
+  };
 }
 
 export default async function AffiliateOverviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; currency?: string }>;
+  searchParams: Promise<{ range?: string }>;
 }) {
   const { affiliateId, merchant } = await requireAffiliate();
   const query = await searchParams;
   const range = rangeFromQuery(query.range);
 
-  const [metrics, links, commissions, referrals, program] = await Promise.all([
+  const [
+    metrics,
+    links,
+    commissions,
+    referrals,
+    program,
+    displaySettings,
+    rates,
+  ] = await Promise.all([
     getAffiliateMetrics(affiliateId, range),
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, {
@@ -75,7 +98,96 @@ export default async function AffiliateOverviewPage({
         },
       },
     }),
+    getAffiliateDisplaySettings(affiliateId, merchant.id),
+    getEcbReferenceRates(),
   ]);
+
+  const currency = displaySettings?.effectiveCurrency ?? "eur";
+  const convertTotal = (
+    totals: readonly { currency: string; total: string }[],
+  ) => convertCurrencyTotals(totals, currency, rates);
+  const earnedTotal = convertTotal([...metrics.unpaid, ...metrics.paid]);
+  const pendingTotal = convertTotal(metrics.pending);
+  const payableTotal = convertTotal(metrics.payable);
+  const paidTotal = convertTotal(metrics.paid);
+  const currentEarnedTotal = convertTotal(
+    periodTotals(metrics.current.amounts, "gross"),
+  );
+  const previousEarnedTotal = metrics.previous
+    ? convertTotal(periodTotals(metrics.previous.amounts, "gross"))
+    : null;
+  const chart = convertCurrencyChart(metrics.series, currency, rates);
+  const series = metrics.series.map((point, index) => {
+    const converted = chart[index];
+    return {
+      ...point,
+      amounts: {
+        [currency]: {
+          gross: Number(converted?.gross ?? 0),
+          commission: Number(converted?.commission ?? 0),
+          sales: converted?.sales ?? 0,
+        },
+      },
+    };
+  });
+  const unconvertedByBucket = Object.fromEntries(
+    chart
+      .filter((point) => point.unconverted.length > 0)
+      .map((point) => [
+        point.date,
+        point.unconverted.map(
+          (row) =>
+            `${formatCurrencyAtMinorUnitPrecision(row.gross, row.currency)} ${row.currency}`,
+        ),
+      ]),
+  );
+  const chartIsEstimate = chart.some((point) => point.isEstimate);
+
+  const recent = commissions.rows.map((row) => {
+    const converted = convertTotal([
+      { currency: row.currency, total: row.amount },
+    ]);
+    return {
+      ...row,
+      convertedAmount:
+        converted.isEstimate && converted.total !== null
+          ? `≈ ${formatCurrencyAtMinorUnitPrecision(converted.total, currency)}`
+          : null,
+      conversionUnavailable: converted.total === null,
+    };
+  });
+
+  const rateDate = rates.rateDate;
+  const hasEstimate =
+    earnedTotal.isEstimate ||
+    pendingTotal.isEstimate ||
+    payableTotal.isEstimate ||
+    paidTotal.isEstimate ||
+    currentEarnedTotal.isEstimate ||
+    Boolean(previousEarnedTotal?.isEstimate) ||
+    chartIsEstimate ||
+    recent.some((row) => row.convertedAmount !== null);
+  const unconvertedCurrencies = new Set([
+    ...earnedTotal.unconverted.map((row) => row.currency),
+    ...pendingTotal.unconverted.map((row) => row.currency),
+    ...payableTotal.unconverted.map((row) => row.currency),
+    ...paidTotal.unconverted.map((row) => row.currency),
+    ...currentEarnedTotal.unconverted.map((row) => row.currency),
+    ...(previousEarnedTotal?.unconverted.map((row) => row.currency) ?? []),
+    ...chart.flatMap((point) => point.unconverted.map((row) => row.currency)),
+    ...recent
+      .filter((row) => row.conversionUnavailable)
+      .map((row) => row.currency),
+  ]);
+  const rateNote = [
+    `Dashboard currency: ${currency.toUpperCase()}`,
+    hasEstimate && rateDate ? formatReferenceRateLabel(rateDate) : null,
+    unconvertedCurrencies.size > 0
+      ? `No ECB rate for ${[...unconvertedCurrencies].sort().join(", ")}; those amounts stay in source currency.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // The signup link: the one the merchant's own dashboard shows and the one in
   // every email they have had from this program.
@@ -98,20 +210,48 @@ export default async function AffiliateOverviewPage({
             })
           : ""
       }
-      recent={commissions.rows}
-      series={metrics.series}
+      recent={recent}
+      series={series}
+      unconvertedByBucket={unconvertedByBucket}
+      chartIsEstimate={chartIsEstimate}
       bucket={metrics.bucket}
-      current={metrics.current}
-      previous={metrics.previous}
-      currency={pickCurrency(metrics.currencies, query.currency)}
-      currencies={metrics.currencies}
+      currency={currency}
+      currentClicks={metrics.current.clicks}
+      previousClicks={metrics.previous?.clicks ?? null}
+      currentEarned={Number(currentEarnedTotal.total ?? 0)}
+      previousEarned={
+        previousEarnedTotal?.total === null || previousEarnedTotal === null
+          ? null
+          : Number(previousEarnedTotal.total)
+      }
       range={range}
-      // Everything a void has not taken away: what is still coming plus what
-      // has already landed.
-      earned={addTotals(metrics.unpaid, metrics.paid)}
-      pending={metrics.pending}
-      payable={metrics.payable}
-      paid={metrics.paid}
+      rateNote={rateNote}
+      currentEarnedDisplay={moneyDisplay(
+        currentEarnedTotal,
+        (currentEarnedTotal.total !== null &&
+          Number(currentEarnedTotal.total) !== 0) ||
+          currentEarnedTotal.unconverted.some((row) => Number(row.total) !== 0),
+      )}
+      earned={moneyDisplay(
+        earnedTotal,
+        (earnedTotal.total !== null && Number(earnedTotal.total) !== 0) ||
+          earnedTotal.unconverted.some((row) => Number(row.total) !== 0),
+      )}
+      pending={moneyDisplay(
+        pendingTotal,
+        (pendingTotal.total !== null && Number(pendingTotal.total) !== 0) ||
+          pendingTotal.unconverted.some((row) => Number(row.total) !== 0),
+      )}
+      payable={moneyDisplay(
+        payableTotal,
+        (payableTotal.total !== null && Number(payableTotal.total) !== 0) ||
+          payableTotal.unconverted.some((row) => Number(row.total) !== 0),
+      )}
+      paid={moneyDisplay(
+        paidTotal,
+        (paidTotal.total !== null && Number(paidTotal.total) !== 0) ||
+          paidTotal.unconverted.some((row) => Number(row.total) !== 0),
+      )}
       referrals={referrals}
       recurring={
         program?.program.commissionDurationType !== "ONE_TIME" &&

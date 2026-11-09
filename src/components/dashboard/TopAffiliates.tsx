@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { TopAffiliate } from "@/lib/analytics";
 import { formatCount, money, moneyHint, prefer } from "@/lib/format";
+import { convertCurrencyTotals, type EcbReferenceRates } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,19 +17,43 @@ import { cn } from "@/lib/utils";
 export function TopAffiliates({
   affiliates,
   currency,
+  rates,
   viewAllHref,
   className,
 }: {
   affiliates: TopAffiliate[];
-  /** The currency the page is drawn in. Leads every figure here too. */
-  currency: string | null;
+  /** The account's chosen visualization currency. */
+  currency: string;
+  rates: EcbReferenceRates;
   viewAllHref: string;
   className?: string;
 }) {
-  const ranked = affiliates.map((a) => ({
-    ...a,
-    earned: prefer(a.earned, currency),
-  }));
+  const ranked = affiliates
+    .map((affiliate, index) => {
+      const converted = convertCurrencyTotals(
+        affiliate.earned,
+        currency,
+        rates,
+      );
+      const earned =
+        converted.total === null
+          ? prefer(affiliate.earned, currency)
+          : [{ currency, total: converted.total }, ...converted.unconverted];
+      return {
+        ...affiliate,
+        earned,
+        approximate: converted.isEstimate,
+        sortAmount:
+          converted.total === null
+            ? Number.NEGATIVE_INFINITY
+            : Number(converted.total),
+        originalIndex: index,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.sortAmount - a.sortAmount || a.originalIndex - b.originalIndex,
+    );
   // The bar compares leading-currency amounts, which is a shape and not a
   // sum: money is never added across currencies. The figure itself is
   // printed per currency beside it.
@@ -96,6 +121,7 @@ export function TopAffiliates({
                   </div>
                   <div className="flex shrink-0 flex-col items-end">
                     <span className="text-sm font-medium tabular-nums">
+                      {affiliate.approximate && "≈ "}
                       {money(affiliate.earned)}
                     </span>
                     {hint && (

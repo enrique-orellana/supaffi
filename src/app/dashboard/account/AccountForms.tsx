@@ -1,12 +1,28 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Section } from "@/components/dashboard/Page";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
-import { changeEmailAction, changePasswordAction } from "./accountActions";
+import {
+  DISPLAY_CURRENCY_OPTIONS,
+  normalizeDisplayCurrency,
+  type SupportedDisplayCurrency,
+} from "@/lib/displayCurrencyOptions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  changeEmailAction,
+  changePasswordAction,
+  updateOwnerDisplayCurrencyAction,
+} from "./accountActions";
 
 /**
  * The two forms that change the account, each asking for the current password
@@ -20,6 +36,72 @@ import { changeEmailAction, changePasswordAction } from "./accountActions";
  */
 
 const EMPTY = { error: "", done: false };
+const EMPTY_CURRENCY_STATE = { error: "", saved: false, savedCurrency: null };
+
+export function DisplayCurrencyForm({
+  currency,
+}: {
+  currency: SupportedDisplayCurrency;
+}) {
+  const [state, action, pending] = useActionState(
+    updateOwnerDisplayCurrencyAction,
+    EMPTY_CURRENCY_STATE,
+  );
+  const [value, setValue] = useState<SupportedDisplayCurrency>(currency);
+  const showSaved = state.saved && value === state.savedCurrency;
+
+  return (
+    <form action={action} className="grid max-w-xl gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor="owner-display-currency">Display currency</Label>
+        <Select
+          name="displayCurrency"
+          value={value}
+          onValueChange={(next) =>
+            setValue(normalizeDisplayCurrency(next) ?? currency)
+          }
+        >
+          <SelectTrigger
+            id="owner-display-currency"
+            className="h-9 w-full cursor-pointer"
+            aria-label="Dashboard display currency"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DISPLAY_CURRENCY_OPTIONS.map(({ code, label }) => (
+              <SelectItem key={code} value={code} className="cursor-pointer">
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-sm text-muted-foreground">
+          Dashboard totals and charts use this currency when reference rates are
+          available. Commissions, payouts, and program currencies keep their
+          original values. Converted totals are estimates.
+        </p>
+      </div>
+
+      {state.error && (
+        <p role="alert" className="text-sm text-status-danger">
+          {state.error}
+        </p>
+      )}
+      {showSaved && (
+        <p role="status" className="text-sm text-status-success">
+          Dashboard currency saved.
+        </p>
+      )}
+
+      <div>
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending ? "Saving" : "Save"}
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 function Field({
   id,

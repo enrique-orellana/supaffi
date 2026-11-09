@@ -3,6 +3,9 @@ import { validateCode } from "@/lib/linkCode";
 
 export type LinkInput = { code: string; destinationPath: string };
 
+/** Maximum number of shareable links an affiliate can keep at once. */
+export const MAX_LINKS_PER_AFFILIATE = 20;
+
 export type ValidatedLink =
   | { code: string; destinationPath: string | null; error: null }
   | { code?: undefined; destinationPath?: undefined; error: string };

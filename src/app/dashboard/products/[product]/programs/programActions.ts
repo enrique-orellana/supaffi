@@ -24,6 +24,7 @@ function read(formData: FormData) {
     ),
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
+    currency: String(formData.get("currency") ?? ""),
   });
   if (result.error !== null) return result;
   return {

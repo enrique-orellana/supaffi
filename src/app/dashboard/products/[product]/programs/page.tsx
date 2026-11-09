@@ -29,6 +29,7 @@ type Program = {
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  currency: string;
   signupOpen: boolean;
   affiliateCount: number;
 };
@@ -52,6 +53,7 @@ function toFormValues(p: Program): ProgramFormValues {
       : "",
     attributionWindowDays: String(p.attributionWindowDays),
     holdingPeriodDays: String(p.holdingPeriodDays),
+    currency: p.currency,
   };
 }
 
@@ -103,6 +105,7 @@ export default async function ProgramsPage({
             key={p.id}
             name={p.name}
             rate={String(p.defaultCommissionRate)}
+            dashboardCurrency={p.currency}
             duration={durationLabel(p)}
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}

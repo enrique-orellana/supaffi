@@ -8,6 +8,7 @@ import {
   LinkIcon,
   LogOut,
   Receipt,
+  Settings,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -43,7 +44,7 @@ const NAV_ROW =
 
 const BASE = "/affiliates/dashboard";
 
-// Four sections, no gating. An affiliate has a link from the moment they sign
+// Five sections, no gating. An affiliate has a link from the moment they sign
 // up, so every one of these has something true to show on day one.
 const NAV: { key: string; href: string; label: string; icon: LucideIcon }[] = [
   { key: "overview", href: "", label: "Overview", icon: Building2 },
@@ -55,6 +56,7 @@ const NAV: { key: string; href: string; label: string; icon: LucideIcon }[] = [
     icon: Receipt,
   },
   { key: "payouts", href: "/payouts", label: "Payouts", icon: Wallet },
+  { key: "settings", href: "/settings", label: "Settings", icon: Settings },
 ];
 
 /** The merchant's own mark, the same one the owner's product switcher draws. */

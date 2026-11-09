@@ -3,10 +3,17 @@ import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { SqlSchema } from "@/lib/sqlSchema";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
-import { validateLinkInput as validateSharedLinkInput } from "@/lib/affiliateLinkShared";
+import {
+  MAX_LINKS_PER_AFFILIATE,
+  validateLinkInput as validateSharedLinkInput,
+} from "@/lib/affiliateLinkShared";
 import type { LinkInput } from "@/lib/affiliateLinkShared";
 
-export { linkUrl, validateLinkInput } from "@/lib/affiliateLinkShared";
+export {
+  linkUrl,
+  MAX_LINKS_PER_AFFILIATE,
+  validateLinkInput,
+} from "@/lib/affiliateLinkShared";
 export type { LinkInput, ValidatedLink } from "@/lib/affiliateLinkShared";
 
 export type AffiliateLinkRow = {
@@ -82,8 +89,6 @@ export async function listOwnerLinkTerms(
  * Merchant-unique code, so an unbounded allowance is a way to exhaust the code
  * space for everyone else on the instance.
  */
-export const MAX_LINKS_PER_AFFILIATE = 20;
-
 const CODE_TAKEN = "That code is already taken. Try another.";
 const LINK_GONE = "That link no longer exists.";
 

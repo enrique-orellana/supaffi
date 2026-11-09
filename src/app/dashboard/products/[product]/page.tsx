@@ -1,5 +1,4 @@
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
@@ -9,20 +8,25 @@ import {
   getProductMetrics,
   getTopAffiliates,
   getPayableGroups,
-  pickCurrency,
   rangeFromQuery,
   rangeLabel,
   resolveRange,
 } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { signupLinkFor } from "@/lib/url";
+import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
 import {
-  formatCount,
-  formatMoney,
-  money,
-  moneyHint,
-  prefer,
-} from "@/lib/format";
+  convertCurrencyChart,
+  convertCurrencyTotals,
+  formatCurrencyAtMinorUnitPrecision,
+  formatReferenceRateLabel,
+  getEcbReferenceRates,
+} from "@/lib/currency";
+import { getOwnerDisplayCurrency } from "@/lib/ownerDisplaySettings";
+import {
+  normalizeDisplayCurrency,
+  SUPPORTED_DISPLAY_CURRENCY_CODES,
+} from "@/lib/displayCurrencyOptions";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { Light } from "@/components/dashboard/Light";
@@ -84,10 +88,14 @@ export default async function ProductOverviewPage({
     getPayableGroups(ownerId, merchant.id),
     shouldCelebrateTracking(merchant.id),
   ]);
+  const [defaultCurrency, rates] = await Promise.all([
+    getOwnerDisplayCurrency(ownerId),
+    getEcbReferenceRates(),
+  ]);
 
   // Commissions, not groups: the Owner pays per affiliate but is counting
   // lines on a ledger.
-  const currency = pickCurrency(metrics.currencies, query.currency);
+  const currency = normalizeDisplayCurrency(query.currency) ?? defaultCurrency;
   const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
   const empty =
     metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
@@ -119,16 +127,113 @@ export default async function ProductOverviewPage({
           .replace(/^this /, "previous ")
           .replace(/^today$/, "yesterday")
           .replace(/^yesterday$/, "the day before");
-  const revenueNow = currency
-    ? (metrics.current.amounts[currency]?.gross ?? 0)
-    : 0;
-  const revenueBefore = currency
-    ? metrics.previous?.amounts[currency]?.gross
+  const revenueSources = Object.entries(metrics.current.amounts).map(
+    ([sourceCurrency, amounts]) => ({
+      currency: sourceCurrency,
+      total: String(amounts.gross),
+    }),
+  );
+  const previousRevenueSources = Object.entries(
+    metrics.previous?.amounts ?? {},
+  ).map(([sourceCurrency, amounts]) => ({
+    currency: sourceCurrency,
+    total: String(amounts.gross),
+  }));
+  const revenueNow = convertCurrencyTotals(revenueSources, currency, rates);
+  const revenueBefore = metrics.previous
+    ? convertCurrencyTotals(previousRevenueSources, currency, rates)
     : null;
+  const owedTotal = convertCurrencyTotals(metrics.owed, currency, rates);
+  const revenueValue =
+    revenueNow.total === null
+      ? revenueSources.length
+        ? money(revenueSources)
+        : formatMoney(0, currency)
+      : `${revenueNow.isEstimate ? "≈ " : ""}${formatCurrencyAtMinorUnitPrecision(revenueNow.total, currency)}`;
+  const owedValue =
+    owedTotal.total === null
+      ? metrics.owed.length
+        ? money(metrics.owed)
+        : formatMoney(0, currency)
+      : `${owedTotal.isEstimate ? "≈ " : ""}${formatCurrencyAtMinorUnitPrecision(owedTotal.total, currency)}`;
+  const unconvertedRevenueHint =
+    revenueNow.unconverted.length > 0
+      ? `Not converted: ${money(revenueNow.unconverted)}${moneyHint(revenueNow.unconverted) ? ` · ${moneyHint(revenueNow.unconverted)}` : ""}`
+      : revenueNow.total === null
+        ? moneyHint(revenueSources)
+        : undefined;
+  const unconvertedOwedHint =
+    owedTotal.unconverted.length > 0
+      ? `Not converted: ${money(owedTotal.unconverted)}${moneyHint(owedTotal.unconverted) ? ` · ${moneyHint(owedTotal.unconverted)}` : ""}`
+      : owedTotal.total === null
+        ? moneyHint(metrics.owed)
+        : undefined;
+  const convertedChart = convertCurrencyChart(metrics.series, currency, rates);
+  const displaySeries = metrics.series.map((point, index) => {
+    const converted = convertedChart[index];
+    return {
+      ...point,
+      amounts: {
+        [currency]: {
+          gross: Number(converted?.gross ?? 0),
+          commission: Number(converted?.commission ?? 0),
+          sales: converted?.sales ?? 0,
+        },
+      },
+    };
+  });
+  const unconvertedByBucket = Object.fromEntries(
+    convertedChart
+      .filter((point) => point.unconverted.length > 0)
+      .map((point) => [
+        point.date,
+        point.unconverted.map(
+          (row) =>
+            `${formatCurrencyAtMinorUnitPrecision(row.gross, row.currency)} ${row.currency}`,
+        ),
+      ]),
+  );
+  const missingRates = new Set([
+    ...revenueNow.unconverted.map((row) => row.currency),
+    ...owedTotal.unconverted.map((row) => row.currency),
+    ...convertedChart.flatMap((point) =>
+      point.unconverted.map((row) => row.currency),
+    ),
+    ...top.flatMap((affiliate) =>
+      convertCurrencyTotals(affiliate.earned, currency, rates).unconverted.map(
+        (row) => row.currency,
+      ),
+    ),
+  ]);
+  const hasEstimate =
+    revenueNow.isEstimate ||
+    owedTotal.isEstimate ||
+    convertedChart.some((point) => point.isEstimate) ||
+    top.some(
+      (affiliate) =>
+        convertCurrencyTotals(affiliate.earned, currency, rates).isEstimate,
+    );
+  const currencyNote = [
+    `Dashboard currency: ${currency.toUpperCase()}`,
+    hasEstimate ? formatReferenceRateLabel(rates.rateDate) : null,
+    missingRates.size
+      ? `No ECB rate for ${[...missingRates].sort().join(", ")}; those amounts stay in source currency.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const delta = (now: number, before: number | null | undefined) =>
     range === "all"
       ? undefined
       : { percent: change(now, before ?? 0), against };
+  const revenueDelta =
+    revenueBefore &&
+    revenueNow.total !== null &&
+    revenueBefore.total !== null &&
+    !revenueNow.isPartial &&
+    !revenueBefore.isPartial
+      ? delta(Number(revenueNow.total), Number(revenueBefore.total))
+      : undefined;
 
   const attention = [
     payableTotal > 0 && {
@@ -154,7 +259,11 @@ export default async function ProductOverviewPage({
 
   return (
     <Page>
-      <PageTitle title="Overview" actions={<RangePicker value={range} />} />
+      <PageTitle
+        title="Overview"
+        subtitle={currencyNote}
+        actions={<RangePicker value={range} />}
+      />
       {celebrate && <TrackingVerified merchantId={merchant.id} />}
       {showWelcome && (
         <Welcome
@@ -178,58 +287,63 @@ export default async function ProductOverviewPage({
         />
         <StatTile
           label="Revenue"
-          value={currency ? formatMoney(revenueNow, currency) : "0.00"}
-          series={
-            currency
-              ? metrics.series.map((d) => d.amounts[currency]?.gross ?? 0)
-              : undefined
-          }
-          delta={currency ? delta(revenueNow, revenueBefore) : undefined}
+          value={revenueValue}
+          series={displaySeries.map(
+            (point) => point.amounts[currency]?.gross ?? 0,
+          )}
+          delta={revenueDelta}
+          hint={unconvertedRevenueHint}
         />
         <StatTile
           label="Owed"
-          value={money(prefer(metrics.owed, currency))}
+          value={owedValue}
           hint={
-            payableTotal
-              ? `${formatCount(payableTotal)} payable now`
-              : (moneyHint(prefer(metrics.owed, currency)) ?? "Nothing waiting")
+            [
+              payableTotal ? `${formatCount(payableTotal)} payable now` : null,
+              unconvertedOwedHint,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Nothing waiting"
           }
           href={`/dashboard/products/${merchant.slug}/payouts`}
         />
       </Tiles>
 
       {!empty && (
-        <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:min-h-[300px] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
           <Section
             title="Clicks and revenue"
             actions={
               <CurrencyPicker
-                value={currency ?? ""}
-                options={metrics.currencies}
+                value={currency}
+                defaultValue={defaultCurrency}
+                options={SUPPORTED_DISPLAY_CURRENCY_CODES}
               />
             }
             className="min-h-[300px]"
             fill
           >
             <ActivityChart
-              points={metrics.series}
+              points={displaySeries}
               bucket={metrics.bucket}
               currency={currency}
               barLabel="Revenue"
               countLabel="Sales"
               splitLabel="Commission"
+              unconverted={unconvertedByBucket}
             />
           </Section>
           <TopAffiliates
             affiliates={top}
             currency={currency}
+            rates={rates}
             viewAllHref={`/dashboard/products/${merchant.slug}/affiliates`}
             className="min-h-[300px] lg:min-h-0"
           />
         </div>
       )}
 
-      <Attention items={attention} />
+      <Attention items={attention} className="mb-2" />
 
       {empty && (
         <Section>

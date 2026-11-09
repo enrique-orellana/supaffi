@@ -30,11 +30,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
-import { money, moneyHint } from "@/lib/format";
 import type { AffiliateLinkStats } from "@/lib/affiliateLink";
 import { linkUrl } from "@/lib/affiliateLinkShared";
 import { LinkDialog } from "./LinkDialog";
 import { deleteLinkAction } from "./actions";
+
+export type AffiliateLinkDisplayStats = AffiliateLinkStats & {
+  displayEarnings: string;
+  unconvertedEarnings: string[];
+  unconvertedCurrencies: string[];
+  earningsAreEstimate: boolean;
+};
 
 /**
  * Every link the affiliate has, on the ledger's own treatment: the neutral
@@ -51,7 +57,7 @@ export function LinksTable({
   links,
   websiteUrl,
 }: {
-  links: AffiliateLinkStats[];
+  links: AffiliateLinkDisplayStats[];
   websiteUrl: string;
 }) {
   const [editing, setEditing] = useState<AffiliateLinkStats | null>(null);
@@ -121,8 +127,13 @@ export function LinksTable({
                 <span className="min-w-0 truncate text-[13px] text-muted-foreground tabular-nums">
                   {link.clicks} clicks · {link.conversions} sales
                 </span>
-                <span className="shrink-0 text-[13px] font-medium text-neutral-900 tabular-nums">
-                  {money(link.earned)}
+                <span className="flex shrink-0 flex-col items-end text-[13px] font-medium text-neutral-900 tabular-nums">
+                  <span>{link.displayEarnings}</span>
+                  {link.unconvertedEarnings.length > 0 && (
+                    <span className="text-right text-[11px] font-normal text-muted-foreground">
+                      Not converted: {link.unconvertedEarnings.join(" · ")}
+                    </span>
+                  )}
                 </span>
               </div>
               {/* Its own row and the full width of it: copying the link is what
@@ -159,7 +170,6 @@ export function LinksTable({
         <TableBody className="divide-y divide-neutral-200">
           {links.map((link) => {
             const url = linkUrl(websiteUrl, link);
-            const hint = moneyHint(link.earned);
             return (
               <TableRow
                 key={link.id}
@@ -184,11 +194,11 @@ export function LinksTable({
                 </TableCell>
                 <TableCell className="text-right">
                   <span className="block text-[15px] font-medium whitespace-nowrap text-neutral-900 tabular-nums">
-                    {money(link.earned)}
+                    {link.displayEarnings}
                   </span>
-                  {hint && (
+                  {link.unconvertedEarnings.length > 0 && (
                     <span className="block text-[11px] text-muted-foreground tabular-nums">
-                      {hint}
+                      Not converted: {link.unconvertedEarnings.join(" · ")}
                     </span>
                   )}
                 </TableCell>

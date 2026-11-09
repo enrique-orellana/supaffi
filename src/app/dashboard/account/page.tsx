@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { getOwnerDisplayCurrency } from "@/lib/ownerDisplaySettings";
 import {
   availableUpdate,
   installedVersion,
   updateCheckEnabled,
 } from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
-import { EmailForm, PasswordForm } from "./AccountForms";
+import { DisplayCurrencyForm, EmailForm, PasswordForm } from "./AccountForms";
 
 /**
  * The account itself, and the instance it runs on.
@@ -24,6 +25,7 @@ export default async function AccountPage() {
   // Answers from the cache and starts a refresh it does not wait for, so a
   // server with no outbound access does not pay for this on every visit.
   const update = availableUpdate();
+  const displayCurrency = await getOwnerDisplayCurrency(session.user.id);
 
   return (
     <Page>
@@ -31,6 +33,10 @@ export default async function AccountPage() {
 
       <EmailForm email={session.user.email ?? ""} />
       <PasswordForm email={session.user.email ?? ""} />
+
+      <Section title="Dashboard display currency">
+        <DisplayCurrencyForm currency={displayCurrency} />
+      </Section>
 
       <Section title="This instance">
         <div className="flex flex-col gap-2 text-sm">

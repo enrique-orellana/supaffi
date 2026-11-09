@@ -12,6 +12,8 @@ import type {
   AffiliateCommissionStatus,
   CommissionStatus,
 } from "@/lib/commissionStatus";
+import { voidReasonText } from "@/lib/commissionReason";
+import { PaymentProvider } from "@/lib/payments/types";
 
 export type { AffiliateCommissionStatus } from "@/lib/commissionStatus";
 
@@ -150,6 +152,8 @@ export function toDisplayStatus(status: string): AffiliateCommissionStatus {
 export type AffiliateCommissionRow = {
   id: string;
   amount: string;
+  /** The eligible sale amount, when it was recorded. */
+  saleAmount: string | null;
   currency: string;
   status: AffiliateCommissionStatus;
   createdAt: Date;
@@ -164,7 +168,7 @@ export type AffiliateCommissionRow = {
    * shrank, so it needs the difference, not just the current amount.
    */
   grossAmount: string | null;
-  /** Internal token. Only ever rendered through `voidReasonText`. */
+  /** Sanitized affiliate-facing explanation; never an owner's raw note. */
   voidReason: string | null;
   voidedAt: Date | null;
 };
@@ -210,6 +214,7 @@ export async function listAffiliateCommissions(
       select: {
         id: true,
         amount: true,
+        saleAmount: true,
         currency: true,
         status: true,
         createdAt: true,
@@ -243,6 +248,7 @@ export async function listAffiliateCommissions(
       const gross = r.grossAmount?.toFixed(2) ?? null;
       return {
         id: r.id,
+        saleAmount: r.saleAmount?.toFixed(2) ?? null,
         currency: r.currency,
         createdAt: r.createdAt,
         payableAt: r.payableAt,
@@ -251,13 +257,93 @@ export async function listAffiliateCommissions(
         // Only carried when it actually differs, so a screen can tell "was
         // reduced" from "was always this" with a single null check.
         grossAmount: gross !== null && gross !== amount ? gross : null,
-        voidReason: r.voidReason,
+        voidReason: voidReasonText(r.voidReason, "affiliate"),
         voidedAt: r.voidedAt,
         status: toDisplayStatus(r.status),
         linkCode: r.click.link?.code ?? null,
         isAdjustment: r.adjustsCommissionId !== null,
       };
     }),
+  };
+}
+
+/**
+ * The affiliate-safe detail view for one commission.
+ *
+ * The lookup is scoped to both the authenticated affiliate and the merchant
+ * resolved from the request host. Its select deliberately excludes buyer
+ * details, provider references, order IDs, payout notes, and internal review
+ * reasons. Stored void reasons are reduced to affiliate-facing copy here.
+ */
+export type AffiliateCommissionDetail = {
+  amount: string;
+  saleAmount: string | null;
+  currency: string;
+  status: AffiliateCommissionStatus;
+  createdAt: Date;
+  payableAt: Date;
+  paidAt: Date | null;
+  voidedAt: Date | null;
+  linkCode: string | null;
+  isAdjustment: boolean;
+  grossAmount: string | null;
+  voidReason: string | null;
+  paymentProvider: string | null;
+};
+
+export async function getAffiliateCommissionDetail(
+  affiliateId: string,
+  merchantId: string,
+  commissionId: string,
+): Promise<AffiliateCommissionDetail | null> {
+  const commission = await db.commission.findFirst({
+    where: {
+      id: commissionId,
+      affiliateId,
+      affiliate: { merchantId },
+    },
+    select: {
+      amount: true,
+      saleAmount: true,
+      currency: true,
+      status: true,
+      createdAt: true,
+      payableAt: true,
+      paidAt: true,
+      voidedAt: true,
+      voidReason: true,
+      grossAmount: true,
+      adjustsCommissionId: true,
+      click: { select: { link: { select: { code: true } } } },
+      paymentRecord: {
+        select: {
+          provider: true,
+        },
+      },
+    },
+  });
+  if (!commission) return null;
+
+  const provider = Object.values(PaymentProvider).find(
+    ({ database }) => database === commission.paymentRecord?.provider,
+  );
+  const amount = commission.amount.toFixed(2);
+  const grossAmount = commission.grossAmount?.toFixed(2) ?? null;
+
+  return {
+    amount,
+    saleAmount: commission.saleAmount?.toFixed(2) ?? null,
+    currency: commission.currency,
+    status: toDisplayStatus(commission.status),
+    createdAt: commission.createdAt,
+    payableAt: commission.payableAt,
+    paidAt: commission.paidAt,
+    voidedAt: commission.voidedAt,
+    linkCode: commission.click.link?.code ?? null,
+    isAdjustment: commission.adjustsCommissionId !== null,
+    grossAmount: grossAmount !== amount ? grossAmount : null,
+    voidReason: voidReasonText(commission.voidReason, "affiliate"),
+    paymentProvider: provider?.label ?? null,
   };
 }
 

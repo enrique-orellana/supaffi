@@ -1,10 +1,10 @@
+import Link from "next/link";
 import { formatMoney, formatDate } from "@/lib/format";
 import { Coins } from "lucide-react";
 import type {
   AffiliateCommissionRow,
   AffiliateCommissionStatus,
 } from "@/lib/affiliate";
-import { voidReasonText } from "@/lib/commissionReason";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -29,7 +29,7 @@ import {
  * `table-fixed` with a percentage per column: under auto layout a `max-width`
  * on a cell is ignored, so one long reason would widen the table past its card
  * instead of laying out inside it. Below `md` the table gives way to a stacked
- * list of the same rows, because five columns in the width of a phone is not a
+ * list of the same rows, because six columns in the width of a phone is not a
  * table.
  */
 
@@ -52,10 +52,20 @@ export const STATUS_LABELS: Record<AffiliateCommissionStatus, string> = {
 
 export type LedgerRow = {
   id: string;
+  /** Opens this commission's affiliate-safe detail panel. */
+  href?: string;
   /** Formatted on the server, so every screen shows the same date. */
   dateLabel: string;
-  /** Carries its currency, since amounts are never converted. */
+  /** The commission's original amount and currency, unchanged in storage. */
   amount: string;
+  /** The eligible sale amount in its original currency, when recorded. */
+  saleAmount?: string | null;
+  /** Estimated display-currency equivalent of the sale amount. */
+  convertedSaleAmount?: string | null;
+  /** Estimated display-currency equivalent, already formatted on the server. */
+  convertedAmount: string | null;
+  /** True when a reference rate was unavailable for this source currency. */
+  conversionUnavailable: boolean;
   /** What the commission was before a partial refund reduced it. Null when unchanged. */
   grossAmount: string | null;
   status: AffiliateCommissionStatus;
@@ -64,7 +74,7 @@ export type LedgerRow = {
   isAdjustment: boolean;
   /** When the money arrives. The first thing an affiliate asks a row. */
   stateLabel: string;
-  /** Internal token, rendered through `voidReasonText`. Never printed raw. */
+  /** Already sanitized for the affiliate audience by the server. */
   voidReason: string | null;
   /** When a voided commission was voided. */
   voidedLabel: string | null;
@@ -74,8 +84,7 @@ export type LedgerRow = {
  * When the money arrives.
  *
  * Only ever the good half of the story: why a row was voided or reduced comes
- * from `voidReasonText`, which is the one place that turns a stored token into
- * words.
+ * from the server-sanitized affiliate-facing reason.
  */
 export function commissionStateLabel(row: AffiliateCommissionRow): string {
   switch (row.status) {
@@ -85,9 +94,8 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
       // that date passes, say availability is being checked instead of showing
       // a release date that has already passed. This also keeps hidden flags
       // private while explaining why the commission is still on hold.
-      if (row.payableAt.getTime() <= Date.now())
-        return "Sale confirmed · availability is being checked";
-      return `Sale confirmed · expected availability ${formatDate(row.payableAt)}`;
+      if (row.payableAt.getTime() <= Date.now()) return "Checking availability";
+      return `Available ${formatDate(row.payableAt)}`;
     }
     case COMMISSION_STATUS.PAYABLE:
       return "Ready to pay";
@@ -101,11 +109,24 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
 }
 
 /** One database row as the ledger shows it. Both screens map through this. */
-export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
+export function toLedgerRow(
+  row: AffiliateCommissionRow & {
+    convertedAmount?: string | null;
+    convertedSaleAmount?: string | null;
+    conversionUnavailable?: boolean;
+  },
+): LedgerRow {
   return {
     id: row.id,
     dateLabel: formatDate(row.createdAt),
-    amount: formatMoney(row.amount, row.currency),
+    amount: `${formatMoney(row.amount, row.currency)} ${row.currency.toUpperCase()}`,
+    saleAmount:
+      row.saleAmount === null
+        ? null
+        : `${formatMoney(row.saleAmount, row.currency)} ${row.currency.toUpperCase()}`,
+    convertedSaleAmount: row.convertedSaleAmount ?? null,
+    convertedAmount: row.convertedAmount ?? null,
+    conversionUnavailable: row.conversionUnavailable ?? false,
     grossAmount: row.grossAmount
       ? formatMoney(row.grossAmount, row.currency)
       : null,
@@ -129,9 +150,8 @@ function voidedDetail(cause: string | null, when: string | null): string {
 }
 
 /**
- * The three things every rendering of a row asks it. `voidReasonText` is the
- * one place a stored token becomes words, so both the table and the phone list
- * go through it rather than writing their own.
+ * The server provides affiliate-safe text; this component only decides how
+ * that text fits the row.
  */
 function readRow(row: LedgerRow): {
   voided: boolean;
@@ -141,7 +161,7 @@ function readRow(row: LedgerRow): {
   const voided = row.status === COMMISSION_STATUS.VOIDED;
   return {
     voided,
-    cause: voidReasonText(row.voidReason, "affiliate"),
+    cause: row.voidReason,
     reduced: !voided && row.grossAmount !== null,
   };
 }
@@ -178,14 +198,8 @@ export function CommissionLedger({
       <ul className="divide-y divide-neutral-200 md:hidden">
         {rows.map((row) => {
           const { voided, cause, reduced } = readRow(row);
-          return (
-            <li
-              key={row.id}
-              className={cn(
-                "flex flex-col gap-1 px-4 py-3",
-                voided && "text-muted-foreground",
-              )}
-            >
+          const content = (
+            <>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-[13px] text-muted-foreground tabular-nums">
                   {row.dateLabel}
@@ -205,6 +219,26 @@ export function CommissionLedger({
                       {row.grossAmount}
                     </span>
                   )}
+                  {row.convertedAmount && (
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      {row.convertedAmount}
+                    </span>
+                  )}
+                  {row.saleAmount != null && (
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      Sale {row.saleAmount}
+                    </span>
+                  )}
+                  {row.convertedSaleAmount && (
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      {row.convertedSaleAmount}
+                    </span>
+                  )}
+                  {row.conversionUnavailable && (
+                    <span className="text-[11px] font-normal text-muted-foreground">
+                      Not converted
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex items-start gap-2">
@@ -222,6 +256,21 @@ export function CommissionLedger({
                   )}
                 </span>
               </div>
+            </>
+          );
+          return (
+            <li key={row.id} className={cn(voided && "text-muted-foreground")}>
+              {row.href ? (
+                <Link
+                  href={row.href}
+                  aria-label={`View commission details for ${row.amount}, ${row.dateLabel}`}
+                  className="flex flex-col gap-1 px-4 py-3 outline-none hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  {content}
+                </Link>
+              ) : (
+                <div className="flex flex-col gap-1 px-4 py-3">{content}</div>
+              )}
             </li>
           );
         })}
@@ -233,19 +282,22 @@ export function CommissionLedger({
             blending into them. */}
         <TableHeader className="sticky top-0 z-10 bg-neutral-100">
           <TableRow className="border-neutral-200 hover:bg-transparent">
-            <TableHead className="h-9 w-[13%] text-[13px] font-medium text-neutral-700">
+            <TableHead className="h-9 w-[12%] text-[13px] font-medium text-neutral-700">
               Date
             </TableHead>
-            <TableHead className="h-9 w-[18%] text-right text-[13px] font-medium text-neutral-700">
+            <TableHead className="h-9 w-[17%] text-right text-[13px] font-medium text-neutral-700">
               Amount
             </TableHead>
-            <TableHead className="h-9 w-[13%] text-[13px] font-medium text-neutral-700">
+            <TableHead className="h-9 w-[14%] text-right text-[13px] font-medium text-neutral-700">
+              Sale
+            </TableHead>
+            <TableHead className="h-9 w-[12%] text-[13px] font-medium text-neutral-700">
               Status
             </TableHead>
             <TableHead className="h-9 w-[16%] text-[13px] font-medium text-neutral-700">
               Link
             </TableHead>
-            <TableHead className="h-9 w-[40%] text-[13px] font-medium text-neutral-700">
+            <TableHead className="h-9 w-[29%] text-[13px] font-medium text-neutral-700">
               Detail
             </TableHead>
           </TableRow>
@@ -258,6 +310,7 @@ export function CommissionLedger({
                 key={row.id}
                 className={cn(
                   "border-neutral-200 hover:bg-neutral-50",
+                  row.href && "relative",
                   // Muted throughout, not only on the badge: a voided sale is the
                   // least important row on the screen and should read that way
                   // before the eye reaches the status column.
@@ -265,7 +318,19 @@ export function CommissionLedger({
                 )}
               >
                 <TableCell className="align-top whitespace-nowrap text-muted-foreground tabular-nums">
-                  {row.dateLabel}
+                  {/* A single stretched link opens details while preserving
+                      table semantics and keyboard navigation. */}
+                  {row.href ? (
+                    <Link
+                      href={row.href}
+                      aria-label={`View commission details for ${row.amount}, ${row.dateLabel}`}
+                      className="cursor-pointer after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                    >
+                      {row.dateLabel}
+                    </Link>
+                  ) : (
+                    row.dateLabel
+                  )}
                 </TableCell>
                 <TableCell className="text-right align-top">
                   {/* The heaviest thing in the row: this screen's whole subject
@@ -287,6 +352,32 @@ export function CommissionLedger({
                     <span className="block text-[11px] text-neutral-500 line-through tabular-nums">
                       {row.grossAmount}
                     </span>
+                  )}
+                  {row.convertedAmount && (
+                    <span className="block text-[11px] font-normal text-muted-foreground">
+                      {row.convertedAmount}
+                    </span>
+                  )}
+                  {row.conversionUnavailable && (
+                    <span className="block text-[11px] font-normal text-muted-foreground">
+                      Not converted
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right align-top whitespace-nowrap tabular-nums">
+                  {row.saleAmount == null ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <>
+                      <span className="block text-[13px] text-neutral-700">
+                        {row.saleAmount}
+                      </span>
+                      {row.convertedSaleAmount && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          {row.convertedSaleAmount}
+                        </span>
+                      )}
+                    </>
                   )}
                 </TableCell>
                 <TableCell className="align-top">

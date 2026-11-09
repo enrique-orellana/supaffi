@@ -15,6 +15,10 @@ import { Field, FormCard } from "@/components/Field";
 import { Term } from "@/components/Term";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { COMMISSION_DURATION_OPTIONS } from "@/lib/commissionDuration";
+import {
+  DEFAULT_DISPLAY_CURRENCY,
+  DISPLAY_CURRENCY_OPTIONS,
+} from "@/lib/displayCurrencyOptions";
 
 type Action = (
   prev: { error: string },
@@ -28,12 +32,16 @@ export const TERMS_DEFAULTS: ProgramFormValues = {
   commissionDurationMonths: "",
   attributionWindowDays: "60",
   holdingPeriodDays: "30",
+  currency: DEFAULT_DISPLAY_CURRENCY,
 };
 
 // Passed to the Select as `items` so the trigger shows the sentence rather
 // than the raw enum name it submits.
 const DURATIONS = Object.fromEntries(
   COMMISSION_DURATION_OPTIONS.map(({ value, label }) => [value, label]),
+);
+const DISPLAY_CURRENCIES = Object.fromEntries(
+  DISPLAY_CURRENCY_OPTIONS.map(({ code, label }) => [code, label]),
 );
 
 const NUMBER = "w-20 tabular-nums";
@@ -60,6 +68,9 @@ export function TermsForm({
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [duration, setDuration] = useState(initial.commissionDurationType);
+  const [currency, setCurrency] = useState(
+    initial.currency ?? DEFAULT_DISPLAY_CURRENCY,
+  );
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
@@ -119,6 +130,37 @@ export function TermsForm({
               </SelectContent>
             </Select>
           </div>
+        </Field>
+
+        <Field
+          label={
+            <Term tip="Default for affiliate dashboards. Commission and payout records keep their original currencies.">
+              Affiliate dashboard currency
+            </Term>
+          }
+          htmlFor="program-currency"
+        >
+          <Select
+            name="currency"
+            items={DISPLAY_CURRENCIES}
+            value={currency}
+            onValueChange={(value) => setCurrency(String(value))}
+          >
+            <SelectTrigger
+              id="program-currency"
+              className="h-9 w-full cursor-pointer"
+              aria-label="Default affiliate dashboard currency"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DISPLAY_CURRENCY_OPTIONS.map(({ code, label }) => (
+                <SelectItem key={code} value={code} className="cursor-pointer">
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
 
         {duration === "FIXED_MONTHS" && (
