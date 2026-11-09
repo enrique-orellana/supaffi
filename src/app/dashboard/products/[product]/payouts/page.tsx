@@ -25,6 +25,7 @@ import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { TablePagination } from "@/components/dashboard/TablePagination";
 import { CopyValue } from "@/components/CopyValue";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { markPayoutPaidAction } from "./payoutActions";
 
 /**
@@ -48,6 +49,7 @@ export default async function PayoutsPage({
 }: {
   params: Promise<{ product: string }>;
   searchParams: Promise<{
+    tab?: string;
     page?: string;
     error?: string;
     skipped?: string;
@@ -65,7 +67,11 @@ export default async function PayoutsPage({
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
-  const page = Math.max(1, Math.floor(Number(query.page)) || 1);
+  // A page query used to mean the Paid history, before tabs were added.
+  const tab =
+    query.tab === "paid" || (!query.tab && query.page) ? "paid" : "ready";
+  const page =
+    tab === "paid" ? Math.max(1, Math.floor(Number(query.page)) || 1) : 1;
   // Taken before any commission is read. Mark paid compares it with when a
   // refund voided a shown row, so it has to be no later than the read.
   const renderedAt = new Date().toISOString();
@@ -78,7 +84,24 @@ export default async function PayoutsPage({
 
   const base = `/dashboard/products/${merchant.slug}`;
   const productRef = { id: merchant.id, slug: merchant.slug };
-  const pageHref = (p: number) => `${base}/payouts${p > 1 ? `?page=${p}` : ""}`;
+  const noticeParams = new URLSearchParams();
+  for (const [key, value] of Object.entries({
+    error: query.error,
+    skipped: query.skipped,
+    already: query.already,
+    paidOn: query.paidOn,
+    recorded: query.recorded,
+  })) {
+    if (value) noticeParams.set(key, value);
+  }
+  const payoutHref = (targetTab: "ready" | "paid", targetPage?: number) => {
+    const params = new URLSearchParams(noticeParams);
+    if (targetTab === "paid") params.set("tab", targetTab);
+    if (targetPage && targetPage > 1) params.set("page", String(targetPage));
+    const search = params.toString();
+    return `${base}/payouts${search ? `?${search}` : ""}`;
+  };
+  const pageHref = (p: number) => payoutHref("paid", p);
 
   const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
@@ -112,13 +135,38 @@ export default async function PayoutsPage({
         </p>
       )}
 
-      <Section title="Ready to pay" flush className="shrink-0 overflow-hidden">
-        {groups.length === 0 ? (
-          <div className="border-t border-neutral-200">
+      <Tabs value={tab} className="shrink-0">
+        <TabsList variant="line">
+          <TabsTrigger
+            value="ready"
+            render={
+              <Link href={payoutHref("ready")} className="cursor-pointer" />
+            }
+          >
+            Ready to pay
+            <span className="ml-1.5 text-muted-foreground tabular-nums">
+              {groups.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="paid"
+            render={
+              <Link href={payoutHref("paid")} className="cursor-pointer" />
+            }
+          >
+            Paid
+            <span className="ml-1.5 text-muted-foreground tabular-nums">
+              {history.total}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {tab === "ready" ? (
+        <Section flush scroll className="overflow-hidden">
+          {groups.length === 0 ? (
             <EmptyState icon={<Wallet />} title="Nothing to pay" />
-          </div>
-        ) : (
-          <div className="max-h-[45vh] overflow-auto border-t border-neutral-200">
+          ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-neutral-100">
                 <TableRow className="border-neutral-200 hover:bg-transparent">
@@ -188,60 +236,60 @@ export default async function PayoutsPage({
                 ))}
               </TableBody>
             </Table>
-          </div>
-        )}
-      </Section>
-
-      <Section title="Paid" flush scroll className="overflow-hidden">
-        {history.total === 0 ? (
-          <div className="border-t border-neutral-200">
+          )}
+        </Section>
+      ) : (
+        <Section flush scroll className="overflow-hidden">
+          {history.total === 0 ? (
             <EmptyState icon={<Wallet />} title="No payouts yet" />
-          </div>
-        ) : (
-          <Table className="border-t border-neutral-200">
-            <TableHeader className="sticky top-0 z-10 bg-neutral-100">
-              <TableRow className="border-neutral-200 hover:bg-transparent">
-                <TableHead className={HEAD}>Date</TableHead>
-                <TableHead className={HEAD}>Affiliate</TableHead>
-                <TableHead className={`${HEAD} text-right`}>
-                  Commissions
-                </TableHead>
-                <TableHead className={`${HEAD} text-right`}>Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-neutral-200">
-              {history.rows.map((row) => (
-                <TableRow
-                  key={`${row.affiliateId}:${row.currency}:${row.paidAt.toISOString()}`}
-                  className="border-neutral-200 hover:bg-neutral-50"
-                >
-                  <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
-                    {formatDate(row.paidAt)}
-                  </TableCell>
-                  <TableCell className="max-w-56">
-                    <span className="block truncate">
-                      {row.affiliateName ?? row.affiliateEmail}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {formatCount(row.count)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                    {formatMoney(row.total, row.currency)}
-                  </TableCell>
+          ) : (
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-neutral-100">
+                <TableRow className="border-neutral-200 hover:bg-transparent">
+                  <TableHead className={HEAD}>Date</TableHead>
+                  <TableHead className={HEAD}>Affiliate</TableHead>
+                  <TableHead className={`${HEAD} text-right`}>
+                    Commissions
+                  </TableHead>
+                  <TableHead className={`${HEAD} text-right`}>Amount</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Section>
+              </TableHeader>
+              <TableBody className="divide-y divide-neutral-200">
+                {history.rows.map((row) => (
+                  <TableRow
+                    key={`${row.affiliateId}:${row.currency}:${row.paidAt.toISOString()}`}
+                    className="border-neutral-200 hover:bg-neutral-50"
+                  >
+                    <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
+                      {formatDate(row.paidAt)}
+                    </TableCell>
+                    <TableCell className="max-w-56">
+                      <span className="block truncate">
+                        {row.affiliateName ?? row.affiliateEmail}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                      {formatCount(row.count)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
+                      {formatMoney(row.total, row.currency)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Section>
+      )}
 
-      <TablePagination
-        page={page}
-        pageSize={HISTORY_PAGE_SIZE}
-        total={history.total}
-        hrefFor={pageHref}
-      />
+      {tab === "paid" && (
+        <TablePagination
+          page={page}
+          pageSize={HISTORY_PAGE_SIZE}
+          total={history.total}
+          hrefFor={pageHref}
+        />
+      )}
     </Page>
   );
 }

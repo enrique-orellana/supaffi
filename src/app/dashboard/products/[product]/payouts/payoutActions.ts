@@ -43,6 +43,7 @@ export async function markPayoutPaidAction(
     if (result.skipped) params.set("skipped", String(result.skipped));
     for (const [key, value] of Object.entries(alreadyPaidParams(result)))
       params.set(key, value);
+    if (result.count > 0 || result.alreadyPaid) params.set("tab", "paid");
   }
   const search = params.toString();
   revalidatePath("/dashboard", "layout");
