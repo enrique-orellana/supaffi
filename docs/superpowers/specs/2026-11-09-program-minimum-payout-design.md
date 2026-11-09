@@ -72,6 +72,13 @@ Only record a payout after the Owner confirms the external transfer succeeded. I
 
 Changing a Program minimum immediately re-evaluates unpaid balances. Raising it may move mature commissions from `PAYABLE` back to `PENDING`; the confirmation must identify the affected groups. Lowering it can make groups payable immediately. Paid and voided rows are never reopened by a threshold change.
 
+## Commission-rate ownership feedback
+
+The current rate precedence is Program default, optional Affiliate-specific override, then optional AffiliateLink override. The link editor exposes the last override so a campaign link can have a different rate. In the supplied screenshot, both rate fields say **Inherit** and explain that they inherit 20%, so those links do not currently have separate rates.
+
+For the intended product model, commission rate is a Program term and referral links should inherit it; the per-link commission-rate override should be removed. The current Affiliate-level custom rate is a separate exception mechanism. Recommendation: retain it only for explicitly negotiated Affiliate exceptions, with the effective rate shown in Affiliate settings. If the rule is strict that every Affiliate in a Program has the same rate, remove that override too and use a separate Program for each rate tier.
+
+Existing Clicks keep their stored rate snapshots. Before link overrides stop affecting future Clicks, the Owner should be shown which active links have a custom rate so those exceptions can be reviewed. The time-to-buy, hold period, and commission-duration controls shown per link are separate overrides and are not changed by this rate decision.
 ## Scope
 
 This design adds per-Program payout minimums, stable Program attribution for new referral activity, grouped payout records, and clear eligibility reasons. It does not add automatic money transfers, scheduled payout automation, currency conversion, split payments of a single Commission, or a new tax/withholding system.
