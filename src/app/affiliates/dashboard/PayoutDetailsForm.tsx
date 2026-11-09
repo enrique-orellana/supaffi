@@ -26,6 +26,10 @@ const METHOD_LABELS = Object.fromEntries(
   Object.entries(PAYOUT_METHODS).map(([method, { label }]) => [method, label]),
 ) as Record<PayoutMethod, string>;
 
+// Keep the other methods available for existing payout details and future
+// re-enablement, while only offering crypto in the picker for now.
+const VISIBLE_METHODS = ["crypto"] as const satisfies readonly PayoutMethod[];
+
 type FormState = { error?: string; saved?: boolean };
 
 async function submit(
@@ -61,7 +65,9 @@ export function PayoutDetailsForm({
     parsedInitial.method === "crypto"
       ? parseCryptoPayoutDetails(parsedInitial.value)
       : { coinAndNetwork: "", walletAddress: "" };
-  const [method, setMethod] = useState<PayoutMethod>(parsedInitial.method);
+  const [method, setMethod] = useState<PayoutMethod>(
+    initial.trim() ? parsedInitial.method : "crypto",
+  );
   const [value, setValue] = useState(() =>
     parsedInitial.method === "crypto"
       ? initialCrypto.walletAddress
@@ -95,9 +101,9 @@ export function PayoutDetailsForm({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {Object.entries(METHOD_LABELS).map(([key, label]) => (
+        {VISIBLE_METHODS.map((key) => (
           <SelectItem key={key} value={key} className="cursor-pointer">
-            {label}
+            {METHOD_LABELS[key]}
           </SelectItem>
         ))}
       </SelectContent>
