@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import {
   connectStripe,
   getMerchantForOwner,
@@ -18,9 +19,31 @@ import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
 import { isLocalDomain } from "@/lib/url";
 import { nextStep, stepPath } from "@/lib/onboarding";
+import { saveProviderFeeFallbackPercent } from "@/lib/providerFeeSettings";
+import { PaymentProvider, type PaymentProviderId } from "@/lib/payments/types";
+import type { ProviderFeeFallbackActionState } from "@/components/payments/ProviderFeeFallbackForm";
 
 type ProductRef = { id: string; slug: string };
 type ActionState = { error: string };
+
+function providerDatabaseValue(
+  provider: PaymentProviderId,
+): "STRIPE" | "NOWPAYMENTS" | null {
+  if (provider === PaymentProvider.STRIPE.id)
+    return PaymentProvider.STRIPE.database;
+  if (provider === PaymentProvider.NOWPAYMENTS.id)
+    return PaymentProvider.NOWPAYMENTS.database;
+  return null;
+}
+
+function parseFeeFallbackPercent(
+  value: FormDataEntryValue | null,
+): Prisma.Decimal | null {
+  const text = String(value ?? "").trim();
+  if (!/^(?:\d{1,3})(?:\.\d{1,2})?$/.test(text)) return null;
+  const percent = new Prisma.Decimal(text);
+  return percent.gte(0) && percent.lte(100) ? percent : null;
+}
 
 async function owner(): Promise<string> {
   const session = await auth();
@@ -116,6 +139,33 @@ export async function saveNowPaymentsOnboardingAction(
   });
   revalidatePath(stepPath(product.slug, "payments"));
   return { error: "" };
+}
+
+export async function saveProviderFeeFallbackOnboardingAction(
+  product: ProductRef,
+  provider: PaymentProviderId,
+  _prev: ProviderFeeFallbackActionState,
+  formData: FormData,
+): Promise<ProviderFeeFallbackActionState> {
+  const ownerId = await owner();
+  const databaseProvider = providerDatabaseValue(provider);
+  const feeFallbackPercent = parseFeeFallbackPercent(
+    formData.get("feeFallbackPercent"),
+  );
+  if (!databaseProvider || !feeFallbackPercent)
+    return {
+      error: "Enter a fee from 0 to 100, with up to two decimals.",
+      success: false,
+    };
+
+  await saveProviderFeeFallbackPercent(
+    ownerId,
+    product.id,
+    databaseProvider,
+    feeFallbackPercent,
+  );
+  revalidatePath(stepPath(product.slug, "payments"));
+  return { error: "", success: true };
 }
 
 export async function disconnectNowPaymentsOnboardingAction(

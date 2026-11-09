@@ -173,14 +173,23 @@ export async function disconnectStripe(
 export async function getIntegrationStatus(
   ownerId: string,
   merchantId: string,
-): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
+): Promise<{
+  stripe: boolean;
+  stripeKey: boolean;
+  stripeWebhook: boolean;
+  feeFallbackPercent?: string | null;
+}> {
   const connection = await db.paymentConnection.findFirst({
     where: {
       merchantId,
       provider: PaymentProvider.STRIPE.database,
       merchant: { ownerId },
     },
-    select: { apiKeyEnc: true, webhookSecretEnc: true },
+    select: {
+      apiKeyEnc: true,
+      webhookSecretEnc: true,
+      feeFallbackPercent: true,
+    },
   });
   const stripeKey = Boolean(connection?.apiKeyEnc);
   const stripeWebhook = Boolean(connection?.webhookSecretEnc);
@@ -188,6 +197,7 @@ export async function getIntegrationStatus(
     stripe: stripeKey && stripeWebhook,
     stripeKey,
     stripeWebhook,
+    feeFallbackPercent: connection?.feeFallbackPercent?.toString() ?? null,
   };
 }
 

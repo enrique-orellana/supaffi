@@ -45,6 +45,10 @@ export type SheetCommission = {
   payTotal: string;
   /** What this commission was before a partial refund reduced it. Null when unchanged. */
   grossAmount: string | null;
+  /** Eligible sale before the processor fee was subtracted. */
+  saleAmount?: string | null;
+  providerFeeAmount?: string | null;
+  providerFeeSource?: "ACTUAL" | "FALLBACK" | null;
   affiliate: string;
   affiliateEmail: string;
   createdLabel: string;
@@ -305,6 +309,18 @@ export function CommissionSheet({
             </Line>
             {commission.paymentProvider && (
               <Line label="Provider">{commission.paymentProvider}</Line>
+            )}
+            {commission.saleAmount && (
+              <Line label="Sale before fee">{commission.saleAmount}</Line>
+            )}
+            {commission.providerFeeSource && commission.providerFeeAmount && (
+              <Line label="Processing fee">
+                {commission.providerFeeAmount} (
+                {commission.providerFeeSource === "ACTUAL"
+                  ? "actual"
+                  : "fallback estimate"}
+                )
+              </Line>
             )}
             {commission.cryptoAmount && commission.cryptoCurrency && (
               <Line label="Crypto paid">

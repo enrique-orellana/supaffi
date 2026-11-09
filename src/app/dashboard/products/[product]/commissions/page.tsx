@@ -13,7 +13,13 @@ import {
 } from "@/lib/commission";
 import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
 import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
-import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
+import {
+  formatMoney,
+  formatMoneyAtCurrencyPrecision,
+  money,
+  moneyHint,
+  formatDate,
+} from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import { TablePagination } from "@/components/dashboard/TablePagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -217,6 +223,18 @@ export default async function CommissionsPage({
           selected.grossAmount && selected.grossAmount !== selected.amount
             ? formatMoney(selected.grossAmount, selected.currency)
             : null,
+        saleAmount: selected.saleAmount
+          ? formatMoney(selected.saleAmount, selected.currency)
+          : null,
+        providerFeeAmount: selected.providerFeeAmount
+          ? formatMoneyAtCurrencyPrecision(
+              selected.providerFeeAmount,
+              selected.currency,
+            )
+          : selected.providerFeeSource
+            ? formatMoneyAtCurrencyPrecision("0", selected.currency)
+            : null,
+        providerFeeSource: selected.providerFeeSource,
         affiliate: selected.affiliateName ?? selected.affiliateEmail,
         affiliateEmail: selected.affiliateEmail,
         createdLabel: formatDate(selected.createdAt),

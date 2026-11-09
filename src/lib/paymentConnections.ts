@@ -136,6 +136,7 @@ export async function getNowPaymentsConnectionStatus(
   hasIpnSecret: boolean;
   hasCallbackId: boolean;
   callbackUrl: string | null;
+  feeFallbackPercent?: string | null;
 }> {
   const connection = await db.paymentConnection.findFirst({
     where: {
@@ -148,6 +149,7 @@ export async function getNowPaymentsConnectionStatus(
       status: true,
       enabled: true,
       webhookRouteId: true,
+      feeFallbackPercent: true,
     },
   });
   const connected = Boolean(
@@ -162,5 +164,6 @@ export async function getNowPaymentsConnectionStatus(
     callbackUrl: connection
       ? nowPaymentsCallbackUrl(connection.webhookRouteId)
       : null,
+    feeFallbackPercent: connection?.feeFallbackPercent?.toString() ?? null,
   };
 }

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { currencySymbol, formatCount, formatMoney } from "@/lib/format";
+import {
+  currencySymbol,
+  formatCount,
+  formatMoney,
+  formatMoneyAtCurrencyPrecision,
+} from "@/lib/format";
 import {
   formatDate,
   initials,
@@ -66,6 +71,12 @@ describe("formatMoney", () => {
   });
   it("groups counts", () => {
     expect(formatCount(31143)).toBe("31,143");
+  });
+});
+
+describe("formatMoneyAtCurrencyPrecision", () => {
+  it("keeps three-decimal currency precision for processor fees", () => {
+    expect(formatMoneyAtCurrencyPrecision("0.003", "kwd")).toContain("0.003");
   });
 });
 

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import {
   updateMerchant,
   deleteMerchant,
@@ -25,6 +26,9 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
 import { PaymentProvider } from "@/lib/payments/types";
+import type { PaymentProviderId } from "@/lib/payments/types";
+import { saveProviderFeeFallbackPercent } from "@/lib/providerFeeSettings";
+import type { ProviderFeeFallbackActionState } from "@/components/payments/ProviderFeeFallbackForm";
 
 /**
  * Everything the settings page can change: the product's own details, the
@@ -58,6 +62,25 @@ type ProductFormState = {
   error: string;
   values?: { name: string; domain: string; websiteUrl: string };
 };
+
+function providerDatabaseValue(
+  provider: PaymentProviderId,
+): "STRIPE" | "NOWPAYMENTS" | null {
+  if (provider === PaymentProvider.STRIPE.id)
+    return PaymentProvider.STRIPE.database;
+  if (provider === PaymentProvider.NOWPAYMENTS.id)
+    return PaymentProvider.NOWPAYMENTS.database;
+  return null;
+}
+
+function parseFeeFallbackPercent(
+  value: FormDataEntryValue | null,
+): Prisma.Decimal | null {
+  const text = String(value ?? "").trim();
+  if (!/^(?:\d{1,3})(?:\.\d{1,2})?$/.test(text)) return null;
+  const percent = new Prisma.Decimal(text);
+  return percent.gte(0) && percent.lte(100) ? percent : null;
+}
 
 export async function updateProductAction(
   product: ProductRef,
@@ -140,6 +163,33 @@ export async function saveNowPaymentsConnectionAction(
   });
   revalidatePath(settings(product.slug));
   redirect(settings(product.slug));
+}
+
+export async function saveProviderFeeFallbackAction(
+  product: ProductRef,
+  provider: PaymentProviderId,
+  _prev: ProviderFeeFallbackActionState,
+  formData: FormData,
+): Promise<ProviderFeeFallbackActionState> {
+  const ownerId = await owner();
+  const databaseProvider = providerDatabaseValue(provider);
+  const feeFallbackPercent = parseFeeFallbackPercent(
+    formData.get("feeFallbackPercent"),
+  );
+  if (!databaseProvider || !feeFallbackPercent)
+    return {
+      error: "Enter a fee from 0 to 100, with up to two decimals.",
+      success: false,
+    };
+
+  await saveProviderFeeFallbackPercent(
+    ownerId,
+    product.id,
+    databaseProvider,
+    feeFallbackPercent,
+  );
+  revalidatePath(settings(product.slug));
+  return { error: "", success: true };
 }
 
 export async function disconnectNowPaymentsConnectionAction(

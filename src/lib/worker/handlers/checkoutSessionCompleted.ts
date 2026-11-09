@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
 import {
   commissionRateFor,
-  computeCommissionAmount,
   computePayableAt,
   isExcluded,
   saleAmountFor,
@@ -43,6 +42,12 @@ import {
   referralStillEarns,
 } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
+import {
+  commissionAfterProviderFee,
+  feeMinorInCurrency,
+} from "../providerFees";
+import { getProviderFeeFallbackPercent } from "@/lib/providerFeeSettings";
+import { PaymentProvider } from "@/lib/payments/types";
 
 export async function handleCheckoutSessionCompleted(
   merchant: Merchant,
@@ -333,11 +338,6 @@ export async function handleCheckoutSessionCompleted(
     baseMinor = 0;
   }
 
-  const amount = computeCommissionAmount(baseMinor, session.currency, rate);
-  // A sale that came to nothing, or to less than a cent of commission, would
-  // only add an empty row to both ledgers.
-  if (amount.lte(0)) return;
-
   if (sessionRead) {
     // A one-time purchase. Its post-purchase invoice and its customer came
     // back expanded on the Session read above, so this check costs no
@@ -387,6 +387,29 @@ export async function handleCheckoutSessionCompleted(
       ? Math.min(referredChargeMinor, charge.amount)
       : referredChargeMinor;
 
+  const feeFallbackPercent = await getProviderFeeFallbackPercent(
+    merchant.id,
+    PaymentProvider.STRIPE.database,
+  );
+  const actualFeeMinor = charge?.processingFee
+    ? charge.currency === session.currency
+      ? feeMinorInCurrency(charge.processingFee, session.currency)
+      : null
+    : null;
+  const { amount, providerFeeAmount, providerFeeSource } =
+    commissionAfterProviderFee({
+      eligibleSaleMinor: baseMinor,
+      currency: session.currency,
+      ratePercent: rate,
+      actualFeeMinor,
+      fallbackPercent: feeFallbackPercent,
+      chargedAmountMinor:
+        charge?.currency === session.currency ? charge.amount : null,
+    });
+  // A sale reduced to zero, or below a cent of commission after the fee, has
+  // nothing to enter in the affiliate ledger.
+  if (amount.lte(0)) return;
+
   try {
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
@@ -397,6 +420,8 @@ export async function handleCheckoutSessionCompleted(
         stripePaymentRef,
         currency: session.currency,
         saleAmount: saleAmountFor(baseMinor, session.currency),
+        providerFeeAmount,
+        providerFeeSource,
         payableAt: computePayableAt(
           program,
           undefined,

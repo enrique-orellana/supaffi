@@ -19,10 +19,12 @@ import {
 describe("restricted key link", () => {
   it("carries exactly the permissions Supaffi's Stripe calls need", () => {
     // Charges: reading a refund that happened before its commission existed.
+    // Balance: reading the processor fee from the charge's balance transaction.
     // Checkout Sessions: reading the tax on a one-time sale.
     // Disputes: holding a commission while a chargeback on its sale is open.
     expect(KEY_PERMISSIONS.map((permission) => permission.token)).toEqual([
       "rak_charge_read",
+      "rak_balance_read",
       "rak_checkout_session_read",
       "rak_customer_read",
       "rak_dispute_read",

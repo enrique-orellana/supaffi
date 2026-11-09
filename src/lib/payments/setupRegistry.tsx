@@ -31,10 +31,15 @@ export type PaymentProviderTrackingGuide = {
 export type PaymentProviderSetupStatus = {
   connected: boolean;
   details?: Readonly<
-    | { keyStored: boolean; webhookStored: boolean }
     | {
         callbackUrl: string | null;
         hasIpnSecret: boolean;
+        feeFallbackPercent: string | null;
+      }
+    | {
+        keyStored: boolean;
+        webhookStored: boolean;
+        feeFallbackPercent: string | null;
       }
   >;
 };
@@ -83,6 +88,7 @@ const paymentProviderSetups: readonly PaymentProviderSetup[] = [
         details: {
           keyStored: status.stripeKey,
           webhookStored: status.stripeWebhook,
+          feeFallbackPercent: status.feeFallbackPercent ?? null,
         },
       };
     },
@@ -104,6 +110,7 @@ const paymentProviderSetups: readonly PaymentProviderSetup[] = [
         details: {
           callbackUrl: status.callbackUrl,
           hasIpnSecret: status.hasIpnSecret,
+          feeFallbackPercent: status.feeFallbackPercent ?? null,
         },
       };
     },

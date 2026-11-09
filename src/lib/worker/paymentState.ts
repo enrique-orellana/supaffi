@@ -4,11 +4,14 @@ import type Stripe from "stripe";
 import { prorateCommission } from "./handlers/chargeRefunded";
 import { disputeStateFor, type DisputeState } from "./disputes";
 import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
+import type { ActualProviderFee } from "./providerFees";
 
 export type ChargeSnapshot = {
   amount: number;
   amountRefunded: number;
   disputed: boolean;
+  currency?: string;
+  processingFee?: ActualProviderFee | null;
 };
 
 /**
@@ -46,14 +49,16 @@ export async function paymentIntentForInvoice(
 }
 
 /**
- * How much of a payment's charge has been refunded so far, and whether it was
- * ever disputed, according to Stripe right now.
+ * How much of a payment's charge has been refunded so far, whether it was
+ * disputed, and its processor fee when Stripe exposes one.
  *
- * Expanding the charge needs Charges read, which keys made before 0.2.4 do
- * not have. Stripe does not promise one error type for that: it can come back
- * as a permission error or as an invalid request. So every failure other
- * than an outage answers null: the commission is then created exactly as it
- * was before this lookup existed. An outage throws, so the event is retried.
+ * Reading the charge needs Charges read, which keys made before 0.2.4 do not
+ * have. Stripe does not promise one error type for that: it can come back as
+ * a permission error or as an invalid request. So every failure other than
+ * an outage answers null: the commission is then created with the configured
+ * fee fallback when one is available. A balance transaction can require an
+ * additional permission; that failure does not discard the charge snapshot.
+ * Transient failures from either read throw so the webhook is retried.
  */
 export async function latestChargeFor(
   stripe: Stripe,
@@ -65,10 +70,32 @@ export async function latestChargeFor(
     });
     const charge = intent.latest_charge;
     if (!charge || typeof charge === "string") return null;
+    let balanceTransaction = charge.balance_transaction;
+    if (typeof balanceTransaction === "string") {
+      try {
+        balanceTransaction =
+          await stripe.balanceTransactions.retrieve(balanceTransaction);
+      } catch (err) {
+        if (isTransientStripeError(err)) throw err;
+        console.warn(
+          `[worker] could not read the balance transaction for payment ${paymentIntentId} (${stripeErrorLabel(err)}); the configured fee fallback will be used when available.`,
+        );
+        balanceTransaction = null;
+      }
+    }
+    const processingFee = balanceTransaction
+      ? {
+          amountMinor: balanceTransaction.fee,
+          currency: balanceTransaction.currency,
+          exchangeRate: balanceTransaction.exchange_rate,
+        }
+      : null;
     return {
       amount: charge.amount,
       amountRefunded: charge.amount_refunded,
       disputed: charge.disputed === true,
+      currency: charge.currency,
+      processingFee,
     };
   } catch (err) {
     if (isTransientStripeError(err))

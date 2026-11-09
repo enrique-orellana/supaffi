@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
 import {
   commissionRateFor,
-  computeCommissionAmount,
   computePayableAt,
   hasExclusionFlag,
   isExcluded,
@@ -38,6 +37,12 @@ import {
   referralStillEarns,
 } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
+import {
+  commissionAfterProviderFee,
+  feeMinorInCurrency,
+} from "../providerFees";
+import { getProviderFeeFallbackPercent } from "@/lib/providerFeeSettings";
+import { PaymentProvider } from "@/lib/payments/types";
 
 // A renewal or a plan change is revenue of the subscription the referral
 // bought. Every other billing reason earns nothing: manual, quote_accept and
@@ -189,10 +194,6 @@ export async function handleInvoicePaid(
 
   const affiliate = click.affiliate;
   const rate = commissionRateFor(affiliate, program, click.link, click);
-  const amount = computeCommissionAmount(baseMinor, invoice.currency, rate);
-  // A renewal covered by credit balance or discounted to nothing used to
-  // leave a 0.00 row in both ledgers.
-  if (amount.lte(0)) return;
   // The same two checks as the first purchase. A renewal is where a customer
   // who is really the affiliate most easily swaps in their own card, so the
   // card is checked on every one, each flagged on its own.
@@ -222,6 +223,29 @@ export async function handleInvoicePaid(
     ? Math.min(earned.referredChargeMinor, charge.amount)
     : earned.referredChargeMinor;
 
+  const feeFallbackPercent = await getProviderFeeFallbackPercent(
+    merchant.id,
+    PaymentProvider.STRIPE.database,
+  );
+  const actualFeeMinor = charge?.processingFee
+    ? charge.currency === invoice.currency
+      ? feeMinorInCurrency(charge.processingFee, invoice.currency)
+      : null
+    : null;
+  const { amount, providerFeeAmount, providerFeeSource } =
+    commissionAfterProviderFee({
+      eligibleSaleMinor: baseMinor,
+      currency: invoice.currency,
+      ratePercent: rate,
+      actualFeeMinor,
+      fallbackPercent: feeFallbackPercent,
+      chargedAmountMinor:
+        charge?.currency === invoice.currency ? charge.amount : null,
+    });
+  // A credit-covered or fee-reduced renewal with no cent of commission does
+  // not create an empty row in either ledger.
+  if (amount.lte(0)) return;
+
   try {
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
@@ -232,6 +256,8 @@ export async function handleInvoicePaid(
         stripePaymentRef: invoice.id,
         currency: invoice.currency,
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
+        providerFeeAmount,
+        providerFeeSource,
         payableAt: computePayableAt(
           program,
           undefined,

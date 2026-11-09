@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { currencyMinorUnitExponent } from "@/lib/currency";
 import { Prisma } from "@prisma/client";
 import { SqlSchema } from "@/lib/sqlSchema";
 
@@ -50,6 +51,9 @@ export type CommissionRow = {
   grossAmount: string | null;
   /** What the customer paid for this sale. Null on rows older than the column. */
   saleAmount: string | null;
+  /** Provider fee removed before the affiliate rate was applied. */
+  providerFeeAmount?: string | null;
+  providerFeeSource?: "ACTUAL" | "FALLBACK" | null;
   stripePaymentRef: string | null;
   paymentRecord: {
     provider: string;
@@ -155,6 +159,8 @@ export async function listCommissions(
         voidReason: true,
         grossAmount: true,
         saleAmount: true,
+        providerFeeAmount: true,
+        providerFeeSource: true,
         stripePaymentRef: true,
         paymentRecord: {
           select: {
@@ -212,6 +218,10 @@ export async function listCommissions(
       voidReason: c.voidReason,
       grossAmount: c.grossAmount ? c.grossAmount.toFixed(2) : null,
       saleAmount: c.saleAmount ? c.saleAmount.toFixed(2) : null,
+      providerFeeAmount:
+        c.providerFeeAmount?.toFixed(currencyMinorUnitExponent(c.currency)) ??
+        null,
+      providerFeeSource: c.providerFeeSource,
       stripePaymentRef: c.stripePaymentRef,
       paymentRecord: c.paymentRecord
         ? {

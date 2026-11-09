@@ -15,6 +15,11 @@ import {
 } from "@/lib/commerceCheckoutReferences";
 import { commissionRateFor, computePayableAt } from "../commission";
 import {
+  commissionAfterProviderFee,
+  nowPaymentsFeeMinorInCurrency,
+} from "../providerFees";
+import { currencyMinorUnitExponent } from "@/lib/currency";
+import {
   commissionDurationForClick,
   referralStillEarns,
 } from "../referralDuration";
@@ -221,16 +226,6 @@ function statusAfter(current: string | null, incoming: string): string {
   )
     return incoming;
   return incomingPriority >= priorPriority ? incoming : prior;
-}
-
-function commissionAmount(
-  saleAmount: Prisma.Decimal,
-  rate: Prisma.Decimal,
-): Prisma.Decimal {
-  return saleAmount
-    .mul(rate)
-    .div(100)
-    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 function paymentTerminalSnapshot(
@@ -447,7 +442,27 @@ async function createCommissionIfEligible(
     return;
 
   const saleAmount = input.paymentRecord.saleAmount;
-  const amount = commissionAmount(saleAmount, rate);
+  const connection = await tx.paymentConnection.findUnique({
+    where: { id: input.paymentRecord.connectionId },
+    select: { feeFallbackPercent: true },
+  });
+  const saleCurrency = input.paymentRecord.saleCurrency;
+  const eligibleSaleMinor = saleAmount.mul(
+    10 ** currencyMinorUnitExponent(saleCurrency),
+  );
+  const actualFeeMinor = nowPaymentsFeeMinorInCurrency(
+    event.rawPayload,
+    saleCurrency,
+    eligibleSaleMinor,
+  );
+  const { amount, providerFeeAmount, providerFeeSource } =
+    commissionAfterProviderFee({
+      eligibleSaleMinor,
+      currency: saleCurrency,
+      ratePercent: rate,
+      actualFeeMinor,
+      fallbackPercent: connection?.feeFallbackPercent ?? null,
+    });
   if (amount.lte(0)) return;
 
   const commissionData = {
@@ -458,8 +473,10 @@ async function createCommissionIfEligible(
     stripePaymentRef: null,
     amount,
     grossAmount: amount,
-    currency: input.paymentRecord.saleCurrency,
+    currency: saleCurrency,
     saleAmount,
+    providerFeeAmount,
+    providerFeeSource,
     status: "PENDING" as const,
     payableAt: computePayableAt(
       click.affiliate.program,

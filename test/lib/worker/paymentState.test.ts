@@ -295,10 +295,112 @@ describe("Stripe lookups", () => {
       amount: 5000,
       amountRefunded: 1200,
       disputed: true,
+      currency: undefined,
+      processingFee: null,
     });
     expect(retrieve).toHaveBeenCalledWith("pi_1", {
       expand: ["latest_charge"],
     });
+  });
+
+  it("reads the processor fee from the charge's balance transaction", async () => {
+    const retrieveBalanceTransaction = vi.fn(async () => ({
+      id: "txn_1",
+      fee: 137,
+      currency: "usd",
+      exchange_rate: null,
+    }));
+    const stripe = {
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({
+          id: "pi_1",
+          latest_charge: {
+            id: "ch_1",
+            amount: 5000,
+            amount_refunded: 0,
+            disputed: false,
+            currency: "usd",
+            balance_transaction: "txn_1",
+          },
+        })),
+      },
+      balanceTransactions: { retrieve: retrieveBalanceTransaction },
+    } as unknown as Stripe;
+
+    expect(await latestChargeFor(stripe, "pi_1")).toEqual({
+      amount: 5000,
+      amountRefunded: 0,
+      disputed: false,
+      currency: "usd",
+      processingFee: {
+        amountMinor: 137,
+        currency: "usd",
+        exchangeRate: null,
+      },
+    });
+    expect(retrieveBalanceTransaction).toHaveBeenCalledWith("txn_1");
+  });
+
+  it("keeps the charge and lets the configured fallback apply if fee lookup fails", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stripe = {
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({
+          id: "pi_1",
+          latest_charge: {
+            id: "ch_1",
+            amount: 5000,
+            amount_refunded: 0,
+            disputed: false,
+            currency: "usd",
+            balance_transaction: "txn_1",
+          },
+        })),
+      },
+      balanceTransactions: {
+        retrieve: vi.fn(async () => {
+          throw new Error("Balance permission missing");
+        }),
+      },
+    } as unknown as Stripe;
+
+    expect(await latestChargeFor(stripe, "pi_1")).toEqual({
+      amount: 5000,
+      amountRefunded: 0,
+      disputed: false,
+      currency: "usd",
+      processingFee: null,
+    });
+  });
+
+  it("retries a transient failure while reading the balance transaction", async () => {
+    const stripe = {
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({
+          id: "pi_1",
+          latest_charge: {
+            id: "ch_1",
+            amount: 5000,
+            amount_refunded: 0,
+            disputed: false,
+            currency: "usd",
+            balance_transaction: "txn_1",
+          },
+        })),
+      },
+      balanceTransactions: {
+        retrieve: vi.fn(async () => {
+          throw Object.assign(new Error("temporary outage"), {
+            type: "StripeAPIError",
+            statusCode: 503,
+          });
+        }),
+      },
+    } as unknown as Stripe;
+
+    await expect(latestChargeFor(stripe, "pi_1")).rejects.toThrow(
+      "could not reach Stripe for payment pi_1",
+    );
   });
 
   // A key without Charges read is not guaranteed to get a permission error:

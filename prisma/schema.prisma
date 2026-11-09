@@ -297,6 +297,11 @@ enum CommissionStatus {
   VOIDED
 }
 
+enum ProviderFeeSource {
+  ACTUAL
+  FALLBACK
+}
+
 model Commission {
   id          String    @id @default(cuid())
   affiliateId String
@@ -336,6 +341,11 @@ model Commission {
   // with this holding the unreduced figure. Nullable for rows written before
   // this existed.
   grossAmount Decimal? @db.Decimal(18, 2)
+
+  // Processor fee removed from the referred sale before applying the rate.
+  // The amount uses the Commission currency; historical rows remain null.
+  providerFeeAmount Decimal?          @db.Decimal(18, 3)
+  providerFeeSource ProviderFeeSource?
 
   // The referred share of the charge, in Stripe minor units, capped at the
   // charge amount. Set at creation for a renewal so a later refund prorates
@@ -451,6 +461,8 @@ model PaymentConnection {
   enabled             Boolean          @default(false)
   apiKeyEnc           String?
   webhookSecretEnc    String?
+  // Used only when a payment event does not include a usable transaction fee.
+  feeFallbackPercent  Decimal?         @db.Decimal(5, 2)
   externalEndpointId String?
   webhookRouteId      String          @unique @default(cuid())
   createdAt           DateTime        @default(now())

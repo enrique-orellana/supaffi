@@ -29,6 +29,12 @@ export const KEY_PERMISSIONS = [
     row: "Charges",
     why: "checks whether a sale was refunded before its commission was recorded",
   },
+  {
+    token: "rak_balance_read",
+    access: "Read",
+    row: "Balance",
+    why: "reads Stripe's balance transaction fee so commissions use the actual fee",
+  },
   // Checkout Sessions arrived in 0.2.7, to read the tax on a one-time sale. A
   // key without it still works for subscriptions; its one-time sales retry
   // and earn nothing until the key is replaced. Retries last about two days,

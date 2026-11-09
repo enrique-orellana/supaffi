@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PaymentProviderPanelProps } from "@/lib/payments/setupRegistry";
+import { ProviderFeeFallbackForm } from "@/components/payments/ProviderFeeFallbackForm";
 import {
   disconnectNowPaymentsConnectionAction,
+  saveProviderFeeFallbackAction,
   saveNowPaymentsConnectionAction,
 } from "@/app/dashboard/products/[product]/settings/settingsActions";
 import {
   disconnectNowPaymentsOnboardingAction,
+  saveProviderFeeFallbackOnboardingAction,
   saveNowPaymentsOnboardingAction,
 } from "@/app/onboarding/[product]/paymentActions";
 
 export function NowPaymentsConnectionPanel({
+  provider,
   label,
   product,
   status,
@@ -24,6 +28,10 @@ export function NowPaymentsConnectionPanel({
   const callbackUrl =
     status.details && "callbackUrl" in status.details
       ? status.details.callbackUrl
+      : null;
+  const feeFallbackPercent =
+    status.details && "feeFallbackPercent" in status.details
+      ? status.details.feeFallbackPercent
       : null;
   const hasIpnSecret =
     status.details && "hasIpnSecret" in status.details
@@ -42,6 +50,10 @@ export function NowPaymentsConnectionPanel({
     surface === "onboarding"
       ? disconnectNowPaymentsOnboardingAction
       : disconnectNowPaymentsConnectionAction;
+  const saveFallbackAction =
+    surface === "onboarding"
+      ? saveProviderFeeFallbackOnboardingAction.bind(null, product, provider)
+      : saveProviderFeeFallbackAction.bind(null, product, provider);
   const [state, formAction, pending] = useActionState(
     saveAction.bind(null, product),
     { error: "" },
@@ -105,6 +117,14 @@ export function NowPaymentsConnectionPanel({
           </Button>
         </div>
       </form>
+
+      <div className="border-t border-neutral-200 pt-3">
+        <ProviderFeeFallbackForm
+          action={saveFallbackAction}
+          id={`provider-fee-fallback-${provider}`}
+          value={feeFallbackPercent}
+        />
+      </div>
 
       <div className="grid gap-1.5 border-t border-neutral-200 pt-3">
         <span className="text-sm">Callback URL</span>

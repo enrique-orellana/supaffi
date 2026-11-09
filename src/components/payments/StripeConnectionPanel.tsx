@@ -12,22 +12,34 @@ import { PasteField } from "@/components/PasteField";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import type { PaymentProviderPanelProps } from "@/lib/payments/setupRegistry";
+import { ProviderFeeFallbackForm } from "@/components/payments/ProviderFeeFallbackForm";
 import {
   saveStripeKeyAction,
   saveWebhookSecretAction,
+  saveProviderFeeFallbackOnboardingAction,
 } from "@/app/onboarding/[product]/paymentActions";
+import { saveProviderFeeFallbackAction } from "@/app/dashboard/products/[product]/settings/settingsActions";
 
-type StripeStatusDetails = { keyStored: boolean; webhookStored: boolean };
+type StripeStatusDetails = {
+  keyStored: boolean;
+  webhookStored: boolean;
+  feeFallbackPercent: string | null;
+};
 
 function stripeDetails(
   status: PaymentProviderPanelProps["status"],
 ): StripeStatusDetails {
   return status.details && "keyStored" in status.details
     ? status.details
-    : { keyStored: false, webhookStored: false };
+    : {
+        keyStored: false,
+        webhookStored: false,
+        feeFallbackPercent: null,
+      };
 }
 
 export function StripeConnectionPanel({
+  provider,
   label,
   product,
   status,
@@ -38,6 +50,10 @@ export function StripeConnectionPanel({
 }: PaymentProviderPanelProps) {
   const details = stripeDetails(status);
   const productRef = { id: product.id, slug: product.slug };
+  const saveFallbackAction =
+    surface === "onboarding"
+      ? saveProviderFeeFallbackOnboardingAction.bind(null, productRef, provider)
+      : saveProviderFeeFallbackAction.bind(null, productRef, provider);
   const settingsHref = `/dashboard/products/${product.slug}/settings`;
   const replaceLink = (which: string) => (
     <Button
@@ -107,6 +123,13 @@ export function StripeConnectionPanel({
             </a>
           </p>
         )}
+        <div className="border-t border-neutral-200 px-5 pb-4 pt-3">
+          <ProviderFeeFallbackForm
+            action={saveFallbackAction}
+            id={`provider-fee-fallback-${provider}`}
+            value={details.feeFallbackPercent}
+          />
+        </div>
       </div>
     );
   }
@@ -194,6 +217,14 @@ export function StripeConnectionPanel({
           </TaskCardSection>
         </>
       )}
+
+      <TaskCardSection className="p-4">
+        <ProviderFeeFallbackForm
+          action={saveFallbackAction}
+          id={`provider-fee-fallback-${provider}`}
+          value={details.feeFallbackPercent}
+        />
+      </TaskCardSection>
     </TaskCard>
   );
 }

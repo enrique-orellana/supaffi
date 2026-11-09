@@ -1,4 +1,5 @@
 import type { CurrencyTotal } from "@/lib/analytics";
+import { currencyMinorUnitExponent } from "@/lib/currency";
 
 /**
  * Money formatting shared by every screen that prints an amount.
@@ -16,18 +17,22 @@ import type { CurrencyTotal } from "@/lib/analytics";
 
 const formatters = new Map<string, Intl.NumberFormat>();
 
-function formatterFor(currency: string): Intl.NumberFormat | null {
+function formatterFor(
+  currency: string,
+  fractionDigits = 2,
+): Intl.NumberFormat | null {
   const code = currency.toUpperCase();
-  if (formatters.has(code)) return formatters.get(code)!;
+  const cacheKey = `${code}:${fractionDigits}`;
+  if (formatters.has(cacheKey)) return formatters.get(cacheKey)!;
   try {
     const formatter = new Intl.NumberFormat("en", {
       style: "currency",
       currency: code,
       currencyDisplay: "narrowSymbol",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     });
-    formatters.set(code, formatter);
+    formatters.set(cacheKey, formatter);
     return formatter;
   } catch {
     return null;
@@ -38,6 +43,18 @@ function formatterFor(currency: string): Intl.NumberFormat | null {
 export function formatMoney(amount: number | string, currency: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   const formatter = formatterFor(currency);
+  if (!formatter || Number.isNaN(value))
+    return `${amount} ${currency.toUpperCase()}`;
+  return formatter.format(value);
+}
+
+/** One amount with the number of fraction digits used by its currency. */
+export function formatMoneyAtCurrencyPrecision(
+  amount: number | string,
+  currency: string,
+): string {
+  const value = typeof amount === "string" ? Number(amount) : amount;
+  const formatter = formatterFor(currency, currencyMinorUnitExponent(currency));
   if (!formatter || Number.isNaN(value))
     return `${amount} ${currency.toUpperCase()}`;
   return formatter.format(value);

@@ -40,6 +40,7 @@ A SaaS founder or small team that:
 ### How the commission is calculated
 
 - A percentage set per program, with an optional custom rate per affiliate.
+- The provider's actual transaction fee is subtracted before the affiliate rate is applied when Stripe or NOWPayments reports it in the sale currency. For NOWPayments, Supaffi can also convert a fee reported in the same currency as the net settlement amount using that payment's fee-to-settlement ratio. If the fee currency cannot be matched safely, Supaffi uses the editable provider fallback percentage; until one is set, the fallback is 0%. Historical commissions are not recalculated.
 - Paid once, for a set number of months from the first payment, or for as long as the subscription pays.
 - For Stripe, on the price after discounts, before tax and shipping. For NOWPayments, on the sale amount and currency in its signed notification.
 - For Stripe, only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing. NOWPayments uses the sale amount in its signed notification.
