@@ -176,12 +176,21 @@ function parseQueuedEvent(payload: unknown): QueuedNowPaymentsEvent | null {
   };
 }
 
-/** Use provider update time when available, otherwise queue receive time. */
-function providerUpdateTime(event: QueuedNowPaymentsEvent): Date | null {
-  const value = event.rawPayload.updated_at;
-  if (typeof value !== "string") return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** Prefer the provider update time, then its creation time, when available. */
+function providerTimestamp(event: QueuedNowPaymentsEvent): Date | null {
+  for (const value of [
+    event.rawPayload.updated_at,
+    event.rawPayload.created_at,
+  ]) {
+    if (typeof value !== "string") continue;
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  return null;
+}
+
+function hasProviderTimestamp(event: QueuedNowPaymentsEvent): boolean {
+  return providerTimestamp(event) !== null;
 }
 
 function statusAfter(current: string | null, incoming: string): string {
@@ -347,7 +356,12 @@ async function createCommissionIfEligible(
   },
 ): Promise<void> {
   const { event } = input;
-  if (!input.clickId || !input.clickMatches) return;
+  // Receipt time is a safe fallback for recording a payment, but cannot prove
+  // when the provider's sale happened. Don't grant affiliate credit from that
+  // fallback: an old payment with a missing provider timestamp could otherwise
+  // be replayed after a new click and look as though it earned that referral.
+  if (!input.clickId || !input.clickMatches || !hasProviderTimestamp(event))
+    return;
 
   const existing = await tx.commission.findUnique({
     where: { paymentRecordId: input.paymentRecord.id },
@@ -545,7 +559,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     // A public browser registration may only match a provider event if it
     // reached Supaffi before the payment update. Prefer NOWPayments' provider
     // timestamp, falling back to when Supaffi received the queued update.
-    const attributionCutoff = providerUpdateTime(event) ?? row.createdAt;
+    const attributionCutoff = providerTimestamp(event) ?? row.createdAt;
     const checkoutAttribution =
       storedCheckoutAttribution &&
       storedCheckoutAttribution.createdAt <= attributionCutoff
@@ -876,8 +890,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
       event.providerInvoiceRef !== input.providerCheckoutRef
     )
       return;
-    const attributionCutoff =
-      providerUpdateTime(event) ?? eventRecord.createdAt;
+    const attributionCutoff = providerTimestamp(event) ?? eventRecord.createdAt;
     if (attribution.createdAt > attributionCutoff) return;
 
     const linkedPayment =

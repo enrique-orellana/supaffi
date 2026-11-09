@@ -118,6 +118,42 @@ describe("POST /api/webhooks/nowpayments", () => {
     expect(createEvent).not.toHaveBeenCalled();
   });
 
+  it("does not queue IPNs when the callback route has no active connection", async () => {
+    findConnection.mockResolvedValue(null);
+
+    const response = await POST(directRequest(providerBody()), context);
+
+    expect(response.status).toBe(404);
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects sale amounts that cannot be represented by the commission ledger", async () => {
+    const body = providerBody().replace("19.95", "1.234");
+    const response = await POST(directRequest(body), context);
+
+    expect(response.status).toBe(400);
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a raw sale amount changed without changing its numeric signature", async () => {
+    const signedBody = providerBody().replace("19.95", "90071992547409.94");
+    const signedRequest = directRequest(signedBody);
+    const changedBody = signedBody.replace(
+      "90071992547409.94",
+      "90071992547409.93",
+    );
+    const request = new Request(signedRequest.url, {
+      method: "POST",
+      headers: signedRequest.headers,
+      body: changedBody,
+    });
+
+    const response = await POST(request, context);
+
+    expect(response.status).toBe(400);
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
   it("does not require a Supaffi-to-merchant integration signature", async () => {
     const response = await POST(directRequest(providerBody()), context);
 
@@ -157,5 +193,23 @@ describe("POST /api/webhooks/nowpayments", () => {
 
     expect(response.status).toBe(200);
     expect(createEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects oversized and invalid UTF-8 bodies before queueing", async () => {
+    const url = `https://supaffi.example/api/webhooks/nowpayments/${CONNECTION_ID}`;
+    const oversized = new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "x".repeat(64 * 1024 + 1),
+    });
+    const invalidUtf8 = new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new Uint8Array([0xff, 0xfe]),
+    });
+
+    expect((await POST(oversized, context)).status).toBe(413);
+    expect((await POST(invalidUtf8, context)).status).toBe(413);
+    expect(createEvent).not.toHaveBeenCalled();
   });
 });

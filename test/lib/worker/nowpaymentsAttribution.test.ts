@@ -519,6 +519,39 @@ describe("NOWPayments checkout attribution", () => {
     ).toBe(1);
   });
 
+  it("records a finished payment without affiliate credit when provider timestamps are missing", async () => {
+    await registerCheckout();
+    const event = queuedEvent("finished");
+    delete event.rawPayload.updated_at;
+
+    await processEvent(event);
+
+    const payment = await getPayment();
+    expect(payment.status).toBe("finished");
+    expect(payment.clickId).toBe(clickId);
+    expect(await db.commission.count()).toBe(0);
+  });
+
+  it("does not match a checkout attribution created after a created-at-only IPN", async () => {
+    const providerCreatedAt = new Date(Date.now() + 1_000);
+    const registrationReceivedAt = new Date(
+      providerCreatedAt.getTime() + 1_000,
+    );
+    const webhookReceivedAt = new Date(providerCreatedAt.getTime() + 2_000);
+    const event = queuedEvent("finished");
+    delete event.rawPayload.updated_at;
+    event.rawPayload.created_at = providerCreatedAt.toISOString();
+    event.occurredAt = providerCreatedAt;
+
+    await registerCheckout(INVOICE_REFERENCE, registrationReceivedAt);
+    await processEvent(event, event.eventId, webhookReceivedAt);
+
+    const payment = await getPayment();
+    expect(payment.status).toBe("finished");
+    expect(payment.clickId).toBeNull();
+    expect(await db.commission.count()).toBe(0);
+  });
+
   it("does not credit later payments made against a reused invoice", async () => {
     await registerCheckout();
     await processEvent();

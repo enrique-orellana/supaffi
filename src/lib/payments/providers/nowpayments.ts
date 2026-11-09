@@ -232,18 +232,94 @@ function decimalText(value: string): string | null {
   if (expanded.length > 256) return null;
   const [expandedWhole, expandedFraction] = expanded.split(".");
   const normalizedWhole = expandedWhole.replace(/^0+(?=\d)/, "");
-  const normalized =
-    expandedFraction === undefined
-      ? normalizedWhole
-      : `${normalizedWhole}.${expandedFraction}`;
+  const normalizedFraction = expandedFraction?.replace(/0+$/, "");
+  const normalized = normalizedFraction
+    ? `${normalizedWhole}.${normalizedFraction}`
+    : normalizedWhole;
   if (/^0(?:\.0*)?$/.test(normalized)) return "0";
   return negative ? `-${normalized}` : normalized;
 }
+
+function numericTokensMatchCanonicalValue(
+  parsed: unknown,
+  lossless: unknown,
+): boolean {
+  if (typeof parsed === "number") {
+    if (!Number.isFinite(parsed) || typeof lossless !== "string") return false;
+    const rawValue = decimalText(lossless);
+    const canonicalValue = decimalText(String(parsed));
+    return rawValue !== null && rawValue === canonicalValue;
+  }
+  if (Array.isArray(parsed)) {
+    return (
+      Array.isArray(lossless) &&
+      parsed.length === lossless.length &&
+      parsed.every((value, index) =>
+        numericTokensMatchCanonicalValue(value, lossless[index]),
+      )
+    );
+  }
+  if (parsed && typeof parsed === "object") {
+    if (!lossless || typeof lossless !== "object" || Array.isArray(lossless))
+      return false;
+    const entries = Object.entries(parsed);
+    const losslessObject = lossless as Record<string, unknown>;
+    return (
+      entries.length === Object.keys(losslessObject).length &&
+      entries.every(([key, value]) =>
+        numericTokensMatchCanonicalValue(value, losslessObject[key]),
+      )
+    );
+  }
+  return true;
+}
+
+function canonicalizeLosslessNumbers(
+  parsed: unknown,
+  lossless: unknown,
+): unknown {
+  if (typeof parsed === "number") {
+    if (
+      typeof lossless === "string" &&
+      numericTokensMatchCanonicalValue(parsed, lossless)
+    )
+      return lossless;
+    return Number.isFinite(parsed) ? String(parsed) : null;
+  }
+  if (Array.isArray(parsed)) {
+    return parsed.map((value, index) =>
+      canonicalizeLosslessNumbers(
+        value,
+        Array.isArray(lossless) ? lossless[index] : undefined,
+      ),
+    );
+  }
+  if (parsed && typeof parsed === "object") {
+    const losslessObject =
+      lossless && typeof lossless === "object" && !Array.isArray(lossless)
+        ? (lossless as Record<string, unknown>)
+        : {};
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [
+        key,
+        canonicalizeLosslessNumbers(value, losslessObject[key]),
+      ]),
+    );
+  }
+  return lossless;
+}
+
+type DecimalPrecision = {
+  integerDigits: number;
+  fractionDigits: number;
+};
 
 function exactDecimalField(
   rawValues: Map<string, string>,
   payload: JsonObject,
   key: string,
+  precision?: DecimalPrecision,
+  requirePositive = false,
 ): string | null {
   const raw = rawValues.get(key);
   if (!raw) return null;
@@ -264,17 +340,23 @@ function exactDecimalField(
     return null;
   if (typeof payload[key] !== typeof value) return null;
   const result = decimalText(source);
-  return result && !result.startsWith("-") ? result : null;
+  if (!result || result.startsWith("-")) return null;
+  if (precision) {
+    const [integer, fraction = ""] = result.split(".");
+    if (
+      integer.length > precision.integerDigits ||
+      fraction.length > precision.fractionDigits
+    )
+      return null;
+  }
+  if (requirePositive && result === "0") return null;
+  return result;
 }
 
-function stringId(
-  value: unknown,
-  rawValues: Map<string, string>,
-  key: string,
-): string | null {
+function stringId(value: unknown): string | null {
   if (typeof value === "string") return value.trim() ? value : null;
-  const raw = rawValues.get(key);
-  if (typeof value === "number" && raw && /^\d+$/.test(raw)) return raw;
+  if (typeof value === "number" && Number.isSafeInteger(value))
+    return String(value);
   return null;
 }
 
@@ -335,6 +417,24 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
       !timingSafeEqual(received, expected)
     )
       return null;
+    // Sale amount determines commission, so reject if its exact raw decimal
+    // differs from the number authenticated by the HMAC. Optional crypto
+    // amounts can exceed JavaScript's decimal precision; drop those below.
+    if (
+      !numericTokensMatchCanonicalValue(
+        payload.price_amount,
+        normalizedPayload.price_amount,
+      )
+    )
+      return null;
+    const cryptoAmountMatchesSignature = numericTokensMatchCanonicalValue(
+      payload.actually_paid,
+      normalizedPayload.actually_paid,
+    );
+    normalizedPayload = canonicalizeLosslessNumbers(
+      payload,
+      normalizedPayload,
+    ) as JsonObject;
 
     const paymentStatus = payload.payment_status;
     if (
@@ -344,15 +444,26 @@ export const nowpaymentsAdapter: PaymentProviderAdapter = {
       return null;
     }
     const kind = STATUS_KIND[paymentStatus];
-    const paymentId = stringId(payload.payment_id, rawValues, "payment_id");
-    const invoiceId = stringId(payload.invoice_id, rawValues, "invoice_id");
-    const priceAmount = exactDecimalField(rawValues, payload, "price_amount");
+    const paymentId = stringId(payload.payment_id);
+    const invoiceId = stringId(payload.invoice_id);
+    const priceAmount = exactDecimalField(
+      rawValues,
+      payload,
+      "price_amount",
+      { integerDigits: 16, fractionDigits: 2 },
+      true,
+    );
     const priceCurrency = currencyCode(payload.price_currency, /^[a-z]{3}$/i);
     const cryptoCurrency = currencyCode(
       payload.pay_currency,
       /^[a-z0-9_-]{2,20}$/i,
     );
-    const cryptoAmount = exactDecimalField(rawValues, payload, "actually_paid");
+    const cryptoAmount = cryptoAmountMatchesSignature
+      ? exactDecimalField(rawValues, payload, "actually_paid", {
+          integerDigits: 20,
+          fractionDigits: 18,
+        })
+      : null;
 
     if (!paymentId || !priceAmount || !priceCurrency) {
       return null;

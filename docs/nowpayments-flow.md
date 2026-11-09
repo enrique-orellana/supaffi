@@ -167,4 +167,34 @@ unavailable, the relay returns a failure so NOWPayments can retry delivery.
 See [Payment providers](payment-providers.md) for supported statuses and
 integration limits.
 
+## Adversarial checks
+
+The NOWPayments test suite includes repeatable adversarial cases in addition
+to ordinary examples. A seeded generator reorders nested JSON keys and varies
+valid payment values; mutation and fuzz cases alter signed payloads, feed
+malformed JSON, and check that the receiver rejects invalid signatures and
+amounts without throwing or queueing an event. Boundary cases cover body size,
+UTF-8, the database's monetary precision, duplicate callbacks, and missing
+provider timestamps. A sale amount whose raw decimal differs from the number
+covered by the HMAC is rejected. If an optional crypto amount contains extra
+precision the signature cannot distinguish, Supaffi records it as unavailable;
+other raw numeric values are normalized to their signed value. A payment
+without a trustworthy provider timestamp can still be recorded, but it cannot
+earn an affiliate commission.
+
+Run the fast parser and receiver checks with:
+
+```sh
+pnpm exec vitest run test/lib/payments/nowpaymentsAdversarial.test.ts test/app/api/webhooks/nowpayments/route.test.ts
+```
+
+The worker attribution suite exercises payment deduplication and commission
+creation against the isolated `_test` database:
+
+```sh
+pnpm exec vitest run test/lib/worker/nowpaymentsAttribution.test.ts
+```
+
+CI runs these as part of the complete `pnpm test` suite.
+
 NOWPayments reference: [IPN callbacks](https://nowpayments.io/help/what-is/what-is-ipn).
