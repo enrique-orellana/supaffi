@@ -1,0 +1,4 @@
+interface:
+  display_name: "Supaffi Feature Validation"
+  short_description: "Optional adversarial validation for Supaffi features"
+  default_prompt: "Use $supaffi-feature-validation to challenge a finished Supaffi feature with adversarial, fuzz, and regression tests."
