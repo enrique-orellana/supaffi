@@ -72,16 +72,17 @@ Only record a payout after the Owner confirms the external transfer succeeded. I
 
 Changing a Program minimum immediately re-evaluates unpaid balances. Raising it may move mature commissions from `PAYABLE` back to `PENDING`; the confirmation must identify the affected groups. Lowering it can make groups payable immediately. Paid and voided rows are never reopened by a threshold change.
 
-## Commission-rate ownership feedback
+## Commission-rate ownership
 
-The current rate precedence is Program default, optional Affiliate-specific override, then optional AffiliateLink override. The link editor exposes the last override so a campaign link can have a different rate. In the supplied screenshot, both rate fields say **Inherit** and explain that they inherit 20%, so those links do not currently have separate rates.
+Each Program has one flat commission percentage. Every Affiliate assigned to that Program and every referral link they use follows that rate. Affiliate-level and link-level commission-rate overrides are outside the intended model. Different commission rates require separate Programs.
 
-For the intended product model, commission rate is a Program term and referral links should inherit it; the per-link commission-rate override should be removed. The current Affiliate-level custom rate is a separate exception mechanism. Recommendation: retain it only for explicitly negotiated Affiliate exceptions, with the effective rate shown in Affiliate settings. If the rule is strict that every Affiliate in a Program has the same rate, remove that override too and use a separate Program for each rate tier.
+The current UI has an override chain: Program default, optional Affiliate-specific rate, then optional AffiliateLink rate. In the supplied screenshot, both link fields say **Inherit** and show 20%, so those links currently use the inherited rate; the UI merely permits a different rate per link. The link override was designed for campaign-specific exceptions, but it conflicts with the product rule above.
 
-Existing Clicks keep their stored rate snapshots. Before link overrides stop affecting future Clicks, the Owner should be shown which active links have a custom rate so those exceptions can be reviewed. The time-to-buy, hold period, and commission-duration controls shown per link are separate overrides and are not changed by this rate decision.
+New referral Clicks snapshot the Program rate when created. Existing Clicks retain their stored rate snapshots, so past referrals keep the rate they already captured. Before removing affiliate and link overrides from future rate calculation, surface active overrides for review so Owners can choose the correct Program rate. The time-to-buy, hold period, and commission-duration controls shown per link are separate settings and are not changed by this rate decision.
+
 ## Scope
 
-This design adds per-Program payout minimums, stable Program attribution for new referral activity, grouped payout records, and clear eligibility reasons. It does not add automatic money transfers, scheduled payout automation, currency conversion, split payments of a single Commission, or a new tax/withholding system.
+This design adds per-Program payout minimums, stable Program attribution for new referral activity, grouped payout records, and clear eligibility reasons. It makes the Program commission percentage apply to every Affiliate and referral link in that Program; affiliate- and link-level rate overrides do not affect new Clicks. It does not add automatic money transfers, scheduled payout automation, currency conversion, split payments of a single Commission, or a new tax/withholding system.
 
 ## Acceptance criteria
 
@@ -95,6 +96,8 @@ This design adds per-Program payout minimums, stable Program attribution for new
 8. Program reassignment does not change the Program association of new commissions created from earlier referral Clicks.
 9. Program-setting, signup, owner commission, payout, and affiliate portal views explain the minimum and the reason for holds.
 10. No money transfer or currency conversion is initiated by recording a payout.
+11. Every new referral Click uses the flat commission rate of the Affiliate's Program, regardless of which link was used; existing Click rate snapshots remain unchanged.
+12. Active Affiliate and link rate overrides are surfaced for Owner review before they stop affecting future Clicks.
 
 ## Verification plan
 
