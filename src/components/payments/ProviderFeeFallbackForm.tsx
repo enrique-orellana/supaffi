@@ -47,7 +47,7 @@ export function ProviderFeeFallbackForm({
             placeholder="For example, 3.5"
           />
         </div>
-        <Button type="submit" size="sm" disabled={pending}>
+        <Button type="submit" size="lg" disabled={pending}>
           {pending ? "Saving" : "Save fee"}
         </Button>
       </div>
