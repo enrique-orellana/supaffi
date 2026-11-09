@@ -41,7 +41,7 @@ describe("markPayoutPaidAction", () => {
 
   it("goes back with no notice when everything was recorded", async () => {
     markMock.mockResolvedValue({ count: 2, skipped: 0 });
-    expect(await target()).toBe(BASE);
+    expect(await target()).toBe(`${BASE}?tab=paid`);
   });
 
   it("reports rows that were already paid, with when, when nothing was recorded", async () => {
@@ -50,7 +50,9 @@ describe("markPayoutPaidAction", () => {
       skipped: 0,
       alreadyPaid: { count: 2, paidAt: new Date(1_700_000_000_000) },
     });
-    expect(await target()).toBe(`${BASE}?already=2&paidOn=1700000000000`);
+    expect(await target()).toBe(
+      `${BASE}?already=2&paidOn=1700000000000&tab=paid`,
+    );
   });
 
   it("flags a press that recorded some rows and found others already paid", async () => {
@@ -59,6 +61,6 @@ describe("markPayoutPaidAction", () => {
       skipped: 0,
       alreadyPaid: { count: 1, paidAt: null },
     });
-    expect(await target()).toBe(`${BASE}?already=1&recorded=1`);
+    expect(await target()).toBe(`${BASE}?already=1&recorded=1&tab=paid`);
   });
 });

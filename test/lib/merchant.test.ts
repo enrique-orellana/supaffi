@@ -108,6 +108,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       stripe: false,
       stripeKey: false,
       stripeWebhook: false,
+      feeFallbackPercent: null,
     });
   });
 
@@ -138,6 +139,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       stripe: true,
       stripeKey: true,
       stripeWebhook: true,
+      feeFallbackPercent: null,
     });
   });
 
@@ -154,6 +156,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       stripe: false,
       stripeKey: true,
       stripeWebhook: false,
+      feeFallbackPercent: null,
     });
   });
 

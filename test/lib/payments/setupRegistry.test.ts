@@ -91,7 +91,11 @@ describe("payment provider setup registry", () => {
     expect(setup?.checkSections).toEqual([PaymentProvider.STRIPE.id]);
     await expect(setup?.readStatus("owner-1", "merchant-1")).resolves.toEqual({
       connected: true,
-      details: { keyStored: true, webhookStored: true },
+      details: {
+        keyStored: true,
+        webhookStored: true,
+        feeFallbackPercent: null,
+      },
     });
     expect(getIntegrationStatus).toHaveBeenCalledWith("owner-1", "merchant-1");
   });
@@ -106,6 +110,7 @@ describe("payment provider setup registry", () => {
         callbackUrl:
           "https://supaffi.example/api/webhooks/nowpayments/route-id",
         hasIpnSecret: true,
+        feeFallbackPercent: null,
       },
     });
     expect(getNowPaymentsConnectionStatus).toHaveBeenCalledWith(

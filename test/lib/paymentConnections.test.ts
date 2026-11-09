@@ -131,6 +131,7 @@ describe("NOWPayments connection credentials", () => {
       hasCallbackId: true,
       callbackUrl:
         "https://supaffi.example/api/webhooks/nowpayments/stable-route-id",
+      feeFallbackPercent: null,
     });
 
     findFirst.mockResolvedValue({
