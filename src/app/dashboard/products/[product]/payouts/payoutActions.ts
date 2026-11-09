@@ -27,14 +27,18 @@ export async function markPayoutPaidAction(
   product: { id: string; slug: string },
   shown: ShownCommission[],
   renderedAt: string,
+  formData?: FormData,
 ): Promise<void> {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+  const noteEntry = formData?.get("note");
+  const note = typeof noteEntry === "string" ? noteEntry.trim() || null : null;
   const result = await markCommissionsPaid(
     session.user.id,
     product.id,
     shown,
     renderedAt,
+    note,
   );
 
   const params = new URLSearchParams();

@@ -1,0 +1,2 @@
+ALTER TABLE "Commission"
+ADD COLUMN "paidNote" VARCHAR(200);

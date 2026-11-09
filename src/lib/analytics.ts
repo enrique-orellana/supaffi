@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { MAX_SHOWN } from "@/lib/commission";
+import {
+  COMMISSION_STATUS,
+  PENDING_OR_FLAGGED_COMMISSION_STATUSES,
+  UNPAID_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
 import { DEFAULT_RANGE } from "@/lib/analyticsShared";
 import type { ChartRange } from "@/lib/analyticsShared";
 
@@ -340,11 +345,11 @@ function totalsByCurrency(
  * handed over. Flagged commissions are in it, because they are still owed until
  * the Owner voids them; the flagged count is shown on its own where it matters.
  */
-export const OWED_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
+export const OWED_STATUSES = UNPAID_COMMISSION_STATUSES;
 
 /**
  * Money still to hand over per currency, for a whole product or for one
- * affiliate. Owed by default; pass `["PAYABLE"]` for what can be paid today.
+ * affiliate. Owed by default; pass `PAYABLE` for what can be paid today.
  *
  * A plain sum. A paid commission is final and a refund after payout writes
  * nothing, so every row in these statuses is money the Owner still sends.
@@ -363,7 +368,9 @@ async function owedTotals(
     where: {
       ...where,
       status: { in: [...statuses] },
-      ...(statuses.includes("PAYABLE") ? { checkoutConflictHeldAt: null } : {}),
+      ...(statuses.includes(COMMISSION_STATUS.PAYABLE)
+        ? { checkoutConflictHeldAt: null }
+        : {}),
       adjustsCommissionId: null,
       amount: { gt: 0 },
     },
@@ -418,7 +425,7 @@ async function periodFor(
       where: {
         ...scope,
         createdAt: { gte: window.since, lte: window.until },
-        status: { not: "VOIDED" },
+        status: { not: COMMISSION_STATUS.VOIDED },
         adjustsCommissionId: null,
       },
       select: { saleAmount: true, amount: true, currency: true },
@@ -483,7 +490,7 @@ export async function getProductMetrics(
         // nothing and costs nothing. An adjustment is the negative row
         // that corrects another sale, not a sale of its own. Counting
         // either put a bar on the chart with no money in it.
-        status: { not: "VOIDED" },
+        status: { not: COMMISSION_STATUS.VOIDED },
         adjustsCommissionId: null,
       },
       select: {
@@ -496,7 +503,7 @@ export async function getProductMetrics(
     owedTotals({ merchantId }),
     db.commission.groupBy({
       by: ["currency"],
-      where: { affiliate: { merchantId }, status: "PAID" },
+      where: { affiliate: { merchantId }, status: COMMISSION_STATUS.PAID },
       _sum: { amount: true },
     }),
     db.commission.groupBy({
@@ -505,7 +512,7 @@ export async function getProductMetrics(
         affiliate: { merchantId },
         createdAt: { gte: since, lte: window.until },
         saleAmount: { not: null },
-        status: { not: "VOIDED" },
+        status: { not: COMMISSION_STATUS.VOIDED },
         adjustsCommissionId: null,
       },
       _sum: { saleAmount: true },
@@ -517,7 +524,7 @@ export async function getProductMetrics(
     // Not windowed: a flagged commission stays the Owner's problem however
     // long it has sat there.
     db.commission.count({
-      where: { affiliate: { merchantId }, status: "FLAGGED" },
+      where: { affiliate: { merchantId }, status: COMMISSION_STATUS.FLAGGED },
     }),
     before ? periodFor({ merchantId }, before) : Promise.resolve(null),
   ]);
@@ -650,8 +657,8 @@ export async function getTopAffiliates(
     by: ["affiliateId", "currency"],
     where: {
       affiliate: { merchantId },
-      status: { notIn: ["VOIDED"] },
-      OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+      status: { notIn: [COMMISSION_STATUS.VOIDED] },
+      OR: [{ status: COMMISSION_STATUS.PAID }, { adjustsCommissionId: null }],
       ...inWindow,
     },
     _sum: { amount: true },
@@ -696,7 +703,7 @@ export async function getTopAffiliates(
       by: ["affiliateId"],
       where: {
         affiliateId: { in: rankedIds },
-        status: { notIn: ["VOIDED"] },
+        status: { notIn: [COMMISSION_STATUS.VOIDED] },
         adjustsCommissionId: null,
         amount: { gt: 0 },
         ...inWindow,
@@ -759,19 +766,36 @@ export async function getPayableGroups(
   ownerId: string,
   merchantId: string,
   capPerGroup: number = MAX_SHOWN,
+  filters: {
+    affiliateId?: string | null;
+    currency?: string | null;
+    query?: string | null;
+  } = {},
 ): Promise<PayableGroup[]> {
   await assertOwns(ownerId, merchantId);
 
   const rows = await db.commission.findMany({
     where: {
-      status: "PAYABLE",
+      status: COMMISSION_STATUS.PAYABLE,
       adjustsCommissionId: null,
       amount: { gt: 0 },
       // A disputed commission is never PAYABLE, so this matches nothing today.
       // It stays as a guard: a payout button must never offer a held row.
       disputeOpenedAt: null,
       checkoutConflictHeldAt: null,
-      affiliate: { merchantId },
+      ...(filters.currency ? { currency: filters.currency } : {}),
+      affiliate: {
+        merchantId,
+        ...(filters.affiliateId ? { id: filters.affiliateId } : {}),
+        ...(filters.query
+          ? {
+              OR: [
+                { name: { contains: filters.query, mode: "insensitive" } },
+                { email: { contains: filters.query, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
     },
     select: {
       id: true,
@@ -821,7 +845,7 @@ export async function countPayouts(merchantId: string): Promise<number> {
   const groups = await db.commission.groupBy({
     by: ["affiliateId", "currency"],
     where: {
-      status: "PAYABLE",
+      status: COMMISSION_STATUS.PAYABLE,
       adjustsCommissionId: null,
       amount: { gt: 0 },
       disputeOpenedAt: null,
@@ -838,8 +862,15 @@ export type PayoutRow = {
   affiliateEmail: string;
   currency: string;
   paidAt: Date;
+  note: string | null;
   total: string;
   count: number;
+};
+
+export type PayoutFilters = {
+  affiliateId?: string | null;
+  currency?: string | null;
+  query?: string | null;
 };
 
 /**
@@ -850,21 +881,50 @@ export type PayoutRow = {
 export async function listPayouts(
   ownerId: string,
   merchantId: string,
-  { page, pageSize }: { page: number; pageSize: number },
+  {
+    page,
+    pageSize,
+    affiliateId = null,
+    currency = null,
+    query = null,
+  }: {
+    page: number;
+    pageSize: number;
+    affiliateId?: string | null;
+    currency?: string | null;
+    query?: string | null;
+  },
 ): Promise<{ rows: PayoutRow[]; total: number }> {
   await assertOwns(ownerId, merchantId);
 
   const groups = await db.commission.groupBy({
-    by: ["affiliateId", "currency", "paidAt"],
+    by: ["affiliateId", "currency", "paidAt", "paidNote"],
     where: {
-      status: "PAID",
+      status: COMMISSION_STATUS.PAID,
       paidAt: { not: null },
       adjustsCommissionId: null,
-      affiliate: { merchantId },
+      ...(currency ? { currency } : {}),
+      affiliate: {
+        merchantId,
+        ...(affiliateId ? { id: affiliateId } : {}),
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: "insensitive" } },
+                { email: { contains: query, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
     },
     _sum: { amount: true },
     _count: { _all: true },
-    orderBy: [{ paidAt: "desc" }, { affiliateId: "asc" }, { currency: "asc" }],
+    orderBy: [
+      { paidAt: "desc" },
+      { affiliateId: "asc" },
+      { currency: "asc" },
+      { paidNote: { sort: "asc", nulls: "last" } },
+    ],
   });
 
   const pageGroups = groups.slice((page - 1) * pageSize, page * pageSize);
@@ -882,6 +942,7 @@ export async function listPayouts(
       affiliateEmail: byId.get(g.affiliateId)?.email ?? "",
       currency: g.currency,
       paidAt: g.paidAt!,
+      note: g.paidNote,
       total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
       count: g._count._all,
     })),
@@ -900,7 +961,7 @@ export async function getOwedTotals(
   await assertOwns(ownerId, merchantId);
   const [owed, payableNow] = await Promise.all([
     owedTotals({ merchantId }),
-    owedTotals({ merchantId }, ["PAYABLE"]),
+    owedTotals({ merchantId }, [COMMISSION_STATUS.PAYABLE]),
   ]);
   return { owed, payableNow };
 }
@@ -1008,7 +1069,7 @@ export async function getAffiliateMetrics(
         createdAt: { gte: since, lte: window.until },
         // A void earned nothing, and an adjustment row is not a commission
         // they earned: a paid commission is final.
-        status: { not: "VOIDED" },
+        status: { not: COMMISSION_STATUS.VOIDED },
         adjustsCommissionId: null,
       },
       select: { createdAt: true, amount: true, currency: true },
@@ -1020,7 +1081,7 @@ export async function getAffiliateMetrics(
       where: {
         affiliateId,
         adjustsCommissionId: null,
-        status: { in: ["PENDING", "FLAGGED"] },
+        status: { in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES] },
       },
       _sum: { amount: true },
     }),
@@ -1029,11 +1090,11 @@ export async function getAffiliateMetrics(
     // the paid total, unlike its unpaid counterparts above.
     db.commission.groupBy({
       by: ["currency"],
-      where: { affiliateId, status: "PAID" },
+      where: { affiliateId, status: COMMISSION_STATUS.PAID },
       _sum: { amount: true },
     }),
     owedTotals({ affiliateId }),
-    owedTotals({ affiliateId }, ["PAYABLE"]),
+    owedTotals({ affiliateId }, [COMMISSION_STATUS.PAYABLE]),
     before ? periodFor({ affiliateId }, before) : Promise.resolve(null),
   ]);
 
@@ -1081,7 +1142,9 @@ export async function getAffiliateMetrics(
       clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
     // FLAGGED sits with PENDING, matching toDisplayStatus: an Affiliate is
     // never shown a fraud check the Merchant has not finished reviewing.
-    pending: totalsByCurrency(rowsFor(["PENDING", "FLAGGED"])),
+    pending: totalsByCurrency(
+      rowsFor([...PENDING_OR_FLAGGED_COMMISSION_STATUSES]),
+    ),
     payable,
     unpaid,
     paid: totalsByCurrency(paidRows),

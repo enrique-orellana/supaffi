@@ -358,6 +358,7 @@ model Commission {
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?
+  paidNote   String?           @db.VarChar(200)
   voidedAt   DateTime?
   voidReason String? // e.g. "refund", "confirmed self-referral"
   flagReason String? // e.g. "email:buyer@x.com affiliate@x.com" or "card"

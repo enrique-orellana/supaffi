@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Wallet } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
+import { getCommissionFilterOptions } from "@/lib/commission";
 import { getOwedTotals, getPayableGroups, listPayouts } from "@/lib/analytics";
 import {
   formatCount,
@@ -12,7 +13,6 @@ import {
   moneyHint,
 } from "@/lib/format";
 import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -26,7 +26,8 @@ import { EmptyState } from "@/components/dashboard/EmptyState";
 import { TablePagination } from "@/components/dashboard/TablePagination";
 import { CopyValue } from "@/components/CopyValue";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { markPayoutPaidAction } from "./payoutActions";
+import { PayoutFilters } from "./PayoutFilters";
+import { MarkPayoutDialog } from "./MarkPayoutDialog";
 
 /**
  * The monthly job: who is owed what today, where to send it, and Mark paid.
@@ -56,6 +57,9 @@ export default async function PayoutsPage({
     already?: string;
     paidOn?: string;
     recorded?: string;
+    affiliate?: string;
+    currency?: string;
+    q?: string;
   }>;
 }) {
   const { product } = await params;
@@ -72,13 +76,26 @@ export default async function PayoutsPage({
     query.tab === "paid" || (!query.tab && query.page) ? "paid" : "ready";
   const page =
     tab === "paid" ? Math.max(1, Math.floor(Number(query.page)) || 1) : 1;
+  const affiliateFilter = (query.affiliate ?? "").slice(0, 64);
+  const currencyFilter = (query.currency ?? "").slice(0, 32);
+  const queryFilter = (query.q ?? "").trim().slice(0, 100);
+  const filters = {
+    affiliateId: affiliateFilter || null,
+    currency: currencyFilter || null,
+    query: queryFilter || null,
+  };
   // Taken before any commission is read. Mark paid compares it with when a
   // refund voided a shown row, so it has to be no later than the read.
   const renderedAt = new Date().toISOString();
 
-  const [groups, history, { payableNow }] = await Promise.all([
-    getPayableGroups(ownerId, merchant.id),
-    listPayouts(ownerId, merchant.id, { page, pageSize: HISTORY_PAGE_SIZE }),
+  const [groups, history, filterOptions, { payableNow }] = await Promise.all([
+    getPayableGroups(ownerId, merchant.id, undefined, filters),
+    listPayouts(ownerId, merchant.id, {
+      page,
+      pageSize: HISTORY_PAGE_SIZE,
+      ...filters,
+    }),
+    getCommissionFilterOptions(ownerId, merchant.id),
     getOwedTotals(ownerId, merchant.id),
   ]);
 
@@ -97,6 +114,10 @@ export default async function PayoutsPage({
   const payoutHref = (targetTab: "ready" | "paid", targetPage?: number) => {
     const params = new URLSearchParams(noticeParams);
     if (targetTab === "paid") params.set("tab", targetTab);
+    else params.delete("tab");
+    if (affiliateFilter) params.set("affiliate", affiliateFilter);
+    if (currencyFilter) params.set("currency", currencyFilter);
+    if (queryFilter) params.set("q", queryFilter);
     if (targetPage && targetPage > 1) params.set("page", String(targetPage));
     const search = params.toString();
     return `${base}/payouts${search ? `?${search}` : ""}`;
@@ -111,6 +132,20 @@ export default async function PayoutsPage({
     query.recorded,
   );
   const hint = moneyHint(payableNow);
+  const anyFilterActive = Boolean(
+    affiliateFilter || currencyFilter || queryFilter,
+  );
+  const filtersBar = (
+    <PayoutFilters
+      key={queryFilter}
+      affiliates={filterOptions.affiliates}
+      currencies={filterOptions.currencies}
+      affiliateId={affiliateFilter || null}
+      currency={currencyFilter || null}
+      query={queryFilter}
+      anyFilterActive={anyFilterActive}
+    />
+  );
 
   return (
     <Page>
@@ -120,6 +155,34 @@ export default async function PayoutsPage({
           groups.length > 0
             ? `${money(payableNow)}${hint ? ` and ${hint}` : ""} ready to pay`
             : undefined
+        }
+        actions={
+          <Tabs value={tab} className="shrink-0">
+            <TabsList variant="line">
+              <TabsTrigger
+                value="ready"
+                render={
+                  <Link href={payoutHref("ready")} className="cursor-pointer" />
+                }
+              >
+                Ready to pay
+                <span className="ml-1.5 text-muted-foreground tabular-nums">
+                  {groups.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="paid"
+                render={
+                  <Link href={payoutHref("paid")} className="cursor-pointer" />
+                }
+              >
+                Paid
+                <span className="ml-1.5 text-muted-foreground tabular-nums">
+                  {history.total}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         }
       />
 
@@ -135,37 +198,18 @@ export default async function PayoutsPage({
         </p>
       )}
 
-      <Tabs value={tab} className="shrink-0">
-        <TabsList variant="line">
-          <TabsTrigger
-            value="ready"
-            render={
-              <Link href={payoutHref("ready")} className="cursor-pointer" />
-            }
-          >
-            Ready to pay
-            <span className="ml-1.5 text-muted-foreground tabular-nums">
-              {groups.length}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="paid"
-            render={
-              <Link href={payoutHref("paid")} className="cursor-pointer" />
-            }
-          >
-            Paid
-            <span className="ml-1.5 text-muted-foreground tabular-nums">
-              {history.total}
-            </span>
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
       {tab === "ready" ? (
         <Section flush scroll className="overflow-hidden">
+          {filtersBar}
           {groups.length === 0 ? (
-            <EmptyState icon={<Wallet />} title="Nothing to pay" />
+            <EmptyState
+              icon={<Wallet />}
+              title={
+                anyFilterActive
+                  ? "Nothing matches these filters"
+                  : "Nothing to pay"
+              }
+            />
           ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-neutral-100">
@@ -214,23 +258,11 @@ export default async function PayoutsPage({
                       {formatMoney(group.total, group.currency)}
                     </TableCell>
                     <TableCell className="w-px text-right">
-                      <form
-                        action={markPayoutPaidAction.bind(
-                          null,
-                          productRef,
-                          group.commissions,
-                          renderedAt,
-                        )}
-                      >
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="secondary"
-                          className="cursor-pointer"
-                        >
-                          Mark paid
-                        </Button>
-                      </form>
+                      <MarkPayoutDialog
+                        product={productRef}
+                        group={group}
+                        renderedAt={renderedAt}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -240,14 +272,23 @@ export default async function PayoutsPage({
         </Section>
       ) : (
         <Section flush scroll className="overflow-hidden">
+          {filtersBar}
           {history.total === 0 ? (
-            <EmptyState icon={<Wallet />} title="No payouts yet" />
+            <EmptyState
+              icon={<Wallet />}
+              title={
+                anyFilterActive
+                  ? "No payouts match these filters"
+                  : "No payouts yet"
+              }
+            />
           ) : (
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-neutral-100">
                 <TableRow className="border-neutral-200 hover:bg-transparent">
                   <TableHead className={HEAD}>Date</TableHead>
                   <TableHead className={HEAD}>Affiliate</TableHead>
+                  <TableHead className={HEAD}>Note</TableHead>
                   <TableHead className={`${HEAD} text-right`}>
                     Commissions
                   </TableHead>
@@ -257,7 +298,7 @@ export default async function PayoutsPage({
               <TableBody className="divide-y divide-neutral-200">
                 {history.rows.map((row) => (
                   <TableRow
-                    key={`${row.affiliateId}:${row.currency}:${row.paidAt.toISOString()}`}
+                    key={`${row.affiliateId}:${row.currency}:${row.paidAt.toISOString()}:${row.note ?? ""}`}
                     className="border-neutral-200 hover:bg-neutral-50"
                   >
                     <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
@@ -267,6 +308,9 @@ export default async function PayoutsPage({
                       <span className="block truncate">
                         {row.affiliateName ?? row.affiliateEmail}
                       </span>
+                    </TableCell>
+                    <TableCell className="max-w-64 truncate text-sm text-muted-foreground">
+                      {row.note || "—"}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">
                       {formatCount(row.count)}

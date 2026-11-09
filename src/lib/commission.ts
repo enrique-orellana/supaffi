@@ -2,6 +2,15 @@ import { db } from "@/lib/db";
 import { currencyMinorUnitExponent } from "@/lib/currency";
 import { Prisma } from "@prisma/client";
 import { SqlSchema } from "@/lib/sqlSchema";
+import {
+  COMMISSION_STATUS,
+  COMMISSION_STATUSES,
+  UNPAID_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
+import type { CommissionStatus } from "@/lib/commissionStatus";
+
+export { COMMISSION_STATUS, COMMISSION_STATUSES } from "@/lib/commissionStatus";
+export type { CommissionStatus } from "@/lib/commissionStatus";
 
 async function assertMerchantOwnership(
   ownerId: string,
@@ -15,17 +24,6 @@ async function assertMerchantOwnership(
     throw new Error("Merchant not found");
   }
 }
-
-export type CommissionStatus =
-  "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
-
-export const COMMISSION_STATUSES: readonly CommissionStatus[] = [
-  "PENDING",
-  "PAYABLE",
-  "FLAGGED",
-  "PAID",
-  "VOIDED",
-];
 
 export type CommissionFilters = {
   /** Null means every status. */
@@ -95,7 +93,9 @@ function whereFor(merchantId: string, filters: CommissionFilters) {
       ...(filters.affiliateId ? { id: filters.affiliateId } : {}),
     },
     ...(filters.status ? { status: filters.status } : {}),
-    ...(filters.status === "PAYABLE" ? { checkoutConflictHeldAt: null } : {}),
+    ...(filters.status === COMMISSION_STATUS.PAYABLE
+      ? { checkoutConflictHeldAt: null }
+      : {}),
     ...(filters.currency ? { currency: filters.currency } : {}),
     ...(query
       ? {
@@ -192,7 +192,7 @@ export async function listCommissions(
       // the sales come before the refund adjustments against them, which
       // are recent by nature and otherwise filled the first page.
       orderBy:
-        filters.status === "PAYABLE"
+        filters.status === COMMISSION_STATUS.PAYABLE
           ? [
               { adjustsCommissionId: { sort: "asc", nulls: "first" } },
               { createdAt: "desc" },
@@ -243,7 +243,7 @@ export async function listCommissions(
       // one is still held by it.
       disputed:
         c.disputeOpenedAt !== null &&
-        ["PENDING", "PAYABLE", "FLAGGED"].includes(c.status),
+        UNPAID_COMMISSION_STATUSES.includes(c.status),
       click: {
         at: c.click.createdAt,
         linkCode: c.click.link?.code ?? null,
@@ -413,7 +413,7 @@ function payoutFor(
   shown: Prisma.Decimal,
   renderedAt: Date,
 ): Payout {
-  if (row.status === "PAID") return "already paid";
+  if (row.status === COMMISSION_STATUS.PAID) return "already paid";
   if (row.checkoutConflictHeldAt !== null) return "skip";
   if (row.adjustsCommissionId !== null) return "skip";
   if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
@@ -425,7 +425,7 @@ function payoutFor(
     return "skip";
   }
 
-  if (row.status === "PAYABLE") {
+  if (row.status === COMMISSION_STATUS.PAYABLE) {
     if (shown.eq(row.amount)) return "as stored";
     if (shown.gt(row.amount) && row.voidReason === "partial refund")
       return "at shown amount";
@@ -433,7 +433,7 @@ function payoutFor(
   }
 
   if (
-    row.status === "VOIDED" &&
+    row.status === COMMISSION_STATUS.VOIDED &&
     row.voidReason !== null &&
     REFUND_VOID_REASONS.includes(row.voidReason) &&
     row.voidedAt !== null &&
@@ -444,7 +444,7 @@ function payoutFor(
 
   if (
     row.disputeOpenedAt !== null &&
-    row.status === "PENDING" &&
+    row.status === COMMISSION_STATUS.PENDING &&
     row.payableAt.getTime() <= renderedAt.getTime() &&
     shown.gte(row.amount)
   ) {
@@ -473,6 +473,7 @@ export async function markCommissionsPaid(
   merchantId: string,
   shown: ShownCommission[],
   renderedAt: string,
+  note: string | null = null,
 ): Promise<MarkPaidResult> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -484,6 +485,10 @@ export async function markCommissionsPaid(
   if (shown.length > MAX_SHOWN) {
     return { error: REFUSED };
   }
+  if (note !== null && (typeof note !== "string" || note.length > 200)) {
+    return { error: REFUSED };
+  }
+  const payoutNote = note?.trim() || null;
 
   // Bound arguments are values the browser posts, so their shape is checked
   // rather than trusted: a page names every id once, at a positive two-decimal
@@ -599,7 +604,11 @@ export async function markCommissionsPaid(
     if (asStored.length > 0) {
       await tx.commission.updateMany({
         where: { id: { in: asStored } },
-        data: { status: "PAID", paidAt },
+        data: {
+          status: COMMISSION_STATUS.PAID,
+          paidAt,
+          paidNote: payoutNote,
+        },
       });
     }
     // The few a refund reached in between are written one by one, each at its
@@ -609,8 +618,9 @@ export async function markCommissionsPaid(
       await tx.commission.update({
         where: { id: row.id },
         data: {
-          status: "PAID",
+          status: COMMISSION_STATUS.PAID,
           paidAt,
+          paidNote: payoutNote,
           amount: row.amount,
           voidedAt: null,
           voidReason: row.amount.lt(row.ceiling) ? "partial refund" : null,
@@ -666,7 +676,7 @@ export async function confirmCommissionFraud(
 
   const now = new Date();
   const confirmed = {
-    status: "VOIDED" as const,
+    status: COMMISSION_STATUS.VOIDED,
     voidedAt: now,
     voidReason: "confirmed self-referral",
   };
@@ -690,7 +700,11 @@ export async function confirmCommissionFraud(
       FROM ${SqlSchema.tables.Commission.name}
       WHERE ${SqlSchema.tables.Commission.clickId} = ${existing.clickId}
         AND ${SqlSchema.tables.Commission.adjustsCommissionId} IS NULL
-        AND ${SqlSchema.tables.Commission.status} IN ('PENDING', 'PAYABLE', 'FLAGGED')
+        AND ${SqlSchema.tables.Commission.status} IN (
+          ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus},
+          ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus},
+          ${COMMISSION_STATUS.FLAGGED}::${SqlSchema.types.CommissionStatus}
+        )
       ORDER BY ${SqlSchema.tables.Commission.id}
       FOR UPDATE
     `);
@@ -704,7 +718,7 @@ export async function confirmCommissionFraud(
       where: {
         clickId: existing.clickId,
         adjustsCommissionId: null,
-        status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
       },
       data: confirmed,
     });
@@ -758,7 +772,7 @@ export async function voidCommission(
   const existing = await db.commission.findFirst({
     where: {
       id: commissionId,
-      status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      status: { in: [...UNPAID_COMMISSION_STATUSES] },
       adjustsCommissionId: null,
       affiliate: { merchantId },
     },
@@ -780,9 +794,13 @@ export async function voidCommission(
   const { count } = await db.commission.updateMany({
     where: {
       id: commissionId,
-      status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      status: { in: [...UNPAID_COMMISSION_STATUSES] },
     },
-    data: { status: "VOIDED", voidedAt: new Date(), voidReason: stored },
+    data: {
+      status: COMMISSION_STATUS.VOIDED,
+      voidedAt: new Date(),
+      voidReason: stored,
+    },
   });
   if (count === 0) {
     throw new Error(
@@ -799,7 +817,11 @@ export async function dismissCommissionFlag(
   await assertMerchantOwnership(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
-    where: { id: commissionId, status: "FLAGGED", affiliate: { merchantId } },
+    where: {
+      id: commissionId,
+      status: COMMISSION_STATUS.FLAGGED,
+      affiliate: { merchantId },
+    },
     select: { id: true },
   });
   if (!existing) {
@@ -814,18 +836,18 @@ export async function dismissCommissionFlag(
   const payable = await db.commission.updateMany({
     where: {
       id: commissionId,
-      status: "FLAGGED",
+      status: COMMISSION_STATUS.FLAGGED,
       disputeOpenedAt: null,
       checkoutConflictHeldAt: null,
       payableAt: { lte: new Date() },
     },
-    data: { status: "PAYABLE", flagReason: null },
+    data: { status: COMMISSION_STATUS.PAYABLE, flagReason: null },
   });
   if (payable.count > 0) return;
 
   const { count } = await db.commission.updateMany({
-    where: { id: commissionId, status: "FLAGGED" },
-    data: { status: "PENDING", flagReason: null },
+    where: { id: commissionId, status: COMMISSION_STATUS.FLAGGED },
+    data: { status: COMMISSION_STATUS.PENDING, flagReason: null },
   });
   if (count === 0) {
     throw new Error("Flagged commission not found");
