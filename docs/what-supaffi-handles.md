@@ -46,7 +46,7 @@ A SaaS founder or small team that:
 - For Stripe, only on what the customer actually paid. Parts covered by the customer's Stripe credit balance earn nothing. NOWPayments uses the sale amount in its signed notification.
 - For Stripe subscriptions, only on the subscription the affiliate referred. One-off charges added to its invoices, manual invoices, and a switch to another Stripe product earn nothing.
 - A Stripe invoice marked as paid outside Stripe earns nothing for the part paid outside Stripe. A NOWPayments payment must arrive through a valid signed provider notification; the browser only associates the invoice with a referral and never reports payment success.
-- In the currency of the sale. Amounts in different currencies are never converted or added together. Very large amounts, like the Vietnamese dong, are supported.
+- Calculated and recorded in the currency of the sale. Owner views keep that source currency. Affiliate-facing dashboard totals may be converted to the affiliate's chosen display currency as estimates; each source-currency total is converted separately, and a source amount without a usable rate remains visible in its original currency instead of being treated as zero or mixed into the estimate. These display conversions never affect commissions, payments, or payouts.
 - A Stripe payment can be excluded from commissions by setting `supaffi` to `false`, in lowercase, in the metadata of the invoice, subscription or customer. Set it before the customer pays, for example in `subscription_data.metadata` when you create the Checkout Session. A flag added after payment excludes later renewals only. A one-time purchase can only be excluded through its customer or its post-purchase invoice.
 
 ### Protecting your money
@@ -64,6 +64,8 @@ A SaaS founder or small team that:
 
 - Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email. Replacing a password signs the affiliate out everywhere.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
+- Choose **Use program default** or a personal display currency in **Settings**. The choice applies across that affiliate profile's portal for this merchant; it does not follow the same email into another merchant's portal.
+- See converted dashboard summaries and estimates alongside the unchanged source amount and currency on commission and payout history rows. Converted values show the reference-rate date and are estimates, not settlement amounts. If a rate is unavailable, Supaffi keeps the source-currency amount visible and separate.
 - Create extra links pointing at any page of your site, and add their payout details.
 
 ## What it does not handle
@@ -83,7 +85,6 @@ These are outside the product on purpose. They may come later if users need them
 - **Tracking across unrelated domains.** Visitors are not tracked across separate merchant sites. A checkout API on another origin can be tracked only when its successful response is readable by the merchant page through CORS.
 - **Several products on the same site sharing one Stripe account.** A referral for one product can be credited on the other's sale.
 - **Approving affiliates.** An affiliate's link works as soon as they sign up. A program's public signup can be turned off, and you then move affiliates into it yourself.
-- **Currencies without decimals,** like the yen. Commissions are calculated and shown with two decimals.
 - **Failed payments and paused subscriptions.** A failed or paused invoice simply earns nothing, and nothing is shown about it.
 - **Add-ons sold as a separate Stripe product** on an existing subscription. Only the products bought through the referral earn.
 - **Recovering refunds after payout** from the affiliate's future commissions. Planned as an optional setting.
