@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { SqlSchema } from "@/lib/sqlSchema";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { validateLinkInput as validateSharedLinkInput } from "@/lib/affiliateLinkShared";
 import type { LinkInput } from "@/lib/affiliateLinkShared";
 
@@ -399,8 +400,8 @@ export async function listLinksWithStats(
     db.commission.findMany({
       where: {
         click: { linkId: { in: ids } },
-        status: { not: "VOIDED" },
-        OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+        status: { not: COMMISSION_STATUS.VOIDED },
+        OR: [{ status: COMMISSION_STATUS.PAID }, { adjustsCommissionId: null }],
       },
       select: {
         amount: true,

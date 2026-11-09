@@ -5,6 +5,7 @@ import type {
   AffiliateCommissionStatus,
 } from "@/lib/affiliate";
 import { voidReasonText } from "@/lib/commissionReason";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -36,17 +37,17 @@ import {
 // before a row gets here, so there are four states, not five. Locked to the
 // owner's own mapping, so one colour means one thing on both sides.
 export const STATUS_STYLES: Record<AffiliateCommissionStatus, string> = {
-  PENDING: "bg-muted text-muted-foreground",
-  PAYABLE: "bg-accent-50 text-accent-700",
-  PAID: "bg-status-success-bg text-status-success",
-  VOIDED: "bg-muted text-muted-foreground line-through",
+  [COMMISSION_STATUS.PENDING]: "bg-muted text-muted-foreground",
+  [COMMISSION_STATUS.PAYABLE]: "bg-accent-50 text-accent-700",
+  [COMMISSION_STATUS.PAID]: "bg-status-success-bg text-status-success",
+  [COMMISSION_STATUS.VOIDED]: "bg-muted text-muted-foreground line-through",
 };
 
 export const STATUS_LABELS: Record<AffiliateCommissionStatus, string> = {
-  PENDING: "Pending",
-  PAYABLE: "Payable",
-  PAID: "Paid",
-  VOIDED: "Voided",
+  [COMMISSION_STATUS.PENDING]: "On hold",
+  [COMMISSION_STATUS.PAYABLE]: "Payable",
+  [COMMISSION_STATUS.PAID]: "Paid",
+  [COMMISSION_STATUS.VOIDED]: "Voided",
 };
 
 export type LedgerRow = {
@@ -78,20 +79,21 @@ export type LedgerRow = {
  */
 export function commissionStateLabel(row: AffiliateCommissionRow): string {
   switch (row.status) {
-    case "PENDING": {
+    case COMMISSION_STATUS.PENDING: {
       // FLAGGED folds into PENDING and the sweep deliberately never promotes a
       // flagged row, so its payableAt can sit in the past indefinitely. Once
-      // that date has passed, naming it reads as a bug ("Clears 14 Aug" in
-      // September); this is honest for a row waiting on the next sweep and for
-      // a concealed flagged one alike.
-      if (row.payableAt.getTime() <= Date.now()) return "Clearing shortly";
-      return `Clears ${formatDate(row.payableAt)}`;
+      // that date passes, say availability is being checked instead of showing
+      // a release date that has already passed. This also keeps hidden flags
+      // private while explaining why the commission is still on hold.
+      if (row.payableAt.getTime() <= Date.now())
+        return "Sale confirmed · availability is being checked";
+      return `Sale confirmed · expected availability ${formatDate(row.payableAt)}`;
     }
-    case "PAYABLE":
+    case COMMISSION_STATUS.PAYABLE:
       return "Ready to pay";
-    case "PAID":
+    case COMMISSION_STATUS.PAID:
       return row.paidAt ? `Paid ${formatDate(row.paidAt)}` : "Paid";
-    case "VOIDED":
+    case COMMISSION_STATUS.VOIDED:
       // The cause is the detail column's whole job here, so the state label
       // stands in only for a row whose reason was never recorded.
       return "Voided";
@@ -136,7 +138,7 @@ function readRow(row: LedgerRow): {
   cause: string | null;
   reduced: boolean;
 } {
-  const voided = row.status === "VOIDED";
+  const voided = row.status === COMMISSION_STATUS.VOIDED;
   return {
     voided,
     cause: voidReasonText(row.voidReason, "affiliate"),

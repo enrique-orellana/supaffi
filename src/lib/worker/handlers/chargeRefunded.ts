@@ -2,12 +2,16 @@ import { Prisma } from "@prisma/client";
 import type { Merchant, Commission } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
+import {
+  COMMISSION_STATUS,
+  UNPAID_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
 import { stripeClientFor } from "@/lib/stripe";
 import { readStoredReferredShare } from "../referredEarning";
 
 export type ReversalOutcome = { void: true } | { void: false; amount: number };
 
-const UNPAID_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
+const UNPAID_STATUSES = UNPAID_COMMISSION_STATUSES;
 
 export async function handleChargeRefunded(
   merchant: Merchant,
@@ -94,17 +98,21 @@ export async function reverseCommission(
   // creation handlers read it when they finally write the row.
   if (!commission) return;
 
-  if (commission.status === "PAID") {
+  if (commission.status === COMMISSION_STATUS.PAID) {
     logPaidIsFinal(commission.id, voidReason);
     return;
   }
-  if (commission.status === "VOIDED") return; // idempotent no-op (redelivered event)
+  if (commission.status === COMMISSION_STATUS.VOIDED) return; // idempotent no-op (redelivered event)
 
   const outcome = outcomeFor(commission);
   const { count } = outcome.void
     ? await db.commission.updateMany({
         where: { id: commission.id, status: { in: [...UNPAID_STATUSES] } },
-        data: { status: "VOIDED", voidedAt: new Date(), voidReason },
+        data: {
+          status: COMMISSION_STATUS.VOIDED,
+          voidedAt: new Date(),
+          voidReason,
+        },
       })
     : await db.commission.updateMany({
         where: {
@@ -125,7 +133,8 @@ export async function reverseCommission(
     where: { id: commission.id },
     select: { status: true },
   });
-  if (current?.status === "PAID") logPaidIsFinal(commission.id, voidReason);
+  if (current?.status === COMMISSION_STATUS.PAID)
+    logPaidIsFinal(commission.id, voidReason);
 }
 
 // One line per event, so an operator reading the log can see which refunds

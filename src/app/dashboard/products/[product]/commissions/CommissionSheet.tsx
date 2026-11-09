@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import type { CommissionStatus } from "@/lib/commission";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
+import type { CommissionStatus } from "@/lib/commissionStatus";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   markPaidAction,
@@ -77,11 +78,11 @@ export type SheetCommission = {
 };
 
 const STATUS_LABELS: Record<CommissionStatus, string> = {
-  PENDING: "Pending",
-  PAYABLE: "Payable",
-  FLAGGED: "Flagged",
-  PAID: "Paid",
-  VOIDED: "Voided",
+  [COMMISSION_STATUS.PENDING]: "On hold",
+  [COMMISSION_STATUS.PAYABLE]: "Payable",
+  [COMMISSION_STATUS.FLAGGED]: "Flagged",
+  [COMMISSION_STATUS.PAID]: "Paid",
+  [COMMISSION_STATUS.VOIDED]: "Voided",
 };
 
 function Line({
@@ -159,15 +160,17 @@ export function CommissionSheet({
   const router = useRouter();
 
   const flag =
-    commission.status === "FLAGGED"
+    commission.status === COMMISSION_STATUS.FLAGGED
       ? flagReasonText(commission.flagReason)
       : null;
   // The same sentence covers both cases: a void states its cause, and a live
   // row a partial refund reduced states why it shrank.
   const reasonText = voidReasonText(commission.voidReason, "owner");
-  const voidCause = commission.status === "VOIDED" ? reasonText : null;
+  const voidCause =
+    commission.status === COMMISSION_STATUS.VOIDED ? reasonText : null;
   const reduced =
-    commission.status !== "VOIDED" && commission.grossAmount !== null;
+    commission.status !== COMMISSION_STATUS.VOIDED &&
+    commission.grossAmount !== null;
   // Any commission of a referral can confirm it, whatever became of this row:
   // a self referral the checks missed is only spotted later, often after a
   // void or a payout. An adjustment row belongs to no referral of its own.
@@ -178,7 +181,7 @@ export function CommissionSheet({
     !commission.isAdjustment &&
     commission.selfReferralConfirmed === true &&
     !(
-      commission.status === "VOIDED" &&
+      commission.status === COMMISSION_STATUS.VOIDED &&
       commission.voidReason === "confirmed self-referral"
     );
 
@@ -279,14 +282,20 @@ export function CommissionSheet({
             <Line label="Affiliate">{commission.affiliateEmail}</Line>
             <Line label="Status">
               {commission.disputed
-                ? commission.status === "FLAGGED"
+                ? commission.status === COMMISSION_STATUS.FLAGGED
                   ? "Flagged, disputed"
                   : "Disputed"
                 : STATUS_LABELS[commission.status]}
             </Line>
-            {commission.status !== "VOIDED" && (
+            {commission.status === COMMISSION_STATUS.PENDING ? (
+              <p className="text-[13px] text-muted-foreground">
+                {commission.disputed
+                  ? "Sale confirmed. Payout is paused while the dispute is open."
+                  : `Sale confirmed. Expected availability is ${commission.payableLabel}, subject to review.`}
+              </p>
+            ) : commission.status !== COMMISSION_STATUS.VOIDED ? (
               <Line label="Payable on">{commission.payableLabel}</Line>
-            )}
+            ) : null}
             <Line label="Sale">
               {commission.reference ? (
                 commission.reference.href ? (
@@ -343,7 +352,7 @@ export function CommissionSheet({
             )}
           </div>
 
-          {commission.status === "PAYABLE" && (
+          {commission.status === COMMISSION_STATUS.PAYABLE && (
             <form
               action={markPaidAction.bind(
                 null,
@@ -359,7 +368,7 @@ export function CommissionSheet({
             </form>
           )}
 
-          {commission.status === "PENDING" && (
+          {commission.status === COMMISSION_STATUS.PENDING && (
             // A reason, because a voided commission is read months later by
             // somebody asking why an affiliate was not paid for a sale.
             <form
@@ -369,7 +378,7 @@ export function CommissionSheet({
               <Label htmlFor="void-reason" className="text-sm font-medium">
                 Reason for void
               </Label>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Input
                   id="void-reason"
                   name="reason"
@@ -380,7 +389,7 @@ export function CommissionSheet({
                 />
                 <Button
                   type="submit"
-                  size="sm"
+                  size="lg"
                   variant="secondary"
                   className="cursor-pointer"
                 >
@@ -390,7 +399,7 @@ export function CommissionSheet({
             </form>
           )}
 
-          {commission.status === "FLAGGED" && (
+          {commission.status === COMMISSION_STATUS.FLAGGED && (
             <div className="flex gap-2">
               {canConfirm && confirmForm}
               <form
@@ -413,13 +422,15 @@ export function CommissionSheet({
             </div>
           )}
 
-          {commission.status === "PAID" && (
+          {commission.status === COMMISSION_STATUS.PAID && (
             <p className="text-sm text-muted-foreground">
               {commission.stateLabel}
             </p>
           )}
 
-          {commission.status !== "FLAGGED" && canConfirm && confirmForm}
+          {commission.status !== COMMISSION_STATUS.FLAGGED &&
+            canConfirm &&
+            confirmForm}
 
           {confirmedNote && (
             <p className="text-sm text-muted-foreground">

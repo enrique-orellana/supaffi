@@ -16,6 +16,20 @@ import { db } from "@/lib/db";
  */
 export type TrackingStatus = "not-started" | "awaiting-sale" | "verified";
 
+/**
+ * A live commission can prove a completed attributed checkout even when an
+ * older payment-provider handler did not write `trackingVerifiedAt`.
+ * Imported history is stored separately and deliberately does not count.
+ */
+async function firstAttributedSaleAt(merchantId: string): Promise<Date | null> {
+  const commission = await db.commission.findFirst({
+    where: { click: { merchantId }, adjustsCommissionId: null },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+  return commission?.createdAt ?? null;
+}
+
 export async function getTrackingStatus(
   merchantId: string,
 ): Promise<TrackingStatus> {
@@ -25,9 +39,10 @@ export async function getTrackingStatus(
   });
   if (!merchant) return "not-started";
 
-  // Recorded when the first attributed checkout arrived, so this costs a
-  // column read rather than a join across every Click the Merchant ever had.
-  if (merchant.trackingVerifiedAt) return "verified";
+  // The column is the fast path. A live commission is a backstop for providers
+  // that recorded the attributed sale before writing this timestamp existed.
+  if (merchant.trackingVerifiedAt ?? (await firstAttributedSaleAt(merchantId)))
+    return "verified";
 
   const click = await db.click.findFirst({
     where: { affiliate: { merchantId } },
@@ -41,8 +56,8 @@ export type TrackingTimestamps = {
    * window `getProductMetrics` draws its chart from: the status screen wants
    * the actual last click, not "none in the last month". */
   lastClickAt: Date | null;
-  /** The same column `getTrackingStatus` reads, exposed here so the status
-   * screen can print the date without a second Prisma read of its own. */
+  /** The stored verification time, or the first live attributed sale as a
+   * fallback for provider records created before the marker was written. */
   verifiedAt: Date | null;
 };
 
@@ -61,9 +76,12 @@ export async function getTrackingTimestamps(
       select: { createdAt: true },
     }),
   ]);
+  const verifiedAt =
+    merchant?.trackingVerifiedAt ??
+    (merchant ? await firstAttributedSaleAt(merchantId) : null);
   return {
     lastClickAt: lastClick?.createdAt ?? null,
-    verifiedAt: merchant?.trackingVerifiedAt ?? null,
+    verifiedAt,
   };
 }
 
@@ -97,9 +115,10 @@ export async function shouldCelebrateTracking(
     where: { id: merchantId },
     select: { trackingVerifiedAt: true, trackingVerifiedSeenAt: true },
   });
-  return Boolean(
-    merchant?.trackingVerifiedAt && !merchant.trackingVerifiedSeenAt,
-  );
+  const verifiedAt =
+    merchant?.trackingVerifiedAt ??
+    (merchant ? await firstAttributedSaleAt(merchantId) : null);
+  return Boolean(verifiedAt && !merchant?.trackingVerifiedSeenAt);
 }
 
 /**

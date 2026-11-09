@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { cn } from "@/lib/utils";
 import {
   change,
@@ -282,7 +283,7 @@ export function OverviewScreen({
                         row.isAdjustment
                           ? "text-destructive"
                           : "text-neutral-900",
-                        row.status === "VOIDED" &&
+                        row.status === COMMISSION_STATUS.VOIDED &&
                           "font-normal text-muted-foreground",
                       )}
                     >

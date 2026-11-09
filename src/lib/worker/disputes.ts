@@ -1,6 +1,10 @@
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
+import {
+  COMMISSION_STATUS,
+  PENDING_OR_FLAGGED_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
 import { stripeClientFor } from "@/lib/stripe";
 import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 import {
@@ -182,14 +186,14 @@ export async function holdForDispute(
   await db.commission.updateMany({
     where: {
       id: commissionId,
-      status: { in: ["PENDING", "FLAGGED"] },
+      status: { in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES] },
       disputeOpenedAt: null,
     },
     data: { disputeOpenedAt: now },
   });
   await db.commission.updateMany({
-    where: { id: commissionId, status: "PAYABLE" },
-    data: { status: "PENDING", disputeOpenedAt: now },
+    where: { id: commissionId, status: COMMISSION_STATUS.PAYABLE },
+    data: { status: COMMISSION_STATUS.PENDING, disputeOpenedAt: now },
   });
 }
 
@@ -205,17 +209,17 @@ export async function releaseDisputeHold(
   await db.commission.updateMany({
     where: {
       id: commissionId,
-      status: "PENDING",
+      status: COMMISSION_STATUS.PENDING,
       disputeOpenedAt: { not: null },
       checkoutConflictHeldAt: null,
       payableAt: { lte: now },
     },
-    data: { status: "PAYABLE", disputeOpenedAt: null },
+    data: { status: COMMISSION_STATUS.PAYABLE, disputeOpenedAt: null },
   });
   await db.commission.updateMany({
     where: {
       id: commissionId,
-      status: { in: ["PENDING", "FLAGGED"] },
+      status: { in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES] },
       disputeOpenedAt: { not: null },
     },
     data: { disputeOpenedAt: null },
@@ -247,7 +251,11 @@ export async function settleDisputeHold(
     payment.paymentRefs,
   );
   if (!commission) return;
-  if (commission.status === "PAID" || commission.status === "VOIDED") return;
+  if (
+    commission.status === COMMISSION_STATUS.PAID ||
+    commission.status === COMMISSION_STATUS.VOIDED
+  )
+    return;
 
   let state: DisputeState = "unknown";
   if (payment.paymentIntentId) {

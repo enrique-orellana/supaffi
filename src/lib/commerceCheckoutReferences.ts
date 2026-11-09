@@ -1,5 +1,6 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { SqlSchema } from "@/lib/sqlSchema";
 
 type CheckoutReferenceRow = {
@@ -23,16 +24,16 @@ export async function holdUnpaidCheckoutCommissions(
     UPDATE ${SqlSchema.tables.Commission.name} AS commission
     SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = COALESCE(commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt}, now()),
         ${SqlSchema.tables.Commission.status} = CASE
-          WHEN commission.${SqlSchema.tables.Commission.status} = 'PAYABLE'::${SqlSchema.types.CommissionStatus} THEN 'PENDING'::${SqlSchema.types.CommissionStatus}
+          WHEN commission.${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus} THEN ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus}
           ELSE commission.${SqlSchema.tables.Commission.status}
         END
     FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
     WHERE payment.${SqlSchema.tables.PaymentRecord.checkoutId} = ${checkoutId}
       AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
       AND commission.${SqlSchema.tables.Commission.status} IN (
-        'PENDING'::${SqlSchema.types.CommissionStatus},
-        'PAYABLE'::${SqlSchema.types.CommissionStatus},
-        'FLAGGED'::${SqlSchema.types.CommissionStatus}
+        ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus},
+        ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus},
+        ${COMMISSION_STATUS.FLAGGED}::${SqlSchema.types.CommissionStatus}
       )
   `);
 }
@@ -129,17 +130,17 @@ export async function releaseCheckoutConflictHold(
           AND payment.${SqlSchema.tables.PaymentRecord.checkoutRef} = ${selectedRef}
           AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
           AND commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NOT NULL
-          AND commission.${SqlSchema.tables.Commission.status} = 'VOIDED'::${SqlSchema.types.CommissionStatus}
+          AND commission.${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.VOIDED}::${SqlSchema.types.CommissionStatus}
       `);
     } else {
       await tx.$executeRaw(Prisma.sql`
         UPDATE ${SqlSchema.tables.Commission.name} AS commission
         SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = NULL,
             ${SqlSchema.tables.Commission.status} = CASE
-              WHEN commission.${SqlSchema.tables.Commission.status} = 'PENDING'::${SqlSchema.types.CommissionStatus}
+              WHEN commission.${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus}
                 AND commission.${SqlSchema.tables.Commission.payableAt} <= ${now}
                 AND commission.${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
-                THEN 'PAYABLE'::${SqlSchema.types.CommissionStatus}
+                THEN ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus}
               ELSE commission.${SqlSchema.tables.Commission.status}
             END
         FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
@@ -150,10 +151,10 @@ export async function releaseCheckoutConflictHold(
           AND payment.${SqlSchema.tables.PaymentRecord.id} = commission.${SqlSchema.tables.Commission.paymentRecordId}
           AND commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NOT NULL
           AND commission.${SqlSchema.tables.Commission.status} IN (
-            'PENDING'::${SqlSchema.types.CommissionStatus},
-            'PAYABLE'::${SqlSchema.types.CommissionStatus},
-            'FLAGGED'::${SqlSchema.types.CommissionStatus},
-            'VOIDED'::${SqlSchema.types.CommissionStatus}
+            ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus},
+            ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus},
+            ${COMMISSION_STATUS.FLAGGED}::${SqlSchema.types.CommissionStatus},
+            ${COMMISSION_STATUS.VOIDED}::${SqlSchema.types.CommissionStatus}
           )
       `);
     }

@@ -3,7 +3,17 @@ import { generateLinkCode } from "@/lib/referralCode";
 import { isLinkCodeTaken, lockLinkCodes } from "@/lib/affiliateLink";
 import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
-import type { CommissionStatus } from "@/lib/commission";
+import {
+  AFFILIATE_COMMISSION_STATUSES,
+  COMMISSION_STATUS,
+  PENDING_OR_FLAGGED_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
+import type {
+  AffiliateCommissionStatus,
+  CommissionStatus,
+} from "@/lib/commissionStatus";
+
+export type { AffiliateCommissionStatus } from "@/lib/commissionStatus";
 
 // Owner-scoping is done in the query, never inferred from the route guard.
 // An Affiliate reaches an Owner only through its Merchant, so both links get
@@ -131,20 +141,10 @@ export async function getAffiliateSession(affiliateId: string): Promise<{
   };
 }
 
-export type AffiliateCommissionStatus =
-  "PENDING" | "PAYABLE" | "PAID" | "VOIDED";
-
-const AFFILIATE_VISIBLE_STATUSES: readonly AffiliateCommissionStatus[] = [
-  "PENDING",
-  "PAYABLE",
-  "PAID",
-  "VOIDED",
-];
-
 export function toDisplayStatus(status: string): AffiliateCommissionStatus {
-  return (AFFILIATE_VISIBLE_STATUSES as readonly string[]).includes(status)
+  return (AFFILIATE_COMMISSION_STATUSES as readonly string[]).includes(status)
     ? (status as AffiliateCommissionStatus)
-    : "PENDING";
+    : COMMISSION_STATUS.PENDING;
 }
 
 export type AffiliateCommissionRow = {
@@ -179,10 +179,14 @@ function affiliateStatusWhere(
   status: AffiliateCommissionStatus | null | undefined,
 ) {
   if (!status) return {};
-  if (status === "PENDING") {
-    return { status: { in: ["PENDING", "FLAGGED"] as CommissionStatus[] } };
+  if (status === COMMISSION_STATUS.PENDING) {
+    return {
+      status: {
+        in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES],
+      },
+    };
   }
-  return status === "PAYABLE"
+  return status === COMMISSION_STATUS.PAYABLE
     ? { status: status as CommissionStatus, checkoutConflictHeldAt: null }
     : { status: status as CommissionStatus };
 }
@@ -220,7 +224,7 @@ export async function listAffiliateCommissions(
       // Sales before the refund adjustments against them on the payable tab,
       // same as the owner's ledger.
       orderBy:
-        status === "PAYABLE"
+        status === COMMISSION_STATUS.PAYABLE
           ? [
               { adjustsCommissionId: { sort: "asc", nulls: "first" } },
               { createdAt: "desc" },
@@ -280,7 +284,7 @@ export async function getAffiliateCommissionTotals(
     counts.set(status, (counts.get(status) ?? 0) + g._count._all);
   }
 
-  return AFFILIATE_VISIBLE_STATUSES.map((status) => ({
+  return AFFILIATE_COMMISSION_STATUSES.map((status) => ({
     status,
     count: counts.get(status) ?? 0,
   }));
@@ -375,7 +379,11 @@ export async function listAffiliatePayments(
   affiliateId: string,
 ): Promise<AffiliatePaymentGroup[]> {
   const rows = await db.commission.findMany({
-    where: { affiliateId, status: "PAID", paidAt: { not: null } },
+    where: {
+      affiliateId,
+      status: COMMISSION_STATUS.PAID,
+      paidAt: { not: null },
+    },
     select: { amount: true, currency: true, paidAt: true },
   });
 
@@ -538,8 +546,8 @@ export async function listAffiliatesForMerchant(
       by: ["affiliateId", "currency"],
       where: {
         affiliateId: { in: ids },
-        status: { notIn: ["VOIDED"] },
-        OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+        status: { notIn: [COMMISSION_STATUS.VOIDED] },
+        OR: [{ status: COMMISSION_STATUS.PAID }, { adjustsCommissionId: null }],
       },
       _sum: { amount: true },
     }),
@@ -607,7 +615,12 @@ export async function getAffiliateSignals(
   const [total, earning, joinedThisMonth] = await Promise.all([
     db.affiliate.count({ where: scope }),
     db.affiliate.count({
-      where: { ...scope, commissions: { some: { status: { not: "VOIDED" } } } },
+      where: {
+        ...scope,
+        commissions: {
+          some: { status: { not: COMMISSION_STATUS.VOIDED } },
+        },
+      },
     }),
     db.affiliate.count({ where: { ...scope, createdAt: { gte: monthStart } } }),
   ]);

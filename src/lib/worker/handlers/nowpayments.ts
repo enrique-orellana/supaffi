@@ -7,6 +7,10 @@ import type {
   WebhookEvent,
 } from "@prisma/client";
 import { db } from "@/lib/db";
+import {
+  COMMISSION_STATUS,
+  UNPAID_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
 import { NOWPAYMENTS_PAYMENT_STATUS } from "@/lib/payments/providers/nowpayments";
 import { SqlSchema } from "@/lib/sqlSchema";
 import {
@@ -374,7 +378,7 @@ async function createCommissionIfEligible(
   const restoreRefundVoid = Boolean(
     input.allowRefundVoidRestore &&
     existing &&
-    existing.status === "VOIDED" &&
+    existing.status === COMMISSION_STATUS.VOIDED &&
     existing.voidReason === "refund" &&
     existing.flagReason === null &&
     existing.paidAt === null,
@@ -391,7 +395,7 @@ async function createCommissionIfEligible(
     FOR UPDATE
   `);
   const lockedClick = lockedClicks[0];
-  if (!lockedClick || lockedClick.fraudConfirmedAt !== null) return;
+  if (!lockedClick) return;
 
   const click = await tx.click.findFirst({
     where: { id: input.clickId, merchantId: input.merchantId },
@@ -412,6 +416,16 @@ async function createCommissionIfEligible(
     event.occurredAt > click.expiresAt
   )
     return;
+
+  // This provider's finished-payment path is the NOWPayments equivalent of
+  // Stripe's attributed-checkout proof. Record it before commission checks:
+  // fraud review or a zero commission can prevent earnings without making the
+  // tracking integration itself invalid.
+  await tx.merchant.updateMany({
+    where: { id: input.merchantId, trackingVerifiedAt: null },
+    data: { trackingVerifiedAt: new Date() },
+  });
+  if (lockedClick.fraudConfirmedAt !== null) return;
 
   const linkActiveAtClick =
     (!click.link?.activeFrom || click.createdAt >= click.link.activeFrom) &&
@@ -477,7 +491,7 @@ async function createCommissionIfEligible(
     saleAmount,
     providerFeeAmount,
     providerFeeSource,
-    status: "PENDING" as const,
+    status: COMMISSION_STATUS.PENDING,
     payableAt: computePayableAt(
       click.affiliate.program,
       undefined,
@@ -507,10 +521,10 @@ async function markCommissionRefunded(
   await tx.commission.updateMany({
     where: {
       paymentRecordId,
-      status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      status: { in: [...UNPAID_COMMISSION_STATUSES] },
     },
     data: {
-      status: "VOIDED",
+      status: COMMISSION_STATUS.VOIDED,
       voidedAt: new Date(),
       voidReason: "refund",
       disputeOpenedAt: null,

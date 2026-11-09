@@ -21,6 +21,7 @@ import {
   formatDate,
 } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { TablePagination } from "@/components/dashboard/TablePagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
@@ -39,9 +40,9 @@ import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
 
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
-  { label: "Payable", status: "PAYABLE" },
-  { label: "Flagged", status: "FLAGGED" },
-  { label: "Paid", status: "PAID" },
+  { label: "Payable", status: COMMISSION_STATUS.PAYABLE },
+  { label: "Flagged", status: COMMISSION_STATUS.FLAGGED },
+  { label: "Paid", status: COMMISSION_STATUS.PAID },
 ];
 
 function parseStatus(raw: string | undefined): CommissionStatus | null {
@@ -60,20 +61,27 @@ function parseStatus(raw: string | undefined): CommissionStatus | null {
 function stateLabel(row: CommissionRow): string {
   // A live row a partial refund reduced carries its own reason regardless of
   // which pre-void status it is otherwise in.
-  if (row.status !== "VOIDED" && row.voidReason === "partial refund") {
+  if (
+    row.status !== COMMISSION_STATUS.VOIDED &&
+    row.voidReason === "partial refund"
+  ) {
     const reduced = voidReasonText(row.voidReason, "owner");
     if (reduced) return reduced;
   }
   switch (row.status) {
-    case "PENDING":
-      return `Payable ${formatDate(row.payableAt)}`;
-    case "PAYABLE":
+    case COMMISSION_STATUS.PENDING:
+      if (row.disputed)
+        return "Sale confirmed · payout paused while dispute is open";
+      if (row.payableAt.getTime() <= Date.now())
+        return "Sale confirmed · availability is being checked";
+      return `Sale confirmed · expected availability ${formatDate(row.payableAt)}`;
+    case COMMISSION_STATUS.PAYABLE:
       return "Ready to pay";
-    case "FLAGGED":
+    case COMMISSION_STATUS.FLAGGED:
       return flagReasonText(row.flagReason)?.title ?? "Flagged for review";
-    case "PAID":
+    case COMMISSION_STATUS.PAID:
       return row.paidAt ? `Paid ${formatDate(row.paidAt)}` : "Paid";
-    case "VOIDED": {
+    case COMMISSION_STATUS.VOIDED: {
       const cause = voidReasonText(row.voidReason, "owner");
       const when = row.voidedAt ? formatDate(row.voidedAt) : null;
       if (cause && when) return `${cause} · ${when}`;

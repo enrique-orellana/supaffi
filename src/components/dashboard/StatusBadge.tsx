@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { CommissionStatus } from "@/lib/commission";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
+import type { CommissionStatus } from "@/lib/commissionStatus";
 
 // Locked 1:1 to Commission.status in the design system: a scan of the color
 // alone has to say the state before the label is read. PAYABLE reads accent,
@@ -8,19 +9,19 @@ import type { CommissionStatus } from "@/lib/commission";
 // through rather than alarming red, since it means "does not count" rather
 // than "something went wrong."
 const STATUS_STYLES: Record<CommissionStatus, string> = {
-  PENDING: "bg-muted text-muted-foreground",
-  PAYABLE: "bg-accent-50 text-accent-700",
-  FLAGGED: "bg-status-warning-bg text-status-warning",
-  PAID: "bg-status-success-bg text-status-success",
-  VOIDED: "bg-muted text-muted-foreground line-through",
+  [COMMISSION_STATUS.PENDING]: "bg-muted text-muted-foreground",
+  [COMMISSION_STATUS.PAYABLE]: "bg-accent-50 text-accent-700",
+  [COMMISSION_STATUS.FLAGGED]: "bg-status-warning-bg text-status-warning",
+  [COMMISSION_STATUS.PAID]: "bg-status-success-bg text-status-success",
+  [COMMISSION_STATUS.VOIDED]: "bg-muted text-muted-foreground line-through",
 };
 
 const STATUS_LABELS: Record<CommissionStatus, string> = {
-  PENDING: "Pending",
-  PAYABLE: "Payable",
-  FLAGGED: "Flagged",
-  PAID: "Paid",
-  VOIDED: "Voided",
+  [COMMISSION_STATUS.PENDING]: "On hold",
+  [COMMISSION_STATUS.PAYABLE]: "Payable",
+  [COMMISSION_STATUS.FLAGGED]: "Flagged",
+  [COMMISSION_STATUS.PAID]: "Paid",
+  [COMMISSION_STATUS.VOIDED]: "Voided",
 };
 
 /** A commission's state, the same badge on every owner screen that lists one. */

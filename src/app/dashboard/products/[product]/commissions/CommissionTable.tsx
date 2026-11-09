@@ -11,6 +11,7 @@ import { Coins } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/utils";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commission";
 
 /**
@@ -102,7 +103,7 @@ export function CommissionTable({
       </TableHeader>
       <TableBody className="divide-y divide-neutral-200">
         {rows.map((row) => {
-          const voided = row.status === "VOIDED";
+          const voided = row.status === COMMISSION_STATUS.VOIDED;
           return (
             <TableRow
               key={row.id}

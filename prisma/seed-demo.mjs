@@ -199,13 +199,14 @@ async function main() {
     });
 
     const primaryId = randomUUID();
-    links.push({ id: primaryId, affiliateId: id, code: `demo-${merchant.slug}-${i + 1}`, isPrimary: true, createdAt: new Date(NOW - joinedDaysAgo * DAY) });
+    links.push({ id: primaryId, merchantId: merchant.id, affiliateId: id, code: `demo-${merchant.slug}-${i + 1}`, isPrimary: true, createdAt: new Date(NOW - joinedDaysAgo * DAY) });
     affiliates[i].linkIds.push(primaryId);
     const extra = random() < 0.35 ? 1 + Math.floor(random() * 3) : 0;
     for (let k = 0; k < extra; k += 1) {
       const linkId = randomUUID();
       links.push({
         id: linkId,
+        merchantId: merchant.id,
         affiliateId: id,
         code: `demo-${merchant.slug}-${i + 1}-${k + 1}`,
         isPrimary: false,
@@ -315,6 +316,7 @@ async function main() {
       const clickId = randomUUID();
       const click = {
         id: clickId,
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         linkId: pick(affiliate.linkIds),
         referralToken: `demo_${randomUUID()}`,

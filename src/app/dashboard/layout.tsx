@@ -4,6 +4,7 @@ import { listMerchantsForOwner } from "@/lib/merchant";
 import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getCommissionTotals } from "@/lib/commission";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { getTrackingStatus } from "@/lib/tracking";
 import { countPayouts } from "@/lib/analytics";
 import { availableUpdate, installedVersion } from "@/lib/version";
@@ -54,7 +55,9 @@ export default async function DashboardLayout({
         {
           affiliates,
           programs: programs.length,
-          flagged: totals.find((t) => t.status === "FLAGGED")?.count ?? 0,
+          flagged:
+            totals.find((t) => t.status === COMMISSION_STATUS.FLAGGED)?.count ??
+            0,
           payouts,
           tracking,
         },

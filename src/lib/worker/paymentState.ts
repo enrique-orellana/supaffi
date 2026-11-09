@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import type { CommissionStatus } from "@prisma/client";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
+import type { CommissionStatus } from "@/lib/commissionStatus";
 import type Stripe from "stripe";
 import { prorateCommission } from "./handlers/chargeRefunded";
 import { disputeStateFor, type DisputeState } from "./disputes";
@@ -175,7 +176,9 @@ export function commissionFieldsAtCreation(input: {
   let fields: CreationFields = {
     amount: input.amount,
     grossAmount: input.amount,
-    status: input.flagReason ? "FLAGGED" : "PENDING",
+    status: input.flagReason
+      ? COMMISSION_STATUS.FLAGGED
+      : COMMISSION_STATUS.PENDING,
     voidedAt: null,
     voidReason: null,
     disputeOpenedAt: held ? now : null,
@@ -191,7 +194,7 @@ export function commissionFieldsAtCreation(input: {
     if (outcome.void) {
       return {
         ...fields,
-        status: "VOIDED",
+        status: COMMISSION_STATUS.VOIDED,
         voidedAt: now,
         voidReason: "refund",
         disputeOpenedAt: null,
@@ -207,7 +210,7 @@ export function commissionFieldsAtCreation(input: {
   if (input.dispute === "lost") {
     return {
       ...fields,
-      status: "VOIDED",
+      status: COMMISSION_STATUS.VOIDED,
       voidedAt: now,
       voidReason: "chargeback",
       disputeOpenedAt: null,

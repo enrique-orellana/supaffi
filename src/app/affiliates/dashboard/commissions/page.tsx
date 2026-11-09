@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAffiliate } from "@/lib/affiliateAuth";
+import { AFFILIATE_COMMISSION_STATUSES } from "@/lib/commissionStatus";
 import {
   listAffiliateCommissions,
   getAffiliateCommissionTotals,
@@ -26,12 +27,8 @@ import {
 
 const PAGE_SIZE = 25;
 
-const STATUSES: readonly AffiliateCommissionStatus[] = [
-  "PENDING",
-  "PAYABLE",
-  "PAID",
-  "VOIDED",
-];
+const STATUSES: readonly AffiliateCommissionStatus[] =
+  AFFILIATE_COMMISSION_STATUSES;
 
 function parseStatus(
   raw: string | undefined,

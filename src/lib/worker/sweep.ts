@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { SqlSchema } from "@/lib/sqlSchema";
 
 // Runs on the same tick as the webhook drain, with no new infrastructure.
@@ -14,8 +15,8 @@ import { SqlSchema } from "@/lib/sqlSchema";
 export async function sweepPayableCommissions(): Promise<number> {
   return db.$executeRaw(Prisma.sql`
     UPDATE ${SqlSchema.tables.Commission.name}
-    SET ${SqlSchema.tables.Commission.status} = 'PAYABLE'
-    WHERE ${SqlSchema.tables.Commission.status} = 'PENDING'
+    SET ${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus}
+    WHERE ${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus}
       AND ${SqlSchema.tables.Commission.payableAt} <= now()
       AND ${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
       AND ${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NULL;
