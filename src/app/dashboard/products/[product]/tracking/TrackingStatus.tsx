@@ -52,7 +52,22 @@ export function TrackingStatus({
   const live = script.ok || clickedRecently;
   return (
     <Page>
-      <PageTitle title="Tracking" subtitle={merchant.domain} />
+      <PageTitle
+        title="Tracking"
+        subtitle={merchant.domain}
+        actions={
+          <form action={checkAgain}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="secondary"
+              className="cursor-pointer"
+            >
+              Check the site again
+            </Button>
+          </form>
+        }
+      />
 
       <Tiles>
         <StatTile
@@ -91,25 +106,13 @@ export function TrackingStatus({
         />
       </Section>
 
-      <Section title="Checkout" scroll>
-        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
+      <Section title="Checkout">
+        <p className="mb-2 text-[13px] text-muted-foreground">
           Requirements for your connected payment providers.
         </p>
         <ProviderTrackingInstructions guides={trackingGuides} />
       </Section>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <form action={checkAgain}>
-          <Button
-            type="submit"
-            size="sm"
-            variant="secondary"
-            className="cursor-pointer"
-          >
-            Check the site again
-          </Button>
-        </form>
-      </div>
     </Page>
   );
 }
