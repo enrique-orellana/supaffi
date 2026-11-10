@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { currencyMinorUnitExponent } from "@/lib/currency";
+import type { PaymentProviderMetadata } from "@/lib/paymentProviderMetadata";
 import { Prisma } from "@prisma/client";
 import { SqlSchema } from "@/lib/sqlSchema";
 import {
@@ -79,6 +80,7 @@ export type CommissionRow = {
     cryptoAmount: string | null;
     cryptoCurrency: string | null;
     cryptoNetwork: string | null;
+    providerMetadata?: PaymentProviderMetadata | null;
   } | null;
   affiliateId: string;
   affiliateName: string | null;
@@ -218,6 +220,7 @@ export async function listCommissions(
             cryptoAmount: true,
             cryptoCurrency: true,
             cryptoNetwork: true,
+            providerMetadata: true,
           },
         },
         adjustsCommissionId: true,
@@ -339,6 +342,8 @@ export async function listCommissions(
             cryptoAmount: c.paymentRecord.cryptoAmount?.toString() ?? null,
             cryptoCurrency: c.paymentRecord.cryptoCurrency,
             cryptoNetwork: c.paymentRecord.cryptoNetwork,
+            providerMetadata:
+              c.paymentRecord.providerMetadata as PaymentProviderMetadata | null,
           }
         : null,
       affiliateId: c.affiliate.id,

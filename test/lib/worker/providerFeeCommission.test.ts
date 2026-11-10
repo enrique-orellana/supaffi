@@ -252,6 +252,67 @@ describe("NOWPayments provider-fee commission persistence", () => {
     expect(commission.amount.toString()).toBe("0.39");
   });
 
+  it("persists curated NOWPayments metadata and returns it for the admin ledger", async () => {
+    const event = finishedEvent("payment-fee-metadata", {
+      currency: "usdcsol",
+      depositFee: "0.00126",
+      serviceFee: "0.022194",
+      withdrawalFee: "0",
+    });
+    event.rawPayload = {
+      ...event.rawPayload,
+      purchase_id: "5528364594",
+      pay_amount: "25.68649486",
+      pay_currency: "maticmainnet",
+      pay_address: "0x693a23a9465b7EeFF68EC123B0c4A0529CA9Dd0a",
+      outcome_currency: "usdcsol",
+      order_description: "Editing Room Monochrome - Lukin",
+      actually_paid_at_fiat: "0",
+      created_at: event.occurredAt.toISOString(),
+      updated_at: event.occurredAt.toISOString(),
+    };
+
+    await processEvent(event);
+
+    const payment = await getPayment(event.paymentRef);
+    const metadata = payment.providerMetadata as {
+      nowpayments?: Record<string, unknown>;
+    } | null;
+    expect(metadata?.nowpayments).toMatchObject({
+      paymentId: event.paymentRef,
+      invoiceId: INVOICE_REFERENCE,
+      orderId: `order-${event.paymentRef}`,
+      purchaseId: "5528364594",
+      status: "finished",
+      orderDescription: "Editing Room Monochrome - Lukin",
+      priceAmount: "2",
+      priceCurrency: "eur",
+      payAmount: "25.68649486",
+      payCurrency: "maticmainnet",
+      actuallyPaid: "2.22908376",
+      payAddress: "0x693a23a9465b7EeFF68EC123B0c4A0529CA9Dd0a",
+      outcomeAmount: "2.055646",
+      outcomeCurrency: "usdcsol",
+      fee: {
+        currency: "usdcsol",
+        depositFee: "0.00126",
+        serviceFee: "0.022194",
+        withdrawalFee: "0",
+      },
+    });
+    expect(metadata?.nowpayments).not.toHaveProperty("createdAt");
+    expect(metadata?.nowpayments).not.toHaveProperty("updatedAt");
+    expect(metadata?.nowpayments).not.toHaveProperty("actuallyPaidAtFiat");
+
+    const { rows } = await listCommissions(
+      ownerId,
+      merchant.id,
+      { status: null, affiliateId: null, currency: null, query: null },
+      { page: 1, pageSize: 25 },
+    );
+    expect(rows[0]?.paymentRecord?.providerMetadata).toEqual(metadata);
+  });
+
   it("keeps a recorded actual fee when a later finished callback has no fee", async () => {
     const event = finishedEvent("payment-fee-preserve-actual", {
       currency: "USDC",

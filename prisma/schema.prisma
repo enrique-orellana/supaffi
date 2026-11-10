@@ -631,6 +631,8 @@ model PaymentRecord {
   // the payment when it reaches its successful terminal status.
   providerFeeAmount Decimal?       @db.Decimal(18, 3)
   providerFeeSource ProviderFeeSource?
+  /// Curated provider-specific callback facts for owner-side payment tracing.
+  providerMetadata Json?            @db.JsonB
   cryptoAmount   Decimal?          @db.Decimal(38, 18)
   cryptoCurrency String?
   // Asset symbols can exist on more than one chain.

@@ -314,6 +314,12 @@ export default async function CommissionsPage({
           : selected.stripePaymentRef
             ? "Stripe"
             : null,
+        paymentProviderId:
+          selected.paymentRecord?.provider ??
+          (selected.stripePaymentRef
+            ? PaymentProvider.STRIPE.database
+            : null),
+        providerMetadata: selected.paymentRecord?.providerMetadata ?? null,
         cryptoAmount: selected.paymentRecord?.cryptoAmount ?? null,
         cryptoCurrency: selected.paymentRecord?.cryptoCurrency ?? null,
         cryptoNetwork: selected.paymentRecord?.cryptoNetwork ?? null,

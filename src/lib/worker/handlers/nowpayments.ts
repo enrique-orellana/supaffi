@@ -33,6 +33,11 @@ import {
   type ResolvedProviderFee,
 } from "../providerFees";
 import { currencyMinorUnitExponent } from "@/lib/currency";
+import {
+  extractNowPaymentsMetadata,
+  mergeNowPaymentsMetadata,
+  type PaymentProviderMetadata,
+} from "@/lib/paymentProviderMetadata";
 import { referralStillEarns } from "../referralDuration";
 
 type JsonObject = Record<string, unknown>;
@@ -316,6 +321,7 @@ async function upsertPaymentRecord(
     cryptoNetwork: string | null;
     status: string;
     providerFee: ResolvedProviderFee | null | undefined;
+    providerMetadata: PaymentProviderMetadata | null | undefined;
   },
 ): Promise<PaymentRecord> {
   const existing = await findExistingPaymentRecord(tx, {
@@ -338,6 +344,14 @@ async function upsertPaymentRecord(
   const checkoutRef = samePayment
     ? (input.checkoutRef ?? existing?.checkoutRef ?? null)
     : input.checkoutRef;
+  const providerMetadata = samePayment
+    ? input.providerMetadata
+      ? mergeNowPaymentsMetadata(
+          existing.providerMetadata,
+          input.providerMetadata,
+        )
+      : undefined
+    : (input.providerMetadata ?? null);
 
   const record = existing
     ? await tx.paymentRecord.update({
@@ -365,6 +379,11 @@ async function upsertPaymentRecord(
                 providerFeeSource:
                   input.providerFee?.providerFeeSource ?? null,
               }),
+          ...(providerMetadata === undefined
+            ? {}
+            : {
+                providerMetadata: providerMetadata ?? Prisma.DbNull,
+              }),
           status,
         },
       })
@@ -385,6 +404,7 @@ async function upsertPaymentRecord(
           providerFeeAmount:
             input.providerFee?.providerFeeAmount ?? null,
           providerFeeSource: input.providerFee?.providerFeeSource ?? null,
+          providerMetadata: providerMetadata ?? Prisma.DbNull,
           status,
           clickId: input.clickId,
         },
@@ -870,6 +890,10 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
             return resolved;
           })()
         : undefined;
+    const providerMetadata =
+      event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED
+        ? extractNowPaymentsMetadata(event.rawPayload)
+        : undefined;
     let paymentRecord: PaymentRecord | null = null;
     const mayReplaceStoredPayment =
       (!existing && !unmatchedInvoiceLessEventAfterFound) ||
@@ -897,6 +921,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         cryptoNetwork: event.cryptoNetwork,
         status: event.providerStatus,
         providerFee,
+        providerMetadata,
       });
     }
 

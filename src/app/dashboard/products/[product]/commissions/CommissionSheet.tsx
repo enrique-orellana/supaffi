@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -27,6 +28,10 @@ import { CopyValue } from "@/components/CopyValue";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
+import {
+  providerMetadataDisplay,
+  type PaymentProviderMetadata,
+} from "@/lib/paymentProviderMetadata";
 import {
   confirmFraudAction,
   dismissFlagAction,
@@ -93,6 +98,8 @@ export type SheetCommission = {
   linkLabel: string | null;
   reference: { text: string; href: string | null } | null;
   paymentProvider?: string | null;
+  paymentProviderId?: string | null;
+  providerMetadata?: PaymentProviderMetadata | null;
   cryptoAmount?: string | null;
   cryptoCurrency?: string | null;
   cryptoNetwork?: string | null;
@@ -288,6 +295,10 @@ export function CommissionSheet({
       : commission.status === COMMISSION_STATUS.PAYABLE
         ? "This commission is part of its Affiliate, Program, and currency payout group. Record the group from the Payouts page."
         : null;
+  const providerMetadata = providerMetadataDisplay(
+    commission.paymentProviderId,
+    commission.providerMetadata,
+  );
 
   const confirmationCopy = confirmation
     ? COMMISSION_ACTION_CONFIRMATION[confirmation]
@@ -501,6 +512,41 @@ export function CommissionSheet({
               </Line>
             )}
           </DetailSection>
+
+          {providerMetadata && (
+            <details className="group rounded-(--radius) border border-neutral-200 bg-neutral-50/40">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-neutral-900 [&::-webkit-details-marker]:hidden">
+                <span>{providerMetadata.title}</span>
+                <ChevronDown
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180"
+                />
+              </summary>
+              <div className="grid gap-4 border-t border-neutral-200 p-3 sm:grid-cols-2">
+                {providerMetadata.groups.map((group) => (
+                  <section className="min-w-0" key={group.title}>
+                    <h4 className="mb-1 text-xs font-medium text-neutral-500">
+                      {group.title}
+                    </h4>
+                    <dl className="divide-y divide-neutral-200">
+                      {group.rows.map((item) => (
+                        <Line key={item.label} label={item.label}>
+                          {item.copyable ? (
+                            <CopyValue
+                              value={item.value}
+                              className="justify-end font-mono text-xs"
+                            />
+                          ) : (
+                            <span className="break-words">{item.value}</span>
+                          )}
+                        </Line>
+                      ))}
+                    </dl>
+                  </section>
+                ))}
+              </div>
+            </details>
+          )}
 
           <DetailSection title="Referral">
             <Line label="Affiliate">{commission.affiliateEmail}</Line>
