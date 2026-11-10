@@ -14,7 +14,7 @@ A worker moves mature, unblocked commissions from `PENDING` to `PAYABLE`. Owner 
 
 ### Program settings
 
-Add **Minimum balance before payout** to Program creation and editing, including onboarding where the shared terms form is used. Accept a non-negative amount with two decimal places. `0` means no minimum and preserves current behavior. Explain that the amount is checked separately in each transaction currency using the same numeric threshold (for example, 50 USD or 50 EUR); Supaffi does not convert currencies.
+Add **Minimum balance before payout** to Program creation and editing, including onboarding where the shared terms form is used. Accept a non-negative amount with two decimal places. `0` means no minimum and preserves current behavior. An Owner can optionally override the minimum for one Affiliate assigned to that Program; blank inherits the Program minimum and `0` explicitly removes the minimum for that Affiliate. Explain that the amount is checked separately in each transaction currency using the same numeric threshold (for example, 50 USD or 50 EUR); Supaffi does not convert currencies.
 
 Show the minimum in public signup terms and in the Affiliate portal so Affiliates can understand the payout rule before joining and while tracking earnings.
 
@@ -49,7 +49,7 @@ For each Affiliate, Program, and currency, calculate the eligible unpaid balance
 3. Have no open dispute or checkout-conflict hold.
 4. Are not flagged for review.
 
-The balance is the sum of these eligible rows. When it is at least the Program's minimum, the eligible rows become `PAYABLE`. Otherwise, mature eligible rows stay `PENDING` with the reason **below minimum**. A minimum of zero makes every mature, otherwise-clear commission payable.
+The balance is the sum of these eligible rows. When it is at least the resolved minimum (the Affiliate override when present, otherwise the Program minimum), the eligible rows become `PAYABLE`. Otherwise, mature eligible rows stay `PENDING` with the reason **below minimum**. A minimum of zero makes every mature, otherwise-clear commission payable.
 
 A normal payout batch must include whole payable commissions totaling at least the current Program minimum. This prevents a small selected payout from bypassing the threshold. An explicit closeout exception may pay mature, otherwise-clear commissions below the minimum when an Affiliate is being closed, a Program is being archived, or the Owner approves another documented exception. The exception requires a reason and appears clearly in the payout history. Disputes, flags, and checkout-conflict holds cannot be bypassed by this exception. After recording a batch, mark its commissions `PAID`, then recalculate that Affiliate/Program/currency balance. Any remaining mature rows below the minimum return to `PENDING` with the below-minimum reason. The remaining balance carries forward and can qualify when later eligible commissions arrive.
 
@@ -59,7 +59,7 @@ Each commission's holding period is evaluated independently. Immature commission
 
 ## Data and architecture
 
-- Add `Program.minimumPayoutAmount` as a decimal amount defaulting to `0`; migrate all existing Programs to `0`.
+- Add `Program.minimumPayoutAmount` as a decimal amount defaulting to `0`; migrate all existing Programs to `0`. Add a nullable Affiliate override, where null inherits the Program minimum and zero disables it for that Affiliate.
 - Add an immutable Program association to each new referral Click, captured when the Click is created. Commissions inherit the Program from that Click, so later Affiliate reassignment does not move old earned commissions.
 - Add an operational `Payout` batch record with merchant, Affiliate, Program, currency, total, paid date, optional method/reference/note, and the related Commission rows. Enforce that every batch belongs to exactly one Affiliate, Program, and currency. Retain each Commission's `PAID` status and `paidAt` for existing list and analytics behavior.
 - Existing Clicks lack historical Program IDs. Backfill them using each Affiliate's current Program assignment. Exact historical assignments cannot be reconstructed for Affiliates who have moved Programs; this limitation must be stated in the migration notes. Since existing Programs default to zero, the rollout itself does not change eligibility.
@@ -74,15 +74,15 @@ Changing a Program minimum immediately re-evaluates unpaid balances. Raising it 
 
 ## Commission-rate ownership
 
-Each Program has one flat commission percentage. Every Affiliate assigned to that Program and every referral link they use follows that rate. Affiliate-level and link-level commission-rate overrides are outside the intended model. Different commission rates require separate Programs.
+Each Program has one default flat commission percentage and shared default terms. An Owner may override those terms for one Affiliate assigned to the Program; the overrides apply to all of that Affiliate's referral links. Links only choose a destination and referral code. Link-level commission and timing overrides do not affect new referrals. A blank Affiliate field inherits the Program default. The Affiliate override applies while that Affiliate is assigned to the Program; historical clicks keep their captured terms.
 
-The current UI has an override chain: Program default, optional Affiliate-specific rate, then optional AffiliateLink rate. In the supplied screenshot, both link fields say **Inherit** and show 20%, so those links currently use the inherited rate; the UI merely permits a different rate per link. The link override was designed for campaign-specific exceptions, but it conflicts with the product rule above.
+Older data may contain AffiliateLink term overrides. Those remain visible as legacy data but do not override current Program or Affiliate terms for new referrals. Existing Clicks retain their captured terms.
 
-New referral Clicks snapshot the Program rate when created. Existing Clicks retain their stored rate snapshots, so past referrals keep the rate they already captured. Before removing affiliate and link overrides from future rate calculation, surface active overrides for review so Owners can choose the correct Program rate. The time-to-buy, hold period, and commission-duration controls shown per link are separate settings and are not changed by this rate decision.
+New referral Clicks snapshot the resolved Program and Affiliate terms when created. Existing Clicks retain their stored term snapshots, so past referrals keep the terms they already captured.
 
 ## Scope
 
-This design adds per-Program payout minimums, stable Program attribution for new referral activity, grouped payout records, and clear eligibility reasons. It makes the Program commission percentage apply to every Affiliate and referral link in that Program; affiliate- and link-level rate overrides do not affect new Clicks. It does not add automatic money transfers, scheduled payout automation, currency conversion, split payments of a single Commission, or a new tax/withholding system.
+This design adds Program payout minimums with optional Affiliate overrides, stable Program attribution for new referral activity, grouped payout records, and clear eligibility reasons. Program terms are defaults; permitted Affiliate overrides apply across all links for that Affiliate. Link-level overrides do not affect new Clicks. It does not add automatic money transfers, scheduled payout automation, currency conversion, split payments of a single Commission, or a new tax/withholding system.
 
 ## Acceptance criteria
 
@@ -96,8 +96,8 @@ This design adds per-Program payout minimums, stable Program attribution for new
 8. Program reassignment does not change the Program association of new commissions created from earlier referral Clicks.
 9. Program-setting, signup, owner commission, payout, and affiliate portal views explain the minimum and the reason for holds.
 10. No money transfer or currency conversion is initiated by recording a payout.
-11. Every new referral Click uses the flat commission rate of the Affiliate's Program, regardless of which link was used; existing Click rate snapshots remain unchanged.
-12. Active Affiliate and link rate overrides are surfaced for Owner review before they stop affecting future Clicks.
+11. Every new referral Click uses the resolved Program terms with any Affiliate-specific overrides, regardless of which link was used; existing Click term snapshots remain unchanged.
+12. Affiliate overrides and the Program defaults are visible to the Owner; legacy link-specific overrides do not change new Click terms.
 
 ## Verification plan
 
