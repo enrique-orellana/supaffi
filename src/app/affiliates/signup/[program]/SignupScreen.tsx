@@ -68,11 +68,11 @@ function Tile({
   hint: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 px-5 py-4">
+    <div className="flex min-w-0 flex-col gap-1 px-3 py-4 sm:px-4">
       <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
         {label}
       </p>
-      <p className="text-[22px] leading-7 font-medium tracking-[-0.02em] whitespace-nowrap text-neutral-900 tabular-nums">
+      <p className="min-w-0 break-words text-[22px] leading-7 font-medium tracking-[-0.02em] text-neutral-900 tabular-nums">
         {value}
       </p>
       <p className="text-xs leading-4 text-muted-foreground text-pretty">
