@@ -123,6 +123,7 @@ describe("NOWPayments provider-fee commission persistence", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

@@ -1,6 +1,4 @@
-// markPayoutPaidAction hands the ledger's outcome to the Payouts page in the
-// URL. The ledger and the session are stubbed: this is about what reaches the
-// URL, not about what the ledger decides.
+// markPayoutPaidAction passes only ledger result codes through the URL.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const markMock = vi.fn();
@@ -39,28 +37,13 @@ async function target(): Promise<string> {
 describe("markPayoutPaidAction", () => {
   beforeEach(() => markMock.mockReset());
 
-  it("goes back with no notice when everything was recorded", async () => {
-    markMock.mockResolvedValue({ count: 2, skipped: 0 });
+  it("opens the Paid tab after recording a payout", async () => {
+    markMock.mockResolvedValue({ count: 2, payoutId: "payout-1" });
     expect(await target()).toBe(`${BASE}?tab=paid`);
   });
 
-  it("reports rows that were already paid, with when, when nothing was recorded", async () => {
-    markMock.mockResolvedValue({
-      count: 0,
-      skipped: 0,
-      alreadyPaid: { count: 2, paidAt: new Date(1_700_000_000_000) },
-    });
-    expect(await target()).toBe(
-      `${BASE}?already=2&paidOn=1700000000000&tab=paid`,
-    );
-  });
-
-  it("flags a press that recorded some rows and found others already paid", async () => {
-    markMock.mockResolvedValue({
-      count: 1,
-      skipped: 0,
-      alreadyPaid: { count: 1, paidAt: null },
-    });
-    expect(await target()).toBe(`${BASE}?already=1&recorded=1&tab=paid`);
+  it("returns a fixed error code when the ledger refuses a payout", async () => {
+    markMock.mockResolvedValue({ error: "stale" });
+    expect(await target()).toBe(`${BASE}?error=stale`);
   });
 });

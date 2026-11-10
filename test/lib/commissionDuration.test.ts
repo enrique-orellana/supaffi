@@ -33,4 +33,10 @@ describe("commission duration overrides", () => {
       "of every payment, for 6 months",
     );
   });
+
+  it("does not crash when a program has an unrecognized duration", () => {
+    expect(commissionDurationLabel(undefined, null)).toBe(
+      "Commission terms unavailable",
+    );
+  });
 });

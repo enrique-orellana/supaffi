@@ -59,6 +59,7 @@ describe("Commission money columns", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),

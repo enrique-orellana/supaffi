@@ -317,6 +317,7 @@ describe("dispute handlers", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + DAY),

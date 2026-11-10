@@ -7,7 +7,12 @@ import {
 describe("durationTerm", () => {
   it("reads as an ongoing payment for FOREVER", () => {
     expect(
-      durationTerm({ rate: 20, durationType: "FOREVER", durationMonths: null }),
+      durationTerm({
+        rate: 20,
+        durationType: "FOREVER",
+        durationMonths: null,
+        minimumPayoutAmount: "0.00",
+      }),
     ).toEqual({ value: "Every payment", hint: "as long as the customer pays" });
   });
 
@@ -17,6 +22,7 @@ describe("durationTerm", () => {
         rate: 20,
         durationType: "FIXED_MONTHS",
         durationMonths: 6,
+        minimumPayoutAmount: "0.00",
       }),
     ).toEqual({ value: "6 months", hint: "of everything the customer pays" });
   });
@@ -26,6 +32,7 @@ describe("durationTerm", () => {
       rate: 20,
       durationType: "FIXED_MONTHS",
       durationMonths: null,
+      minimumPayoutAmount: "0.00",
     });
     expect(result.value).not.toBe("First payment");
     expect(result.hint).toBe("of everything the customer pays");
@@ -37,6 +44,7 @@ describe("durationTerm", () => {
         rate: 20,
         durationType: "ONE_TIME",
         durationMonths: null,
+        minimumPayoutAmount: "0.00",
       }),
     ).toEqual({ value: "First payment", hint: "one commission per customer" });
   });

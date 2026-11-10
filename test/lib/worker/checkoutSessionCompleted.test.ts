@@ -90,12 +90,15 @@ import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
 import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
+import { COMMISSION_STATUS, markCommissionsPaid } from "@/lib/commission";
+import { recalculatePayoutEligibility } from "@/lib/payoutEligibility";
 import { invoiceLine } from "./invoiceLines";
 
 const CUSTOMER_ID = "cus_test";
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
@@ -111,6 +114,7 @@ describe("handleCheckoutSessionCompleted", () => {
   let click: { id: string };
   let clickInput: {
     merchantId: string;
+    programId: string;
     affiliateId: string;
     referralToken: string;
     expiresAt: Date;
@@ -385,6 +389,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
     clickInput = {
       merchantId: merchant.id,
+      programId: program.id,
       affiliateId: affiliate.id,
       referralToken: "tok-1",
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
@@ -566,6 +571,79 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(commission.saleAmount?.toString()).toBe("100");
     expect(commission.amount.toString()).toBe("20");
     expect(commission.grossAmount?.toString()).toBe("20");
+  });
+
+  it("uses the click's saved rate to calculate a commission and records the real payout", async () => {
+    await db.click.update({
+      where: { id: click.id },
+      data: {
+        commissionRateSnapshot: "12.50",
+        commissionDurationTypeSnapshot: "FOREVER",
+        commissionDurationMonthsSnapshot: null,
+        holdingPeriodDaysSnapshot: 7,
+      },
+    });
+    await db.program.update({
+      where: { id: clickInput.programId },
+      data: { defaultCommissionRate: "80.00", holdingPeriodDays: 30 },
+    });
+
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_saved_terms", amountTotal: 10000 }),
+    );
+
+    const commission = await db.commission.findFirstOrThrow({
+      where: { clickId: click.id },
+    });
+    expect(commission.saleAmount?.toString()).toBe("100");
+    expect(commission.amount.toFixed(2)).toBe("12.50");
+    expect(commission.payableAt.getTime()).toBeGreaterThan(Date.now());
+    expect(commission.status).toBe(COMMISSION_STATUS.PENDING);
+
+    const maturedAt = new Date(Date.now() - 1000);
+    await db.commission.update({
+      where: { id: commission.id },
+      data: { payableAt: maturedAt },
+    });
+    await db.$transaction((tx) =>
+      recalculatePayoutEligibility(
+        tx,
+        {
+          merchantId: merchant.id,
+          affiliateId: clickInput.affiliateId,
+          programId: clickInput.programId,
+          currency: commission.currency,
+        },
+        maturedAt,
+      ),
+    );
+
+    const payable = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
+    expect(payable.status).toBe(COMMISSION_STATUS.PAYABLE);
+
+    const renderedAt = new Date().toISOString();
+    const result = await markCommissionsPaid(
+      merchant.ownerId,
+      merchant.id,
+      [{ id: payable.id, amount: payable.amount.toFixed(2) }],
+      renderedAt,
+    );
+    expect(result).toMatchObject({ count: 1 });
+    if ("error" in result) throw new Error(`Payout failed: ${result.error}`);
+
+    const [paid, payout] = await Promise.all([
+      db.commission.findUniqueOrThrow({ where: { id: commission.id } }),
+      db.payout.findUniqueOrThrow({ where: { id: result.payoutId } }),
+    ]);
+    expect(paid.status).toBe(COMMISSION_STATUS.PAID);
+    expect(paid.amount.toFixed(2)).toBe("12.50");
+    expect(paid.payoutId).toBe(payout.id);
+    expect(paid.paidAt).not.toBeNull();
+    expect(payout.total.toFixed(2)).toBe("12.50");
+    expect(payout.currency).toBe("usd");
   });
 
   it("creates nothing when the only thing paid for was shipping", async () => {
@@ -1180,6 +1258,7 @@ describe("handleCheckoutSessionCompleted", () => {
     const fixedClick = await db.click.create({
       data: {
         ...clickInput,
+        programId: program.id,
         affiliateId: affiliate.id,
         referralToken: "tok-fixed",
       },

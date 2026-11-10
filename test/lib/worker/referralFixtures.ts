@@ -80,6 +80,7 @@ export async function seedReferral(
   const click = await db.click.create({
     data: {
       merchantId: merchant.id,
+      programId: affiliate.programId,
       affiliateId: affiliate.id,
       referralToken: crypto.randomUUID(),
       createdAt,

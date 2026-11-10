@@ -151,6 +151,7 @@ describe("NOWPayments checkout attribution", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId: affiliate.id,
         referralToken: REFERRAL_TOKEN,
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
@@ -593,6 +594,7 @@ describe("NOWPayments checkout attribution", () => {
     const otherClick = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: otherAffiliate.programId,
         affiliateId: otherAffiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

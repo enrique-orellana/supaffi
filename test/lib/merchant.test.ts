@@ -400,6 +400,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId: affiliate.id,
         linkId: link.id,
         referralToken: "tok1",

@@ -129,6 +129,9 @@ function fixtureFor(
     isAdjustment: false,
     voidReason: null,
     paymentProvider: null,
+    reviewHeld: false,
+    payoutHold: null,
+    payoutRecord: null,
   };
 }
 

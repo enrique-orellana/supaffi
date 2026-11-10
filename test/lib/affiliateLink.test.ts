@@ -419,6 +419,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const converting = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -428,6 +429,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -437,6 +439,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: secondId,
         referralToken: crypto.randomUUID(),
@@ -446,6 +449,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     await db.commission.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         clickId: converting.id,
         amount: "12.00",
@@ -477,6 +481,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),

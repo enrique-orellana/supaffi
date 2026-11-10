@@ -104,6 +104,7 @@ describe("termsLine", () => {
     durationMonths: null,
     attributionWindowDays: 60,
     holdingPeriodDays: 30,
+    minimumPayoutAmount: "0.00",
   };
 
   it("states rate and duration, cookie window and hold", () => {
@@ -114,12 +115,14 @@ describe("termsLine", () => {
         durationType: "FIXED_MONTHS",
         durationMonths: 12,
       }),
-    ).toBe("30% for 12 months · 60-day cookie · 30-day hold");
+    ).toBe(
+      "30% for 12 months · 60-day cookie · 30-day hold · No payout minimum",
+    );
     expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe(
-      "12.5% of every payment · 60-day cookie · 30-day hold",
+      "12.5% of every payment · 60-day cookie · 30-day hold · No payout minimum",
     );
     expect(termsLine({ ...base, rate: 25, durationType: "ONE_TIME" })).toBe(
-      "25% of the first payment · 60-day cookie · 30-day hold",
+      "25% of the first payment · 60-day cookie · 30-day hold · No payout minimum",
     );
   });
 });

@@ -49,6 +49,9 @@ function commission(
     isAdjustment: false,
     voidReason: null,
     paymentProvider: "NOWPayments",
+    reviewHeld: false,
+    payoutHold: null,
+    payoutRecord: null,
     ...overrides,
   };
 }

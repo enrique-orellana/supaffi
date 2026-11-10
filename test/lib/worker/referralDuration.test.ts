@@ -5,7 +5,6 @@ import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import type { Merchant, Prisma, Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
-  commissionDurationForClick,
   isWithinReferralDuration,
   readReferralHistory,
   referralStillEarns,
@@ -133,26 +132,6 @@ describe("isWithinReferralDuration", () => {
         clickDuration,
       ),
     ).toBe(false);
-  });
-});
-
-describe("commissionDurationForClick", () => {
-  it("prefers a captured code duration and falls back to current program terms for old clicks", () => {
-    const program = programOf("FOREVER");
-
-    expect(
-      commissionDurationForClick(program, {
-        commissionDurationTypeSnapshot: "FIXED_MONTHS",
-        commissionDurationMonthsSnapshot: 6,
-      }),
-    ).toEqual({
-      commissionDurationType: "FIXED_MONTHS",
-      commissionDurationMonths: 6,
-    });
-    expect(commissionDurationForClick(program, null)).toEqual({
-      commissionDurationType: "FOREVER",
-      commissionDurationMonths: null,
-    });
   });
 });
 

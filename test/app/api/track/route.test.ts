@@ -171,16 +171,27 @@ describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
     expect(await db.click.count()).toBe(1);
   });
 
-  it("snapshots the code's commission terms on each new click", async () => {
+  it("snapshots the affiliate's program terms on each new click", async () => {
     const a = await seedMerchantWithAffiliate("terms");
-    await db.affiliateLink.update({
-      where: { id: a.link.id },
+    await db.affiliate.update({
+      where: { id: a.affiliate.id },
       data: {
-        commissionRateOverride: "12.50",
+        customCommissionRate: "12.50",
         commissionDurationTypeOverride: "FIXED_MONTHS",
         commissionDurationMonthsOverride: 8,
         attributionWindowDaysOverride: 14,
         holdingPeriodDaysOverride: 7,
+      },
+    });
+    // Imported per-link settings are legacy data and must not affect new clicks.
+    await db.affiliateLink.update({
+      where: { id: a.link.id },
+      data: {
+        commissionRateOverride: "80.00",
+        commissionDurationTypeOverride: "FIXED_MONTHS",
+        commissionDurationMonthsOverride: 1,
+        attributionWindowDaysOverride: 1,
+        holdingPeriodDaysOverride: 1,
       },
     });
 

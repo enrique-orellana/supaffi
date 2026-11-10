@@ -270,6 +270,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         data: {
           merchantId: affiliate.merchantId,
           affiliateId: affiliate.id,
+          programId: affiliate.programId,
           referralToken: "history-token",
           expiresAt: new Date(Date.now() + 60_000),
         },
@@ -395,12 +396,13 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   async function makeClick(affiliateId: string) {
     const affiliate = await db.affiliate.findUniqueOrThrow({
       where: { id: affiliateId },
-      select: { merchantId: true },
+      select: { merchantId: true, programId: true },
     });
     return db.click.create({
       data: {
         merchantId: affiliate.merchantId,
         affiliateId,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
@@ -431,7 +433,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     const NO_FILTERS: AffiliateListFilters = { programId: null, query: null };
     const PAGE = { page: 1, pageSize: 25 };
 
-    it("falls back to the Program's default rate and prefers the override when set", async () => {
+    it("uses an Affiliate commission-rate override when it is set", async () => {
       const standard = await makeAffiliate({
         email: "sarah@example.com",
         referralCode: "sarah",
@@ -456,7 +458,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(byId.get(overridden.id)?.rateIsOverride).toBe(true);
     });
 
-    it("honours a zero override, which is not the same as no override", async () => {
+    it("reports a stored zero rate as an affiliate override", async () => {
       const unpaid = await makeAffiliate({
         email: "unpaid@example.com",
         referralCode: "unpaid",
@@ -739,29 +741,20 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(row?.programId).toBe(vipProgramId);
     });
 
-    it("sets and clears a custom rate", async () => {
+    it("preserves a stored legacy rate when moving programs", async () => {
       const affiliate = await makeAffiliate({
         email: "rate@example.com",
         referralCode: "rate",
+        customCommissionRate: "25.00",
       });
 
       await updateAffiliate(ownerId, merchantId, affiliate.id, {
-        customCommissionRate: 25,
+        programId: vipProgramId,
       });
-      expect(
-        Number(
-          (await db.affiliate.findUnique({ where: { id: affiliate.id } }))
-            ?.customCommissionRate,
-        ),
-      ).toBe(25);
-
-      await updateAffiliate(ownerId, merchantId, affiliate.id, {
-        customCommissionRate: null,
+      const updated = await db.affiliate.findUnique({
+        where: { id: affiliate.id },
       });
-      expect(
-        (await db.affiliate.findUnique({ where: { id: affiliate.id } }))
-          ?.customCommissionRate,
-      ).toBeNull();
+      expect(Number(updated?.customCommissionRate)).toBe(25);
     });
 
     it("refuses a program that belongs to another product", async () => {
@@ -801,7 +794,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
       await expect(
         updateAffiliate(foreignOwnerId, merchantId, affiliate.id, {
-          customCommissionRate: 1,
+          programId,
         }),
       ).rejects.toThrow();
     });

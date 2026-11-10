@@ -6,12 +6,13 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
+import { recalculatePayoutEligibility } from "@/lib/payoutEligibility";
 import {
   listCommissions,
   getCommissionTotals,
   getCommissionFilterOptions,
   markCommissionsPaid,
-  STALE_PAGE,
+  PAYOUT_ERROR,
   confirmCommissionFraud,
   dismissCommissionFlag,
   voidCommission,
@@ -97,11 +98,12 @@ async function makeAffiliate(
 async function makeClick(affiliateId: string) {
   const affiliate = await db.affiliate.findUniqueOrThrow({
     where: { id: affiliateId },
-    select: { merchantId: true },
+    select: { merchantId: true, programId: true },
   });
   return db.click.create({
     data: {
       merchantId: affiliate.merchantId,
+      programId: affiliate.programId,
       affiliateId,
       referralToken: `token-${Math.random().toString(36).slice(2)}`,
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
@@ -165,6 +167,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
   beforeEach(async () => {
     await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
@@ -188,6 +191,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
   afterAll(async () => {
     await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
@@ -388,7 +392,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(first),
       loadedNow(),
     );
-    expect(result).toEqual({ count: 1, skipped: 0 });
+    expect(result).toMatchObject({ count: 1, payoutId: expect.any(String) });
 
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: first.id } }))
@@ -430,10 +434,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const shown = rows.map((row) => ({ id: row.id, amount: row.amount }));
     expect(
       await markCommissionsPaid(ownerId, merchantId, shown, renderedAt),
-    ).toEqual({
-      count: 2,
-      skipped: 0,
-    });
+    ).toMatchObject({ count: 2, payoutId: expect.any(String) });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: late.id } }))
         .status,
@@ -463,7 +464,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(usd, eur),
       loadedNow(),
     );
-    expect(result).toEqual({ error: expect.stringContaining("one currency") });
+    expect(result).toEqual({ error: PAYOUT_ERROR.MIXED_GROUP });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: usd.id } })).status,
     ).toBe("PAYABLE");
@@ -485,7 +486,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(a, b),
       loadedNow(),
     );
-    expect(result).toEqual({ error: expect.stringContaining("one affiliate") });
+    expect(result).toEqual({ error: PAYOUT_ERROR.MIXED_GROUP });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: a.id } })).status,
     ).toBe("PAYABLE");
@@ -516,10 +517,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(a, b, c),
         loadedNow(),
       ),
-    ).toEqual({
-      count: 3,
-      skipped: 0,
-    });
+    ).toMatchObject({ count: 3, payoutId: expect.any(String) });
 
     const paid = await db.commission.findMany({
       where: { id: { in: [a.id, b.id, c.id] } },
@@ -533,7 +531,133 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(new Set(paid.map((row) => row.paidAt?.getTime())).size).toBe(1);
   });
 
-  it("skips a shown commission that is not payable and pays the rest", async () => {
+  it("holds mature commissions below the minimum and records a real payout after they qualify", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "minimum");
+    await db.program.update({
+      where: { id: programId },
+      data: { minimumPayoutAmount: "50.00" },
+    });
+    const first = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      { amount: "30.00", status: "PENDING" },
+    );
+    const group = {
+      merchantId,
+      affiliateId: affiliate.id,
+      programId,
+      currency: "usd",
+    };
+    await db.$transaction((tx) => recalculatePayoutEligibility(tx, group));
+    expect(
+      (await db.commission.findUniqueOrThrow({ where: { id: first.id } }))
+        .status,
+    ).toBe("PENDING");
+
+    const second = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      { amount: "25.00", status: "PENDING" },
+    );
+    await db.$transaction((tx) => recalculatePayoutEligibility(tx, group));
+    expect(
+      await db.commission.count({
+        where: { id: { in: [first.id, second.id] }, status: "PAYABLE" },
+      }),
+    ).toBe(2);
+
+    const result = await markCommissionsPaid(
+      ownerId,
+      merchantId,
+      shownOf(first, second),
+      loadedNow(),
+    );
+    expect(result).toMatchObject({ count: 2, payoutId: expect.any(String) });
+    if (!("payoutId" in result)) throw new Error("Payout was not recorded");
+    const payout = await db.payout.findUniqueOrThrow({
+      where: { id: result.payoutId },
+    });
+    expect(payout).toMatchObject({
+      merchantId,
+      affiliateId: affiliate.id,
+      programId,
+      currency: "usd",
+      total: expect.objectContaining({ toFixed: expect.any(Function) }),
+      isException: false,
+    });
+    expect(payout.total.toFixed(2)).toBe("55.00");
+    expect(
+      await db.commission.count({
+        where: {
+          id: { in: [first.id, second.id] },
+          status: "PAID",
+          payoutId: payout.id,
+        },
+      }),
+    ).toBe(2);
+  });
+
+  it("records a below-minimum closeout only with a reason and never bypasses review holds", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "closeout");
+    await db.program.update({
+      where: { id: programId },
+      data: { minimumPayoutAmount: "100.00" },
+    });
+    const mature = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      { amount: "20.00", status: "PENDING" },
+    );
+    const flagged = await makeCommission(
+      affiliate.id,
+      (await makeClick(affiliate.id)).id,
+      { amount: "5.00", status: "FLAGGED", flagReason: "review" },
+    );
+
+    expect(
+      await markCommissionsPaid(
+        ownerId,
+        merchantId,
+        shownOf(mature),
+        loadedNow(),
+        null,
+        "   ",
+      ),
+    ).toEqual({ error: PAYOUT_ERROR.CLOSEOUT_REASON });
+    expect(
+      await markCommissionsPaid(
+        ownerId,
+        merchantId,
+        shownOf(mature, flagged),
+        loadedNow(),
+        null,
+        "affiliate closeout",
+      ),
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
+    expect(await db.payout.count()).toBe(0);
+
+    const result = await markCommissionsPaid(
+      ownerId,
+      merchantId,
+      shownOf(mature),
+      loadedNow(),
+      null,
+      "affiliate closeout",
+    );
+    expect(result).toMatchObject({ count: 1, payoutId: expect.any(String) });
+    if (!("payoutId" in result)) throw new Error("Payout was not recorded");
+    const payout = await db.payout.findUniqueOrThrow({
+      where: { id: result.payoutId },
+    });
+    expect(payout.isException).toBe(true);
+    expect(payout.exceptionReason).toBe("affiliate closeout");
+    expect(
+      (await db.commission.findUniqueOrThrow({ where: { id: flagged.id } }))
+        .status,
+    ).toBe("FLAGGED");
+  });
+
+  it("rejects a mixed payable and pending selection without partial writes", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const payable = await makeCommission(
       affiliate.id,
@@ -554,20 +678,18 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(payable, pending),
       loadedNow(),
     );
-    expect(result).toEqual({ count: 1, skipped: 1 });
+    expect(result).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: payable.id } }))
         .status,
-    ).toBe("PAID");
+    ).toBe("PAYABLE");
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: pending.id } }))
         .status,
     ).toBe("PENDING");
   });
 
-  it("records a shown commission a refund voided after the page loaded, at the amount shown", async () => {
-    // The Owner saw 20.00 and sent 20.00. A paid commission is final, so the
-    // refund that raced the click is the merchant's loss, not a gap in the ledger.
+  it("rejects a payout if a refund voids any selected commission", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const first = await makeCommission(
       affiliate.id,
@@ -605,17 +727,14 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(first, refunded, chargedBack),
       renderedAt,
     );
-    expect(result).toEqual({ count: 3, skipped: 0 });
+    expect(result).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAYABLE");
     for (const id of [refunded.id, chargedBack.id]) {
-      const row = await db.commission.findUniqueOrThrow({ where: { id } });
-      expect(row.status).toBe("PAID");
-      expect(row.amount.toFixed(2)).toBe("10.00");
-      expect(row.voidedAt).toBeNull();
-      expect(row.voidReason).toBeNull();
+      expect((await db.commission.findUniqueOrThrow({ where: { id } })).status).toBe("VOIDED");
     }
   });
 
-  it("records a shown commission a partial refund lowered after the page loaded, at the amount shown", async () => {
+  it("rejects a payout if a partial refund changes a shown commission amount", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const first = await makeCommission(
       affiliate.id,
@@ -640,13 +759,13 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(first, second),
       renderedAt,
     );
-    expect(result).toEqual({ count: 2, skipped: 0 });
+    expect(result).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     const row = await db.commission.findUniqueOrThrow({
       where: { id: second.id },
     });
-    expect(row.status).toBe("PAID");
-    expect(row.amount.toFixed(2)).toBe("10.00");
-    expect(row.voidReason).toBeNull();
+    expect(row.status).toBe("PAYABLE");
+    expect(row.amount.toFixed(2)).toBe("6.00");
+    expect(row.voidReason).toBe("partial refund");
   });
 
   it("keeps a reduction the Owner already saw", async () => {
@@ -668,10 +787,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(reduced),
         loadedNow(),
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toMatchObject({ count: 1, payoutId: expect.any(String) });
     const row = await db.commission.findUniqueOrThrow({
       where: { id: reduced.id },
     });
@@ -680,7 +796,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(row.voidReason).toBe("partial refund");
   });
 
-  it("skips a shown commission the Owner voided after the page loaded", async () => {
+  it("rejects the whole selection if the Owner voided a shown commission", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const kept = await makeCommission(
       affiliate.id,
@@ -703,10 +819,8 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(kept, voided),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: kept.id } })).status).toBe("PAYABLE");
     const row = await db.commission.findUniqueOrThrow({
       where: { id: voided.id },
     });
@@ -715,9 +829,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
   });
 
   it("never reads an Owner's own void as the refund void it happens to spell the same way", async () => {
-    // "refund" typed by an Owner must not read as the worker's own refund
-    // void: payoutFor tells the two apart only by voidReason, and paying this
-    // row over a stale render would overturn a decision the Owner made.
+    // "refund" typed by an Owner must not make a voided row eligible for payout.
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const kept = await makeCommission(
       affiliate.id,
@@ -740,10 +852,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(kept, voided),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     const row = await db.commission.findUniqueOrThrow({
       where: { id: voided.id },
     });
@@ -789,7 +898,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(row.voidReason).toBe("refund after payout (by owner)");
   });
 
-  it("skips a shown commission a confirmed self referral voided after the page loaded", async () => {
+  it("rejects a commission voided after a self-referral was confirmed", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
     const flagged = await makeCommission(affiliate.id, click.id, {
@@ -811,17 +920,14 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(sibling),
         renderedAt,
       ),
-    ).toEqual({
-      count: 0,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: sibling.id } }))
         .status,
     ).toBe("VOIDED");
   });
 
-  it("skips a commission a refund voided before the page loaded", async () => {
+  it("rejects a commission already voided before the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const voided = await makeCommission(
       affiliate.id,
@@ -840,10 +946,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(voided),
         loadedNow(),
       ),
-    ).toEqual({
-      count: 0,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: voided.id } }))
         .status,
@@ -881,7 +984,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       ],
       renderedAt,
     );
-    expect(result).toEqual({ count: 0, skipped: 2 });
+    expect(result).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     const row = await db.commission.findUniqueOrThrow({
       where: { id: reduced.id },
     });
@@ -898,27 +1001,27 @@ describe.skipIf(!hasDatabase)("commission", () => {
     );
     const renderedAt = loadedNow();
 
-    expect(
-      await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt),
-    ).toEqual({ count: 1, skipped: 0 });
+    const firstPayout = await markCommissionsPaid(
+      ownerId,
+      merchantId,
+      shownOf(only),
+      renderedAt,
+    );
+    expect(firstPayout).toMatchObject({ count: 1, payoutId: expect.any(String) });
     const paid = await db.commission.findUniqueOrThrow({
       where: { id: only.id },
     });
 
     expect(
       await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt),
-    ).toEqual({
-      count: 0,
-      skipped: 0,
-      alreadyPaid: { count: 1, paidAt: paid.paidAt },
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     const after = await db.commission.findUniqueOrThrow({
       where: { id: only.id },
     });
     expect(after.paidAt).toEqual(paid.paidAt);
   });
 
-  it("records the new rows of a press that also holds already paid ones, and reports the rest", async () => {
+  it("rejects a mixed already-paid and unpaid selection atomically", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
     const earlier = await makeCommission(affiliate.id, click.id, {});
@@ -931,10 +1034,9 @@ describe.skipIf(!hasDatabase)("commission", () => {
       shownOf(earlier),
       renderedAt,
     );
-    const paid = await db.commission.findUniqueOrThrow({
-      where: { id: earlier.id },
+    const payoutCountBefore = await db.payout.count({
+      where: { affiliateId: affiliate.id },
     });
-
     expect(
       await markCommissionsPaid(
         ownerId,
@@ -942,22 +1044,21 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(earlier, fresh),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-      alreadyPaid: { count: 1, paidAt: paid.paidAt },
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
+    expect(
+      await db.payout.count({ where: { affiliateId: affiliate.id } }),
+    ).toBe(payoutCountBefore);
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: fresh.id } }))
         .status,
-    ).toBe("PAID");
+    ).toBe("PAYABLE");
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: earlier.id } }))
         .paidAt,
-    ).toEqual(paid.paidAt);
+    ).not.toBeNull();
   });
 
-  it("records a shown commission a dispute opened on after the page loaded, at the shown amount", async () => {
+  it("rejects a commission placed under dispute after the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const disputed = await makeCommission(
       affiliate.id,
@@ -966,9 +1067,8 @@ describe.skipIf(!hasDatabase)("commission", () => {
     );
     const renderedAt = loadedNow();
 
-    // What the dispute handler writes: back to PENDING, held. Its payableAt
-    // stays in the past, proof it was payable when the page loaded, so the
-    // Owner has already sent this money outside Supaffi.
+    // An open dispute is a hold regardless of whether the owner rendered the
+    // payout page before the dispute opened.
     await db.commission.update({
       where: { id: disputed.id },
       data: { status: "PENDING", disputeOpenedAt: new Date() },
@@ -981,19 +1081,16 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     const row = await db.commission.findUniqueOrThrow({
       where: { id: disputed.id },
     });
-    expect(row.status).toBe("PAID");
-    expect(row.paidAt).not.toBeNull();
+    expect(row.status).toBe("PENDING");
+    expect(row.paidAt).toBeNull();
     expect(row.amount.toFixed(2)).toBe(disputed.amount.toFixed(2));
   });
 
-  it("records a commission a refund voided after a dispute opened, both after the page loaded", async () => {
+  it("rejects a voided commission even if it was previously payable before a dispute", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const disputed = await makeCommission(
       affiliate.id,
@@ -1017,14 +1114,11 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
-    ).toBe("PAID");
+    ).toBe("VOIDED");
   });
 
   it("skips a commission already disputed before the page loaded, even if a refund voided it after", async () => {
@@ -1051,10 +1145,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 0,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
@@ -1078,10 +1169,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         loadedNow(),
       ),
-    ).toEqual({
-      count: 0,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
@@ -1111,17 +1199,14 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 0,
-      skipped: 1,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
     ).toBe("PENDING");
   });
 
-  it("treats a dispute opened at exactly the moment the page loaded as after load, and pays it", async () => {
+  it("holds a dispute opened at exactly the moment the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const disputed = await makeCommission(
       affiliate.id,
@@ -1141,17 +1226,14 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
-    ).toBe("PAID");
+    ).toBe("PENDING");
   });
 
-  it("records a commission voided as a chargeback after load, disputed after load too", async () => {
+  it("rejects a commission voided as a chargeback", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const disputed = await makeCommission(
       affiliate.id,
@@ -1179,14 +1261,11 @@ describe.skipIf(!hasDatabase)("commission", () => {
         shownOf(disputed),
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
-    ).toBe("PAID");
+    ).toBe("VOIDED");
   });
 
   it("skips a disputed PENDING row when the shown amount is above what the sale was worth before any refund", async () => {
@@ -1212,7 +1291,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         [{ id: disputed.id, amount: "12.00" }],
         renderedAt,
       ),
-    ).toEqual({ count: 0, skipped: 1 });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
@@ -1242,7 +1321,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         [{ id: disputed.id, amount: "5.00" }],
         renderedAt,
       ),
-    ).toEqual({ count: 0, skipped: 1 });
+    ).toEqual({ error: PAYOUT_ERROR.INELIGIBLE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: disputed.id } }))
         .status,
@@ -1314,7 +1393,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const now = loadedNow();
 
     expect(await markCommissionsPaid(ownerId, merchantId, [], now)).toEqual({
-      error: expect.stringContaining("Nothing selected"),
+      error: PAYOUT_ERROR.EMPTY,
     });
     const refused = [
       [[{ id: only.id, amount: "10" }], now],
@@ -1348,7 +1427,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         [...shown],
         renderedAt,
       );
-      expect(result).toEqual({ error: expect.stringContaining("refused") });
+      expect(result).toHaveProperty("error");
     }
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: only.id } }))
@@ -1371,7 +1450,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
     expect(
       await markCommissionsPaid(ownerId, merchantId, shownOf(only), old),
-    ).toEqual({ error: STALE_PAGE });
+    ).toEqual({ error: PAYOUT_ERROR.STALE_PAGE });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: only.id } }))
         .status,
@@ -1396,7 +1475,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       tooMany,
       loadedNow(),
     );
-    expect(result).toEqual({ error: expect.stringContaining("refused") });
+    expect(result).toEqual({ error: PAYOUT_ERROR.INVALID });
     expect(
       (await db.commission.findUniqueOrThrow({ where: { id: only.id } }))
         .status,
@@ -1501,7 +1580,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       expect(updated.voidedAt).not.toBeNull();
     }
     expect((await statusOf(paid.id)).status).toBe("PAID");
-    expect((await statusOf(unrelated.id)).status).toBe("PENDING");
+    expect((await statusOf(unrelated.id)).status).toBe("PAYABLE");
     expect(
       (await db.click.findUniqueOrThrow({ where: { id: otherClick.id } }))
         .fraudConfirmedAt,

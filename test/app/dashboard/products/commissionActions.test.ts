@@ -1,11 +1,11 @@
-// markPaidAction (the commission sheet's Mark paid) hands the ledger's outcome
-// back to the list in the URL. The ledger and the session are stubbed.
+// Owner commission actions return to the filtered list and only pass a
+// bounded, trimmed note to the ledger.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const markMock = vi.fn();
+const voidMock = vi.fn();
 vi.mock("@/lib/commission", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/commission")>()),
-  markCommissionsPaid: (...args: unknown[]) => markMock(...args),
+  voidCommission: (...args: unknown[]) => voidMock(...args),
 }));
 vi.mock("@/lib/auth", () => ({
   auth: async () => ({ user: { id: "owner-1", role: "owner" } }),
@@ -17,39 +17,43 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { markPaidAction } from "@/app/dashboard/products/[product]/commissions/commissionActions";
+import { voidAction } from "@/app/dashboard/products/[product]/commissions/commissionActions";
 
 const PRODUCT = { id: "m1", slug: "acme" };
 const LIST = "/dashboard/products/acme/commissions?status=PAYABLE";
 
-async function target(): Promise<string> {
+async function target(formData: FormData): Promise<string> {
   try {
-    await markPaidAction(
-      LIST,
-      PRODUCT,
-      [{ id: "c1", amount: "10.00" }],
-      new Date().toISOString(),
-    );
+    await voidAction(LIST, PRODUCT, "c1", formData);
   } catch (error) {
     return (error as Error).message.replace("redirect:", "");
   }
   throw new Error("no redirect");
 }
 
-describe("markPaidAction", () => {
-  beforeEach(() => markMock.mockReset());
+describe("voidAction", () => {
+  beforeEach(() => voidMock.mockReset());
 
-  it("goes back to the list with no notice when the row was recorded", async () => {
-    markMock.mockResolvedValue({ count: 1, skipped: 0 });
-    expect(await target()).toBe(LIST);
+  it("records the trimmed reason and returns to the filtered list", async () => {
+    const formData = new FormData();
+    formData.set("reason", "  duplicate order  ");
+
+    expect(await target(formData)).toBe(LIST);
+    expect(voidMock).toHaveBeenCalledWith(
+      "owner-1",
+      PRODUCT.id,
+      "c1",
+      "duplicate order",
+    );
   });
 
-  it("reports a row that was already paid, with when", async () => {
-    markMock.mockResolvedValue({
-      count: 0,
-      skipped: 0,
-      alreadyPaid: { count: 1, paidAt: new Date(1_700_000_000_000) },
-    });
-    expect(await target()).toBe(`${LIST}&already=1&paidOn=1700000000000`);
+  it("uses a safe default when the reason is blank", async () => {
+    expect(await target(new FormData())).toBe(LIST);
+    expect(voidMock).toHaveBeenCalledWith(
+      "owner-1",
+      PRODUCT.id,
+      "c1",
+      "voided by owner",
+    );
   });
 });

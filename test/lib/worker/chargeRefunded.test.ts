@@ -8,6 +8,7 @@ import type { Commission, Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
+import { markCommissionsPaid } from "@/lib/commission";
 import { getAffiliateMetrics } from "@/lib/analytics";
 
 // The handler resolves a Stripe client for the Merchant and asks it to trace
@@ -163,6 +164,7 @@ async function clearAll() {
     where: { adjustsCommissionId: { not: null } },
   });
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
@@ -175,6 +177,8 @@ async function clearAll() {
 
 describe("handleChargeRefunded", () => {
   let merchant: Merchant;
+  let ownerId: string;
+  let programId: string;
   let clickId: string;
   let affiliateId: string;
 
@@ -248,6 +252,7 @@ describe("handleChargeRefunded", () => {
         passwordHash: "x",
       },
     });
+    ownerId = owner.id;
     merchant = await db.merchant.create({
       data: {
         slug: crypto.randomUUID(),
@@ -271,6 +276,7 @@ describe("handleChargeRefunded", () => {
         holdingPeriodDays: 30,
       },
     });
+    programId = program.id;
     const affiliate = await db.affiliate.create({
       data: {
         merchantId: merchant.id,
@@ -283,6 +289,7 @@ describe("handleChargeRefunded", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
@@ -305,7 +312,7 @@ describe("handleChargeRefunded", () => {
       where: { id: commission.id },
     });
     expect(updated.amount.toString()).toBe("7.8");
-    expect(updated.status).toBe("PENDING");
+    expect(updated.status).toBe("PAYABLE");
     expect(updated.voidReason).toBe("partial refund");
     expect(updated.voidedAt).toBeNull();
   });
@@ -393,6 +400,25 @@ describe("handleChargeRefunded", () => {
       where: { id: commission.id },
     });
     expect(updated.amount.toString()).toBe("7.8");
+    expect(updated.status).toBe("PAYABLE");
+  });
+
+  it("reapplies the Program minimum after a refund reduces the eligible balance", async () => {
+    await db.program.update({
+      where: { id: programId },
+      data: { minimumPayoutAmount: "10.00" },
+    });
+    const commission = await givenCommission({
+      status: "PAYABLE",
+      payableAt: new Date(Date.now() - 1000),
+    });
+
+    await handleChargeRefunded(merchant, chargeFixture(3900));
+
+    const updated = await db.commission.findUniqueOrThrow({
+      where: { id: commission.id },
+    });
+    expect(updated.amount.toString()).toBe("7.8");
     expect(updated.status).toBe("PENDING");
   });
 
@@ -438,7 +464,7 @@ describe("handleChargeRefunded", () => {
       where: { id: commission.id },
     });
     expect(updated.amount.toString()).toBe("1000000");
-    expect(updated.status).toBe("PENDING");
+    expect(updated.status).toBe("PAYABLE");
   });
 
   it("does nothing when the charge traces to no commission", async () => {
@@ -486,26 +512,23 @@ describe("handleChargeRefunded", () => {
     expect(updated.status).toBe("PENDING");
   });
 
-  it("changes nothing when the commission is paid out between the read and the write", async () => {
-    const commission = await givenCommission();
-    const realUpdateMany = db.commission.updateMany.bind(db.commission);
-    const spy = vi
-      .spyOn(db.commission, "updateMany")
-      .mockImplementationOnce((async (
-        args: Prisma.CommissionUpdateManyArgs,
-      ) => {
-        await db.commission.update({
-          where: { id: commission.id },
-          data: { status: "PAID", paidAt: new Date() },
-        });
-        return realUpdateMany(args);
-      }) as unknown as typeof db.commission.updateMany);
+  it("keeps a recorded payout final when a full refund arrives later", async () => {
+    const commission = await givenCommission({
+      status: "PAYABLE",
+      payableAt: new Date(Date.now() - 1000),
+    });
+    const recorded = await markCommissionsPaid(
+      ownerId,
+      merchant.id,
+      [{ id: commission.id, amount: "15.60" }],
+      new Date().toISOString(),
+    );
+    expect(recorded).toMatchObject({ count: 1, payoutId: expect.any(String) });
     const log = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       await handleChargeRefunded(merchant, chargeFixture(7800));
       expect(log).toHaveBeenCalledTimes(1);
     } finally {
-      spy.mockRestore();
       log.mockRestore();
     }
 
@@ -516,6 +539,7 @@ describe("handleChargeRefunded", () => {
     expect(updated.amount.toString()).toBe("15.6");
     expect(updated.voidedAt).toBeNull();
     expect(await adjustmentsOf(commission)).toHaveLength(0);
+    expect(updated.payoutId).toBe(("payoutId" in recorded) ? recorded.payoutId : null);
   });
 
   function disputeFixture(status: string): Stripe.Dispute {

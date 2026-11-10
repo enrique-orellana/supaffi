@@ -1,6 +1,7 @@
 // Destructive: clears Commission / Click / AffiliateLink / Affiliate / Program /
 // Merchant / Owner. Runs against the scratch DATABASE_URL, never the dev one.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import {
@@ -17,6 +18,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
@@ -81,6 +83,7 @@ async function seedSaleWithLegacyAdjustment(
   const click = await db.click.create({
     data: {
       merchantId: merchant.id,
+      programId: program.id,
       affiliateId: sarah.id,
       linkId: primary!.id,
       referralToken: crypto.randomUUID(),
@@ -152,6 +155,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -231,6 +235,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -285,6 +290,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -325,6 +331,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -390,6 +397,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: program.id,
         affiliateId: sarah.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
@@ -433,17 +441,61 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     const primary = await getPrimaryLink(affiliateId);
     const affiliate = await db.affiliate.findUniqueOrThrow({
       where: { id: affiliateId },
-      select: { merchantId: true },
+      select: { merchantId: true, programId: true },
     });
     return db.click.create({
       data: {
         merchantId: affiliate.merchantId,
+        programId: affiliate.programId,
         affiliateId,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
       },
     });
+  }
+
+  async function payCommissions(
+    affiliateId: string,
+    commissions: { clickId: string; amount: string }[],
+    currency: string,
+    paidAt: Date,
+  ) {
+    const affiliate = await db.affiliate.findUniqueOrThrow({
+      where: { id: affiliateId },
+      select: { merchantId: true, programId: true },
+    });
+    const total = commissions.reduce(
+      (sum, commission) => sum.add(commission.amount),
+      new Prisma.Decimal(0),
+    );
+    const payout = await db.payout.create({
+      data: {
+        merchantId: affiliate.merchantId,
+        affiliateId,
+        programId: affiliate.programId,
+        currency,
+        total,
+        paidAt,
+      },
+    });
+    return Promise.all(
+      commissions.map(({ clickId, amount }) =>
+        db.commission.create({
+          data: {
+            affiliateId,
+            clickId,
+            amount,
+            currency,
+            status: "PAID",
+            payableAt: paidAt,
+            paidAt,
+            payoutId: payout.id,
+            stripePaymentRef: crypto.randomUUID(),
+          },
+        }),
+      ),
+    );
   }
 
   async function payCommission(
@@ -453,18 +505,13 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     currency: string,
     paidAt: Date,
   ) {
-    return db.commission.create({
-      data: {
-        affiliateId,
-        clickId,
-        amount,
-        currency,
-        status: "PAID",
-        payableAt: paidAt,
-        paidAt,
-        stripePaymentRef: crypto.randomUUID(),
-      },
-    });
+    const [commission] = await payCommissions(
+      affiliateId,
+      [{ clickId, amount }],
+      currency,
+      paidAt,
+    );
+    return commission;
   }
 
   it("keeps two payouts made the same day as two rows, newest first", async () => {
@@ -504,8 +551,15 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     });
     const click = await seedClick(sarah.id);
     const moment = new Date("2026-08-15T09:00:00.000Z");
-    await payCommission(sarah.id, click.id, "10.00", "usd", moment);
-    await payCommission(sarah.id, click.id, "5.00", "usd", moment);
+    await payCommissions(
+      sarah.id,
+      [
+        { clickId: click.id, amount: "10.00" },
+        { clickId: click.id, amount: "5.00" },
+      ],
+      "usd",
+      moment,
+    );
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(1);
@@ -513,7 +567,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     expect(payments[0].totals).toEqual([{ currency: "usd", total: "15.00" }]);
   });
 
-  it("keeps currencies separate within one payout's row rather than summing across them", async () => {
+  it("records different currencies as separate payout batches", async () => {
     const { merchant, program } = await seedProgram();
     const sarah = await createAffiliate(merchant.id, program.id, {
       name: "Sarah",
@@ -525,9 +579,12 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     await payCommission(sarah.id, click.id, "7.00", "eur", moment);
 
     const payments = await listAffiliatePayments(sarah.id);
-    expect(payments).toHaveLength(1);
-    expect(payments[0].count).toBe(2);
-    expect(payments[0].totals).toEqual([
+    expect(payments).toHaveLength(2);
+    expect(
+      payments.flatMap((payment) => payment.totals).sort((a, b) =>
+        a.currency.localeCompare(b.currency),
+      ),
+    ).toEqual([
       { currency: "eur", total: "7.00" },
       { currency: "usd", total: "10.00" },
     ]);
@@ -569,7 +626,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
         ],
         renderedAt,
       ),
-    ).toEqual({ count: 2, skipped: 0 });
+    ).toMatchObject({ count: 2, payoutId: expect.any(String) });
     expect(
       await markCommissionsPaid(
         owner.id,
@@ -577,10 +634,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
         [{ id: c.id, amount: "5.00" }],
         renderedAt,
       ),
-    ).toEqual({
-      count: 1,
-      skipped: 0,
-    });
+    ).toMatchObject({ count: 1, payoutId: expect.any(String) });
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(2);

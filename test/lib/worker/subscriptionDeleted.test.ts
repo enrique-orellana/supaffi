@@ -64,6 +64,7 @@ describe("handleSubscriptionDeleted", () => {
   let merchant: Merchant;
   let affiliateId: string;
   let clickId: string;
+  let programId: string;
 
   beforeEach(async () => {
     await clearAll();
@@ -103,6 +104,7 @@ describe("handleSubscriptionDeleted", () => {
         holdingPeriodDays: 30,
       },
     });
+    programId = program.id;
     const affiliate = await db.affiliate.create({
       data: {
         merchantId: merchant.id,
@@ -115,6 +117,7 @@ describe("handleSubscriptionDeleted", () => {
     const click = await db.click.create({
       data: {
         merchantId: merchant.id,
+        programId: affiliate.programId,
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
@@ -280,6 +283,7 @@ describe("handleSubscriptionDeleted", () => {
       await db.click.create({
         data: {
           merchantId: merchant.id,
+          programId,
           affiliateId,
           referralToken: crypto.randomUUID(),
           expiresAt: new Date(Date.now() + 60_000),
