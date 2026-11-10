@@ -58,7 +58,7 @@ describe("provider fee adversarial properties", () => {
     expect(commission.providerFeeSource).toBe(ProviderFeeSource.ACTUAL);
     expect(commission.providerFeeAmount.toString()).toBe("0.12");
     expect(commission.providerFeePercent?.toFixed(2)).toBe("6.00");
-    expect(commission.amount.toString()).toBe("0.38");
+    expect(commission.amount.toString()).toBe("0.37");
   });
 
   it.each([
@@ -141,7 +141,7 @@ describe("provider fee adversarial properties", () => {
 
     expect(result.providerFeeAmount.toString()).toBe("0.003");
     expect(result.providerFeePercent?.toFixed(2)).toBe("0.03");
-    expect(result.amount.toString()).toBe("2");
+    expect(result.amount.toString()).toBe("1.99");
   });
 
   it("keeps fee-adjusted commission within the no-fee commission across bounded inputs", () => {

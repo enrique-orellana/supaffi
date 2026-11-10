@@ -213,6 +213,8 @@ export async function listCommissions(
             checkoutRef: true,
             saleAmount: true,
             saleCurrency: true,
+            providerFeeAmount: true,
+            providerFeeSource: true,
             cryptoAmount: true,
             cryptoCurrency: true,
             cryptoNetwork: true,
@@ -311,10 +313,21 @@ export async function listCommissions(
       grossAmount: c.grossAmount ? c.grossAmount.toFixed(2) : null,
       saleAmount: c.saleAmount ? c.saleAmount.toFixed(2) : null,
       providerFeeAmount:
-        c.providerFeeAmount?.toFixed(currencyMinorUnitExponent(c.currency)) ??
+        (c.paymentRecord?.providerFeeAmount ?? c.providerFeeAmount)?.toFixed(
+          currencyMinorUnitExponent(c.currency),
+        ) ??
         null,
-      providerFeePercent: c.providerFeePercent?.toFixed(2) ?? null,
-      providerFeeSource: c.providerFeeSource,
+      providerFeePercent:
+        c.providerFeePercent?.toFixed(2) ??
+        (c.paymentRecord?.providerFeeAmount &&
+        c.paymentRecord.saleAmount.gt(0)
+          ? c.paymentRecord.providerFeeAmount
+              .mul(100)
+              .div(c.paymentRecord.saleAmount)
+              .toFixed(2)
+          : null),
+      providerFeeSource:
+        c.paymentRecord?.providerFeeSource ?? c.providerFeeSource,
       stripePaymentRef: c.stripePaymentRef,
       paymentRecord: c.paymentRecord
         ? {

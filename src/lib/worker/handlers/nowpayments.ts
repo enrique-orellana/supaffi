@@ -1,6 +1,6 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, ProviderFeeSource } from "@prisma/client";
 import {
   clickNeedsCurrentTermFallback,
   resolveClickCommissionTerms,
@@ -29,6 +29,8 @@ import { computePayableAt } from "../commission";
 import {
   commissionAfterProviderFee,
   nowPaymentsFeeMinorInCurrency,
+  resolveProviderFee,
+  type ResolvedProviderFee,
 } from "../providerFees";
 import { currencyMinorUnitExponent } from "@/lib/currency";
 import { referralStillEarns } from "../referralDuration";
@@ -278,6 +280,7 @@ async function upsertPaymentRecord(
     cryptoCurrency: string | null;
     cryptoNetwork: string | null;
     status: string;
+    providerFee: ResolvedProviderFee | null | undefined;
   },
 ): Promise<PaymentRecord> {
   const existing = await tx.paymentRecord.findUnique({
@@ -323,6 +326,14 @@ async function upsertPaymentRecord(
           cryptoNetwork: samePayment
             ? (input.cryptoNetwork ?? existing.cryptoNetwork)
             : input.cryptoNetwork,
+          ...(input.providerFee === undefined
+            ? {}
+            : {
+                providerFeeAmount:
+                  input.providerFee?.providerFeeAmount ?? null,
+                providerFeeSource:
+                  input.providerFee?.providerFeeSource ?? null,
+              }),
           status,
         },
       })
@@ -340,6 +351,9 @@ async function upsertPaymentRecord(
           cryptoAmount,
           cryptoCurrency: input.cryptoCurrency,
           cryptoNetwork: input.cryptoNetwork,
+          providerFeeAmount:
+            input.providerFee?.providerFeeAmount ?? null,
+          providerFeeSource: input.providerFee?.providerFeeSource ?? null,
           status,
           clickId: input.clickId,
         },
@@ -459,32 +473,20 @@ async function createCommissionIfEligible(
     return;
 
   const saleAmount = input.paymentRecord.saleAmount;
-  const connection = await tx.paymentConnection.findUnique({
-    where: { id: input.paymentRecord.connectionId },
-    select: { feeFallbackPercent: true },
-  });
   const saleCurrency = input.paymentRecord.saleCurrency;
   const eligibleSaleMinor = saleAmount.mul(
     10 ** currencyMinorUnitExponent(saleCurrency),
   );
-  const actualFeeMinor = nowPaymentsFeeMinorInCurrency(
-    event.rawPayload,
-    saleCurrency,
+  const actualFeeMinor = input.paymentRecord.providerFeeAmount?.mul(
+    10 ** currencyMinorUnitExponent(saleCurrency),
+  ) ?? null;
+  const { amount } = commissionAfterProviderFee({
     eligibleSaleMinor,
-  );
-  const {
-    amount,
-    providerFeeAmount,
-    providerFeePercent,
-    providerFeeSource,
-  } =
-    commissionAfterProviderFee({
-      eligibleSaleMinor,
-      currency: saleCurrency,
-      ratePercent: rate,
-      actualFeeMinor,
-      fallbackPercent: connection?.feeFallbackPercent ?? null,
-    });
+    currency: saleCurrency,
+    ratePercent: rate,
+    actualFeeMinor,
+    fallbackPercent: null,
+  });
   if (amount.lte(0)) return;
 
   const commissionData = {
@@ -498,9 +500,6 @@ async function createCommissionIfEligible(
     grossAmount: amount,
     currency: saleCurrency,
     saleAmount,
-    providerFeeAmount,
-    providerFeePercent,
-    providerFeeSource,
     status: COMMISSION_STATUS.PENDING,
     payableAt: computePayableAt(terms.holdingPeriodDays),
     paidAt: null,
@@ -578,7 +577,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           provider: PaymentProvider.NOWPAYMENTS.database,
         },
       },
-      select: { id: true, enabled: true, status: true },
+      select: {
+        id: true,
+        enabled: true,
+        status: true,
+        feeFallbackPercent: true,
+      },
     });
     if (!connection || !connection.enabled || connection.status !== "CONNECTED")
       throw new Error(
@@ -730,7 +734,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           sourceOrderId: event.sourceOrderId,
         },
       },
-      select: { status: true, paymentRef: true },
+      select: { status: true, paymentRef: true, providerFeeSource: true },
     });
     const samePayment = existing?.paymentRef === event.paymentRef;
     if (existing && !samePayment && !checkoutMatches) {
@@ -760,6 +764,35 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     const nextStatus = samePayment
       ? statusAfter(existing?.status ?? null, event.providerStatus)
       : event.providerStatus;
+    const providerFee =
+      event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED
+        ? (() => {
+            const eligibleSaleMinor = saleAmount.mul(
+              10 ** currencyMinorUnitExponent(event.saleCurrency),
+            );
+            const resolved = resolveProviderFee({
+              eligibleSaleMinor,
+              currency: event.saleCurrency,
+              actualFeeMinor: nowPaymentsFeeMinorInCurrency(
+                event.rawPayload,
+                event.saleCurrency,
+                eligibleSaleMinor,
+              ),
+              fallbackPercent: connection.feeFallbackPercent,
+            });
+            if (resolved.providerFeeSource === null) {
+              return samePayment ? undefined : null;
+            }
+            if (
+              samePayment &&
+              existing?.providerFeeSource === ProviderFeeSource.ACTUAL &&
+              resolved.providerFeeSource === ProviderFeeSource.FALLBACK
+            ) {
+              return undefined;
+            }
+            return resolved;
+          })()
+        : undefined;
     let paymentRecord: PaymentRecord | null = null;
     const mayReplaceStoredPayment =
       (!existing && !unmatchedInvoiceLessEventAfterFound) ||
@@ -786,6 +819,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         cryptoCurrency: event.cryptoCurrency,
         cryptoNetwork: event.cryptoNetwork,
         status: event.providerStatus,
+        providerFee,
       });
     }
 

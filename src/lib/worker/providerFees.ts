@@ -107,24 +107,26 @@ export function nowPaymentsFeeMinorInCurrency(
     .toDecimalPlaces(12, Prisma.Decimal.ROUND_HALF_UP);
 }
 
-/**
- * Subtract the payment provider's fee from referred sale revenue, then apply
- * the affiliate rate. Stripe's fee is allocated by the referred share of the
- * full charge; invoice providers can pass the fee for the referred sale.
- */
-export function commissionAfterProviderFee(input: {
+type ProviderFeeInput = {
   eligibleSaleMinor: number | Prisma.Decimal;
   currency: string;
-  ratePercent: number | Prisma.Decimal;
   actualFeeMinor: number | Prisma.Decimal | null;
   fallbackPercent: Prisma.Decimal | null;
   chargedAmountMinor?: number | Prisma.Decimal | null;
-}): {
-  amount: Prisma.Decimal;
+};
+
+export type ResolvedProviderFee = {
   providerFeeAmount: Prisma.Decimal;
   providerFeePercent: Prisma.Decimal | null;
   providerFeeSource: ProviderFeeSource | null;
-} {
+  /** Fee converted to the payment currency's minor units, before sale capping. */
+  feeMinor: Prisma.Decimal;
+};
+
+/** Resolve and round a transaction fee to the payment currency's minor unit. */
+export function resolveProviderFee(
+  input: ProviderFeeInput,
+): ResolvedProviderFee {
   const roundedEligibleSaleMinor = new Prisma.Decimal(
     input.eligibleSaleMinor,
   ).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
@@ -153,16 +155,11 @@ export function commissionAfterProviderFee(input: {
     0,
     Prisma.Decimal.ROUND_HALF_UP,
   );
-  const boundedFeeMinor = roundedFeeMinor.lt(0)
+  const resolvedFeeMinor = roundedFeeMinor.lt(0)
     ? new Prisma.Decimal(0)
-    : roundedFeeMinor.gt(eligibleSaleMinor)
-      ? eligibleSaleMinor
-      : roundedFeeMinor;
+    : roundedFeeMinor;
   const minorUnitScale = 10 ** currencyMinorUnitExponent(input.currency);
-  const netSaleAmount = eligibleSaleMinor
-    .minus(boundedFeeMinor)
-    .div(minorUnitScale);
-  const providerFeeAmount = boundedFeeMinor
+  const providerFeeAmount = resolvedFeeMinor
     .div(minorUnitScale)
     .toDecimalPlaces(
       currencyMinorUnitExponent(input.currency),
@@ -170,6 +167,51 @@ export function commissionAfterProviderFee(input: {
     );
   const providerFeePercent =
     providerFeeSource === null || eligibleSaleMinor.lte(0)
+      ? null
+      : resolvedFeeMinor
+          .mul(100)
+          .div(eligibleSaleMinor)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+  return {
+    providerFeeAmount,
+    providerFeePercent,
+    providerFeeSource,
+    feeMinor: resolvedFeeMinor,
+  };
+}
+
+/**
+ * Deduct the processor fee from the referred sale before applying the rate.
+ * Keep Decimal precision through that calculation and round the resulting
+ * commission down once to the ledger's cent precision.
+ */
+export function commissionAfterProviderFee(
+  input: ProviderFeeInput & { ratePercent: number | Prisma.Decimal },
+): {
+  amount: Prisma.Decimal;
+  providerFeeAmount: Prisma.Decimal;
+  providerFeePercent: Prisma.Decimal | null;
+  providerFeeSource: ProviderFeeSource | null;
+} {
+  const eligibleSaleMinor = Prisma.Decimal.max(
+    new Prisma.Decimal(input.eligibleSaleMinor).toDecimalPlaces(
+      0,
+      Prisma.Decimal.ROUND_HALF_UP,
+    ),
+    0,
+  );
+  const resolvedFee = resolveProviderFee(input);
+  const boundedFeeMinor = Prisma.Decimal.min(
+    resolvedFee.feeMinor,
+    eligibleSaleMinor,
+  );
+  const minorUnitScale = 10 ** currencyMinorUnitExponent(input.currency);
+  const netSaleAmount = eligibleSaleMinor
+    .minus(boundedFeeMinor)
+    .div(minorUnitScale);
+  const providerFeePercent =
+    resolvedFee.providerFeeSource === null || eligibleSaleMinor.lte(0)
       ? null
       : boundedFeeMinor
           .mul(100)
@@ -180,9 +222,16 @@ export function commissionAfterProviderFee(input: {
     amount: netSaleAmount
       .mul(input.ratePercent)
       .div(100)
-      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
-    providerFeeAmount,
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN),
+    // Commission callers retain the share of the fee that can be applied to
+    // this sale. PaymentRecord callers use resolveProviderFee for the full fee.
+    providerFeeAmount: boundedFeeMinor
+      .div(minorUnitScale)
+      .toDecimalPlaces(
+        currencyMinorUnitExponent(input.currency),
+        Prisma.Decimal.ROUND_HALF_UP,
+      ),
     providerFeePercent,
-    providerFeeSource,
+    providerFeeSource: resolvedFee.providerFeeSource,
   };
 }

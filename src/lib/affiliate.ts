@@ -22,6 +22,7 @@ import type {
   CommissionStatus,
 } from "@/lib/commissionStatus";
 import { voidReasonText } from "@/lib/commissionReason";
+import { currencyMinorUnitExponent } from "@/lib/currency";
 import { PaymentProvider } from "@/lib/payments/types";
 import { getPayoutEligibility } from "@/lib/payoutEligibility";
 import type { SupportedDisplayCurrency } from "@/lib/displayCurrencyOptions";
@@ -298,6 +299,12 @@ export async function listAffiliateCommissions(
         saleAmount: true,
         providerFeeAmount: true,
         providerFeeSource: true,
+        paymentRecord: {
+          select: {
+            providerFeeAmount: true,
+            providerFeeSource: true,
+          },
+        },
         currency: true,
         status: true,
         createdAt: true,
@@ -379,8 +386,16 @@ export async function listAffiliateCommissions(
       return {
         id: r.id,
         saleAmount: r.saleAmount?.toFixed(2) ?? null,
-        providerFeeAmount: r.providerFeeAmount?.toFixed(2) ?? null,
-        providerFeeSource: r.providerFeeSource,
+        providerFeeAmount:
+          r.paymentRecord?.providerFeeAmount?.toFixed(
+            currencyMinorUnitExponent(r.currency),
+          ) ??
+          r.providerFeeAmount?.toFixed(
+            currencyMinorUnitExponent(r.currency),
+          ) ??
+          null,
+        providerFeeSource:
+          r.paymentRecord?.providerFeeSource ?? r.providerFeeSource,
         currency: r.currency,
         createdAt: r.createdAt,
         payableAt: r.payableAt,
@@ -429,6 +444,7 @@ export async function listAffiliateCommissions(
 export type AffiliateCommissionDetail = {
   amount: string;
   saleAmount: string | null;
+  providerFeeAmount: string | null;
   affiliateCommissionRatePercent: string | null;
   providerFeePercent: string | null;
   providerFeeSource: ProviderFeeSource | null;
@@ -475,6 +491,7 @@ export async function getAffiliateCommissionDetail(
     select: {
       amount: true,
       saleAmount: true,
+      providerFeeAmount: true,
       providerFeePercent: true,
       providerFeeSource: true,
       currency: true,
@@ -510,6 +527,9 @@ export async function getAffiliateCommissionDetail(
       paymentRecord: {
         select: {
           provider: true,
+          saleAmount: true,
+          providerFeeAmount: true,
+          providerFeeSource: true,
         },
       },
     },
@@ -521,6 +541,22 @@ export async function getAffiliateCommissionDetail(
   );
   const amount = commission.amount.toFixed(2);
   const grossAmount = commission.grossAmount?.toFixed(2) ?? null;
+  const providerFeeAmount =
+    commission.paymentRecord?.providerFeeAmount ??
+    commission.providerFeeAmount;
+  const providerFeeSource =
+    commission.paymentRecord?.providerFeeSource ??
+    commission.providerFeeSource;
+  const feeSaleAmount =
+    commission.paymentRecord?.saleAmount ?? commission.saleAmount;
+  const providerFeePercent =
+    commission.providerFeePercent ??
+    (providerFeeAmount && feeSaleAmount?.gt(0)
+      ? providerFeeAmount
+          .mul(100)
+          .div(feeSaleAmount)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+      : null);
   let payoutHold: AffiliateCommissionDetail["payoutHold"] = null;
   if (
     commission.status === COMMISSION_STATUS.PENDING &&
@@ -555,10 +591,13 @@ export async function getAffiliateCommissionDetail(
   return {
     amount,
     saleAmount: commission.saleAmount?.toFixed(2) ?? null,
+    providerFeeAmount:
+      providerFeeAmount?.toFixed(currencyMinorUnitExponent(commission.currency)) ??
+      null,
     affiliateCommissionRatePercent:
       commission.click.commissionRateSnapshot?.toFixed(2) ?? null,
-    providerFeePercent: commission.providerFeePercent?.toFixed(2) ?? null,
-    providerFeeSource: commission.providerFeeSource,
+    providerFeePercent: providerFeePercent?.toFixed(2) ?? null,
+    providerFeeSource,
     currency: commission.currency,
     status: toDisplayStatus(commission.status),
     createdAt: commission.createdAt,

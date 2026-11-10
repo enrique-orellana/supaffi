@@ -627,6 +627,10 @@ model PaymentRecord {
   paymentRef     String?
   saleAmount     Decimal           @db.Decimal(18, 2)
   saleCurrency   String
+  // Provider transaction fee, converted into saleCurrency and recorded on
+  // the payment when it reaches its successful terminal status.
+  providerFeeAmount Decimal?       @db.Decimal(18, 3)
+  providerFeeSource ProviderFeeSource?
   cryptoAmount   Decimal?          @db.Decimal(38, 18)
   cryptoCurrency String?
   // Asset symbols can exist on more than one chain.

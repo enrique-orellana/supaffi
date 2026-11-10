@@ -71,6 +71,7 @@ export type SheetCommission = {
   grossAmount: string | null;
   /** Eligible sale before the processor fee was subtracted. */
   saleAmount?: string | null;
+  providerFeeAmount?: string | null;
   affiliateCommissionRatePercent?: string | null;
   providerFeePercent?: string | null;
   providerFeeSource?: "ACTUAL" | "FALLBACK" | null;
@@ -461,8 +462,22 @@ export function CommissionSheet({
             {commission.saleAmount && (
               <Line label="Sale amount">{commission.saleAmount}</Line>
             )}
-            {commission.providerFeePercent != null && (
+            {commission.providerFeeAmount && (
               <Line label="Processor fee">
+                <span>
+                  {commission.providerFeeAmount}
+                  {commission.providerFeeSource && (
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      {commission.providerFeeSource === "FALLBACK"
+                        ? "Estimated"
+                        : "Actual"}
+                    </span>
+                  )}
+                </span>
+              </Line>
+            )}
+            {commission.providerFeePercent != null && (
+              <Line label="Processor fee rate">
                 <span>
                   {commission.providerFeePercent}%
                   {commission.providerFeeSource && (

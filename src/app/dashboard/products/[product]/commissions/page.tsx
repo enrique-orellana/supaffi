@@ -286,6 +286,9 @@ export default async function CommissionsPage({
         saleAmount: selected.saleAmount
           ? formatMoney(selected.saleAmount, selected.currency)
           : null,
+        providerFeeAmount: selected.providerFeeAmount
+          ? formatMoney(selected.providerFeeAmount, selected.currency)
+          : null,
         affiliateCommissionRatePercent:
           selected.click.commissionRateSnapshot,
         providerFeePercent: selected.providerFeePercent,

@@ -168,26 +168,114 @@ describe("NOWPayments provider-fee commission persistence", () => {
     });
   }
 
-  it("persists a settlement-currency fee as an actual fee and deduplicates redelivery", async () => {
+  async function getPayment(paymentRef: string) {
+    return db.paymentRecord.findUniqueOrThrow({
+      where: {
+        merchantId_provider_sourceOrderId: {
+          merchantId: merchant.id,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+          sourceOrderId: `order-${paymentRef}`,
+        },
+      },
+    });
+  }
+
+  it("stores the fee on the payment only after finished and deduplicates redelivery", async () => {
     const event = finishedEvent("payment-fee-1", {
       currency: "USDC",
       depositFee: "0.13616",
       withdrawalFee: "0",
       serviceFee: "0",
     });
+    const waiting = {
+      ...event,
+      eventId: "payment-fee-1:waiting",
+      kind: "payment_pending" as const,
+      rawPayload: { ...event.rawPayload, payment_status: "waiting" },
+    };
 
+    await processEvent(waiting);
+    const beforeFinished = await getPayment(event.paymentRef);
+    expect(
+      (beforeFinished as typeof beforeFinished & {
+        providerFeeAmount?: { toString(): string } | null;
+      }).providerFeeAmount ?? null,
+    ).toBeNull();
     await processEvent(event);
     await processEvent(event);
 
     const commission = await getCommission(event.paymentRef);
-    expect(commission.providerFeeSource).toBe("ACTUAL");
-    expect(commission.providerFeeAmount?.toString()).toBe("0.12");
-    expect(commission.amount.toString()).toBe("0.38");
+    const payment = await getPayment(event.paymentRef);
+    const feeFields = payment as typeof payment & {
+      providerFeeAmount?: { toString(): string } | null;
+      providerFeeSource?: string | null;
+    };
+    expect(feeFields.providerFeeSource).toBe("ACTUAL");
+    expect(feeFields.providerFeeAmount?.toString()).toBe("0.12");
+    expect(commission.providerFeeSource).toBeNull();
+    expect(commission.providerFeeAmount).toBeNull();
+    expect(commission.amount.toString()).toBe("0.37");
+    const { rows } = await listCommissions(
+      ownerId,
+      merchant.id,
+      { status: null, affiliateId: null, currency: null, query: null },
+      { page: 1, pageSize: 25 },
+    );
+    expect(rows[0]?.providerFeeAmount).toBe("0.12");
+    expect(rows[0]?.providerFeePercent).toBe("6.00");
+    expect(rows[0]?.providerFeeSource).toBe("ACTUAL");
     expect(
       await db.commission.count({
         where: { paymentRecordId: commission.paymentRecordId },
       }),
     ).toBe(1);
+  });
+
+  it("floors the fee-adjusted NOWPayments commission to cents", async () => {
+    const event = finishedEvent("payment-fee-eur-cents", {
+      currency: "usdcsol",
+      depositFee: "0.00126",
+      withdrawalFee: "0",
+      serviceFee: "0.022194",
+    });
+    event.rawPayload.outcome_currency = "usdcsol";
+
+    await processEvent(event);
+
+    const payment = await getPayment(event.paymentRef);
+    const feeFields = payment as typeof payment & {
+      providerFeeAmount?: { toString(): string } | null;
+    };
+    const commission = await getCommission(event.paymentRef);
+    expect(feeFields.providerFeeAmount?.toString()).toBe("0.02");
+    // (€2.00 - €0.02) × 20% = €0.396, floored to €0.39.
+    expect(commission.amount.toString()).toBe("0.39");
+  });
+
+  it("keeps a recorded actual fee when a later finished callback has no fee", async () => {
+    const event = finishedEvent("payment-fee-preserve-actual", {
+      currency: "USDC",
+      depositFee: "0.13616",
+      withdrawalFee: "0",
+      serviceFee: "0",
+    });
+    await processEvent(event);
+
+    const feeMissingEvent = {
+      ...event,
+      eventId: `owner-reconcile:${"a".repeat(64)}`,
+      reconciliation: true,
+      rawPayload: { ...event.rawPayload, fee: {} },
+    };
+    await processEvent(feeMissingEvent);
+
+    const payment = await getPayment(event.paymentRef);
+    const feeFields = payment as typeof payment & {
+      providerFeeAmount?: { toString(): string } | null;
+      providerFeeSource?: string | null;
+    };
+    expect(feeFields.providerFeeSource).toBe("ACTUAL");
+    expect(feeFields.providerFeeAmount?.toString()).toBe("0.12");
   });
 
   it("uses the configured fallback when the fee currency cannot be reconciled", async () => {
@@ -201,8 +289,15 @@ describe("NOWPayments provider-fee commission persistence", () => {
     await processEvent(event);
 
     const commission = await getCommission(event.paymentRef);
-    expect(commission.providerFeeSource).toBe("FALLBACK");
-    expect(commission.providerFeeAmount?.toString()).toBe("0.2");
+    const payment = await getPayment(event.paymentRef);
+    const feeFields = payment as typeof payment & {
+      providerFeeAmount?: { toString(): string } | null;
+      providerFeeSource?: string | null;
+    };
+    expect(feeFields.providerFeeSource).toBe("FALLBACK");
+    expect(feeFields.providerFeeAmount?.toString()).toBe("0.2");
+    expect(commission.providerFeeSource).toBeNull();
+    expect(commission.providerFeeAmount).toBeNull();
     expect(commission.amount.toString()).toBe("0.36");
   });
 

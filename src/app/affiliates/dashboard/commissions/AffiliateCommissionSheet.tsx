@@ -18,6 +18,7 @@ export type AffiliateCommissionDetailView = {
   amount: string;
   saleAmount: string | null;
   affiliateCommissionRate?: string | null;
+  processorFeeAmount?: string | null;
   processorFee?: string | null;
   processorFeeSource?: "ACTUAL" | "FALLBACK" | null;
   grossAmount: string | null;
@@ -160,6 +161,20 @@ export function AffiliateCommissionSheet({
             {commission.affiliateCommissionRate && (
               <DetailRow label="Affiliate commission rate">
                 {commission.affiliateCommissionRate}
+              </DetailRow>
+            )}
+            {commission.processorFeeAmount && (
+              <DetailRow label="Processor fee">
+                <span>
+                  {commission.processorFeeAmount}
+                  {commission.processorFeeSource && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {commission.processorFeeSource === "FALLBACK"
+                        ? "Estimated"
+                        : "Actual"}
+                    </span>
+                  )}
+                </span>
               </DetailRow>
             )}
             {commission.processorFee && (

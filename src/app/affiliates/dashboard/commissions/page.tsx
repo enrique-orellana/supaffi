@@ -299,6 +299,10 @@ export default async function AffiliateCommissionsPage({
           detail.affiliateCommissionRatePercent === null
             ? null
             : `${detail.affiliateCommissionRatePercent}%`,
+        processorFeeAmount:
+          detail.providerFeeAmount === null
+            ? null
+            : `${formatMoney(detail.providerFeeAmount, detail.currency)} ${detail.currency.toUpperCase()}`,
         processorFee:
           detail.providerFeePercent === null
             ? null
