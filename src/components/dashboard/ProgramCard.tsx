@@ -37,7 +37,7 @@ export function ProgramCard({
 }) {
   return (
     <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-300 bg-card">
-      <div className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center">
+      <div className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_max-content] sm:items-center">
         <div className="min-w-0">
           <p className="truncate text-[17px] font-medium tracking-tight">
             {name}
