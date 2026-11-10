@@ -384,15 +384,18 @@ export default async function AffiliateCommissionsPage({
             >
               Back to payouts
             </Link>
-          ) : undefined
+          ) : (
+            <div className="hidden md:block">{statusTabs}</div>
+          )
         }
       />
 
-      {/* Give the status navigation its own full-width row beneath the title at
-          every breakpoint; small screens can scroll the tabs horizontally. */}
+      {/* Keep the title and status tabs together on wide screens, matching the
+          owner dashboard. On phones, give the tabs a scrollable row of their
+          own so they never crowd the heading. */}
       {!payoutId && (
-        <div className="-mx-8 shrink-0 overflow-x-auto px-8">
-          <div className="w-max min-w-full">{statusTabs}</div>
+        <div className="-mx-8 shrink-0 overflow-x-auto px-8 md:hidden">
+          {statusTabs}
         </div>
       )}
 

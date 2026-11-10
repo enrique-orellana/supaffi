@@ -2,16 +2,15 @@
 
 import { useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type LinkOption = { id: string; code: string };
 
@@ -42,6 +41,7 @@ export function AffiliateCommissionFilters({
     dateTo,
     linkId: linkId ?? "",
   });
+  const selectedLink = links.find((link) => link.id === draft.linkId);
 
   function navigate(changes: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
@@ -102,53 +102,78 @@ export function AffiliateCommissionFilters({
             className="h-8 w-40 text-sm"
           />
         </label>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Link</span>
-          <Select
-            name="link"
-            items={Object.fromEntries([
-              ["all", "All links"],
-              ...links.map((link) => [link.id, link.code]),
-            ])}
-            value={draft.linkId || "all"}
-            onValueChange={(next) =>
-              setDraft((current) => ({
-                ...current,
-                linkId: next === "all" ? "" : String(next ?? ""),
-              }))
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={`Referral link: ${selectedLink?.code ?? "All links"}`}
+                className="min-w-40 cursor-pointer justify-between gap-1.5"
+              />
             }
           >
-            <SelectTrigger
-              aria-label="Referral link"
-              className="h-8 min-w-40 cursor-pointer"
+            <span
+              className={selectedLink ? "font-medium" : "text-muted-foreground"}
             >
-              <SelectValue placeholder="All links" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="cursor-pointer">
-                All links
-              </SelectItem>
-              {links.map((link) => (
-                <SelectItem
-                  key={link.id}
-                  value={link.id}
-                  className="cursor-pointer"
-                >
-                  {link.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <Button type="submit" size="sm" className="h-8 cursor-pointer">
+              {selectedLink?.code ?? "All links"}
+            </span>
+            <ChevronDown className="opacity-60" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="max-h-72 min-w-56 overflow-y-auto"
+          >
+            <DropdownMenuItem
+              className="cursor-pointer"
+              render={
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft((current) => ({ ...current, linkId: "" }))
+                  }
+                  className="w-full"
+                />
+              }
+            >
+              <Check className={draft.linkId ? "opacity-0" : "opacity-100"} />
+              <span>All links</span>
+            </DropdownMenuItem>
+            {links.map((link) => (
+              <DropdownMenuItem
+                key={link.id}
+                className="cursor-pointer"
+                render={
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        linkId: link.id,
+                      }))
+                    }
+                    className="w-full"
+                  />
+                }
+              >
+                <Check
+                  className={
+                    draft.linkId === link.id ? "opacity-100" : "opacity-0"
+                  }
+                />
+                <span>{link.code}</span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button type="submit" variant="outline" className="cursor-pointer">
           Apply
         </Button>
         {anyFilterActive && (
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-8 cursor-pointer text-muted-foreground"
+            className="cursor-pointer text-muted-foreground"
             onClick={() => {
               setDraft({ dateFrom: "", dateTo: "", linkId: "" });
               navigate({ dateFrom: null, dateTo: null, link: null });
