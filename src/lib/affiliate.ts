@@ -6,7 +6,11 @@ import {
 } from "@/lib/affiliateProgramTerms";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isLinkCodeTaken, lockLinkCodes } from "@/lib/affiliateLink";
-import { Prisma, type CommissionDurationType } from "@prisma/client";
+import {
+  Prisma,
+  type CommissionDurationType,
+  type ProviderFeeSource,
+} from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import {
   AFFILIATE_COMMISSION_STATUSES,
@@ -161,6 +165,9 @@ export type AffiliateCommissionRow = {
   amount: string;
   /** The eligible sale amount, when it was recorded. */
   saleAmount: string | null;
+  /** Processor fee in the sale currency, when the provider reported one. */
+  providerFeeAmount: string | null;
+  providerFeeSource: ProviderFeeSource | null;
   currency: string;
   status: AffiliateCommissionStatus;
   createdAt: Date;
@@ -289,6 +296,8 @@ export async function listAffiliateCommissions(
         id: true,
         amount: true,
         saleAmount: true,
+        providerFeeAmount: true,
+        providerFeeSource: true,
         currency: true,
         status: true,
         createdAt: true,
@@ -370,6 +379,8 @@ export async function listAffiliateCommissions(
       return {
         id: r.id,
         saleAmount: r.saleAmount?.toFixed(2) ?? null,
+        providerFeeAmount: r.providerFeeAmount?.toFixed(2) ?? null,
+        providerFeeSource: r.providerFeeSource,
         currency: r.currency,
         createdAt: r.createdAt,
         payableAt: r.payableAt,
@@ -418,6 +429,9 @@ export async function listAffiliateCommissions(
 export type AffiliateCommissionDetail = {
   amount: string;
   saleAmount: string | null;
+  affiliateCommissionRatePercent: string | null;
+  providerFeePercent: string | null;
+  providerFeeSource: ProviderFeeSource | null;
   currency: string;
   status: AffiliateCommissionStatus;
   createdAt: Date;
@@ -425,6 +439,7 @@ export type AffiliateCommissionDetail = {
   paidAt: Date | null;
   voidedAt: Date | null;
   linkCode: string | null;
+  linkDestinationPath: string | null;
   isAdjustment: boolean;
   grossAmount: string | null;
   voidReason: string | null;
@@ -460,6 +475,8 @@ export async function getAffiliateCommissionDetail(
     select: {
       amount: true,
       saleAmount: true,
+      providerFeePercent: true,
+      providerFeeSource: true,
       currency: true,
       status: true,
       createdAt: true,
@@ -484,7 +501,12 @@ export async function getAffiliateCommissionDetail(
           program: { select: { name: true } },
         },
       },
-      click: { select: { link: { select: { code: true } } } },
+      click: {
+        select: {
+          commissionRateSnapshot: true,
+          link: { select: { code: true, destinationPath: true } },
+        },
+      },
       paymentRecord: {
         select: {
           provider: true,
@@ -533,6 +555,10 @@ export async function getAffiliateCommissionDetail(
   return {
     amount,
     saleAmount: commission.saleAmount?.toFixed(2) ?? null,
+    affiliateCommissionRatePercent:
+      commission.click.commissionRateSnapshot?.toFixed(2) ?? null,
+    providerFeePercent: commission.providerFeePercent?.toFixed(2) ?? null,
+    providerFeeSource: commission.providerFeeSource,
     currency: commission.currency,
     status: toDisplayStatus(commission.status),
     createdAt: commission.createdAt,
@@ -540,6 +566,7 @@ export async function getAffiliateCommissionDetail(
     paidAt: commission.paidAt,
     voidedAt: commission.voidedAt,
     linkCode: commission.click.link?.code ?? null,
+    linkDestinationPath: commission.click.link?.destinationPath ?? null,
     isAdjustment: commission.adjustsCommissionId !== null,
     grossAmount: grossAmount !== amount ? grossAmount : null,
     voidReason: voidReasonText(commission.voidReason, "affiliate"),

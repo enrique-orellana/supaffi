@@ -281,6 +281,8 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
             affiliateId: affiliate.id,
             clickId: click.id,
             amount: `${i + 1}.00`,
+            providerFeeAmount: i === 2 ? "0.14" : null,
+            providerFeeSource: i === 2 ? "ACTUAL" : null,
             currency: "usd",
             status: i === 0 ? "FLAGGED" : "PENDING",
             payableAt: new Date(),
@@ -297,6 +299,8 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(page1.total).toBe(3);
       expect(page1.rows).toHaveLength(2);
       expect(page1.rows[0].amount).toBe("3.00"); // newest first
+      expect(page1.rows[0].providerFeeAmount).toBe("0.14");
+      expect(page1.rows[0].providerFeeSource).toBe("ACTUAL");
       expect(page1.rows[1].amount).toBe("2.00");
 
       const page2 = await listAffiliateCommissions(affiliate.id, {

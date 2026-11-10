@@ -403,7 +403,12 @@ export async function handleCheckoutSessionCompleted(
       ? feeMinorInCurrency(charge.processingFee, session.currency)
       : null
     : null;
-  const { amount, providerFeeAmount, providerFeeSource } =
+  const {
+    amount,
+    providerFeeAmount,
+    providerFeePercent,
+    providerFeeSource,
+  } =
     commissionAfterProviderFee({
       eligibleSaleMinor: baseMinor,
       currency: session.currency,
@@ -428,6 +433,7 @@ export async function handleCheckoutSessionCompleted(
         currency: session.currency,
         saleAmount: saleAmountFor(baseMinor, session.currency),
         providerFeeAmount,
+        providerFeePercent,
         providerFeeSource,
         payableAt: computePayableAt(terms.holdingPeriodDays),
         flagReason,

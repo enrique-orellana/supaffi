@@ -57,6 +57,7 @@ describe("provider fee adversarial properties", () => {
     });
     expect(commission.providerFeeSource).toBe(ProviderFeeSource.ACTUAL);
     expect(commission.providerFeeAmount.toString()).toBe("0.12");
+    expect(commission.providerFeePercent?.toFixed(2)).toBe("6.00");
     expect(commission.amount.toString()).toBe("0.38");
   });
 
@@ -99,6 +100,7 @@ describe("provider fee adversarial properties", () => {
     });
     expect(commission.providerFeeSource).toBe(ProviderFeeSource.FALLBACK);
     expect(commission.providerFeeAmount.toString()).toBe("2");
+    expect(commission.providerFeePercent?.toFixed(2)).toBe("2.00");
     expect(commission.amount.toString()).toBe("19.6");
   });
 
@@ -113,6 +115,7 @@ describe("provider fee adversarial properties", () => {
 
     expect(result.providerFeeSource).toBe(ProviderFeeSource.ACTUAL);
     expect(result.providerFeeAmount.toString()).toBe("2.5");
+    expect(result.providerFeePercent?.toFixed(2)).toBe("2.50");
     expect(result.amount.toString()).toBe("19.5");
 
     const overcharged = commissionAfterProviderFee({
@@ -123,6 +126,7 @@ describe("provider fee adversarial properties", () => {
       fallbackPercent: null,
     });
     expect(overcharged.providerFeeAmount.toString()).toBe("100");
+    expect(overcharged.providerFeePercent?.toFixed(2)).toBe("100.00");
     expect(overcharged.amount.toString()).toBe("0");
   });
 
@@ -136,6 +140,7 @@ describe("provider fee adversarial properties", () => {
     });
 
     expect(result.providerFeeAmount.toString()).toBe("0.003");
+    expect(result.providerFeePercent?.toFixed(2)).toBe("0.03");
     expect(result.amount.toString()).toBe("2");
   });
 
@@ -177,6 +182,7 @@ describe("provider fee adversarial properties", () => {
         fallbackPercent: new Prisma.Decimal(100),
       });
 
+      expect(noFee.providerFeePercent, context).toBeNull();
       expect(withFee.amount.gte(0), context).toBe(true);
       expect(withFee.amount.lte(noFee.amount), context).toBe(true);
       expect(withFee.providerFeeAmount.gte(0), context).toBe(true);
@@ -185,6 +191,7 @@ describe("provider fee adversarial properties", () => {
         context,
       ).toBe(true);
       expect(withFee.providerFeeSource, context).toBe(ProviderFeeSource.ACTUAL);
+      expect(withFee.providerFeePercent).not.toBeNull();
     }
   });
 });

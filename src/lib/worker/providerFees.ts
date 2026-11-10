@@ -122,6 +122,7 @@ export function commissionAfterProviderFee(input: {
 }): {
   amount: Prisma.Decimal;
   providerFeeAmount: Prisma.Decimal;
+  providerFeePercent: Prisma.Decimal | null;
   providerFeeSource: ProviderFeeSource | null;
 } {
   const roundedEligibleSaleMinor = new Prisma.Decimal(
@@ -167,6 +168,13 @@ export function commissionAfterProviderFee(input: {
       currencyMinorUnitExponent(input.currency),
       Prisma.Decimal.ROUND_HALF_UP,
     );
+  const providerFeePercent =
+    providerFeeSource === null || eligibleSaleMinor.lte(0)
+      ? null
+      : boundedFeeMinor
+          .mul(100)
+          .div(eligibleSaleMinor)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
   return {
     amount: netSaleAmount
@@ -174,6 +182,7 @@ export function commissionAfterProviderFee(input: {
       .div(100)
       .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
     providerFeeAmount,
+    providerFeePercent,
     providerFeeSource,
   };
 }

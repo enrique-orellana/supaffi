@@ -387,6 +387,8 @@ model Commission {
   // Processor fee removed from the referred sale before applying the rate.
   // The amount uses the Commission currency; historical rows remain null.
   providerFeeAmount Decimal?           @db.Decimal(18, 3)
+  // Effective processor fee percentage captured when this commission was earned.
+  providerFeePercent Decimal?           @db.Decimal(5, 2)
   providerFeeSource ProviderFeeSource?
 
   // The referred share of the charge, in Stripe minor units, capped at the

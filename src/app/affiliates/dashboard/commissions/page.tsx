@@ -295,6 +295,15 @@ export default async function AffiliateCommissionsPage({
           detail.saleAmount === null
             ? null
             : `${formatMoney(detail.saleAmount, detail.currency)} ${detail.currency.toUpperCase()}`,
+        affiliateCommissionRate:
+          detail.affiliateCommissionRatePercent === null
+            ? null
+            : `${detail.affiliateCommissionRatePercent}%`,
+        processorFee:
+          detail.providerFeePercent === null
+            ? null
+            : `${detail.providerFeePercent}%`,
+        processorFeeSource: detail.providerFeeSource,
         grossAmount:
           detail.grossAmount === null
             ? null
@@ -306,6 +315,7 @@ export default async function AffiliateCommissionsPage({
         paidLabel: detail.paidAt ? formatDate(detail.paidAt) : null,
         voidedLabel: detail.voidedAt ? formatDate(detail.voidedAt) : null,
         linkCode: detail.linkCode,
+        linkDestinationPath: detail.linkDestinationPath,
         isAdjustment: detail.isAdjustment,
         voidReason: detail.voidReason,
         paymentProvider: detail.paymentProvider,

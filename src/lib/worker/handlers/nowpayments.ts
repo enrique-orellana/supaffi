@@ -472,7 +472,12 @@ async function createCommissionIfEligible(
     saleCurrency,
     eligibleSaleMinor,
   );
-  const { amount, providerFeeAmount, providerFeeSource } =
+  const {
+    amount,
+    providerFeeAmount,
+    providerFeePercent,
+    providerFeeSource,
+  } =
     commissionAfterProviderFee({
       eligibleSaleMinor,
       currency: saleCurrency,
@@ -494,6 +499,7 @@ async function createCommissionIfEligible(
     currency: saleCurrency,
     saleAmount,
     providerFeeAmount,
+    providerFeePercent,
     providerFeeSource,
     status: COMMISSION_STATUS.PENDING,
     payableAt: computePayableAt(terms.holdingPeriodDays),

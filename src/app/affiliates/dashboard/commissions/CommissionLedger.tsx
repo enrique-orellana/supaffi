@@ -302,7 +302,7 @@ export function CommissionLedger({
               Link
             </TableHead>
             <TableHead className="h-9 w-[29%] text-[13px] font-medium text-neutral-700">
-              Detail
+              Payout timing
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -370,7 +370,7 @@ export function CommissionLedger({
                 </TableCell>
                 <TableCell className="text-right align-top whitespace-nowrap tabular-nums">
                   {row.saleAmount == null ? (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="block text-muted-foreground">—</span>
                   ) : (
                     <>
                       <span className="block text-[13px] text-neutral-700">

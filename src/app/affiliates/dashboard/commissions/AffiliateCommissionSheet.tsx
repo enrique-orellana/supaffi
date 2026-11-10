@@ -17,6 +17,9 @@ import { STATUS_LABELS, STATUS_STYLES } from "./CommissionLedger";
 export type AffiliateCommissionDetailView = {
   amount: string;
   saleAmount: string | null;
+  affiliateCommissionRate?: string | null;
+  processorFee?: string | null;
+  processorFeeSource?: "ACTUAL" | "FALLBACK" | null;
   grossAmount: string | null;
   status: AffiliateCommissionStatus;
   stateLabel: string;
@@ -25,6 +28,7 @@ export type AffiliateCommissionDetailView = {
   paidLabel: string | null;
   voidedLabel: string | null;
   linkCode: string | null;
+  linkDestinationPath?: string | null;
   isAdjustment: boolean;
   /** Already sanitized for the affiliate audience by the server. */
   voidReason: string | null;
@@ -82,7 +86,11 @@ export function AffiliateCommissionSheet({
           <SheetTitle className="text-xl font-medium tabular-nums">
             {commission.amount}
           </SheetTitle>
-          <SheetDescription>Commission</SheetDescription>
+          <SheetDescription>
+            {commission.payoutRecord?.programName
+              ? `${commission.payoutRecord.programName} · Commission`
+              : "Commission"}
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 px-5 py-5">
@@ -135,8 +143,7 @@ export function AffiliateCommissionSheet({
             {commission.status === COMMISSION_STATUS.PAID &&
               commission.payoutRecord && (
                 <DetailRow label="Payout record">
-                  {commission.payoutRecord.total} from{" "}
-                  {commission.payoutRecord.programName}
+                  {commission.payoutRecord.total}
                   {commission.payoutRecord.isException
                     ? " (below-minimum exception)"
                     : ""}
@@ -148,6 +155,25 @@ export function AffiliateCommissionSheet({
             {commission.saleAmount && (
               <DetailRow label="Eligible sale">
                 {commission.saleAmount}
+              </DetailRow>
+            )}
+            {commission.affiliateCommissionRate && (
+              <DetailRow label="Affiliate commission rate">
+                {commission.affiliateCommissionRate}
+              </DetailRow>
+            )}
+            {commission.processorFee && (
+              <DetailRow label="Processor fee rate">
+                <span>
+                  {commission.processorFee}
+                  {commission.processorFeeSource && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {commission.processorFeeSource === "FALLBACK"
+                        ? "Estimated"
+                        : "Actual"}
+                    </span>
+                  )}
+                </span>
               </DetailRow>
             )}
             {commission.grossAmount && (
@@ -162,7 +188,10 @@ export function AffiliateCommissionSheet({
             )}
             {commission.linkCode && (
               <DetailRow label="Affiliate link">
-                <span className="font-mono">{commission.linkCode}</span>
+                <span className="font-mono">
+                  {commission.linkCode} ·{" "}
+                  {commission.linkDestinationPath ?? "/"}
+                </span>
               </DetailRow>
             )}
           </dl>

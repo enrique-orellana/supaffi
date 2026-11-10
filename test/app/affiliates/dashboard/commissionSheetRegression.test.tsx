@@ -38,6 +38,8 @@ function commission(
   return {
     amount: "$9.80 USD",
     saleAmount: "$49.00 USD",
+    processorFee: null,
+    processorFeeSource: null,
     grossAmount: null,
     status: COMMISSION_STATUS.PENDING,
     stateLabel: "Available 9 Dec",
@@ -93,6 +95,38 @@ describe("affiliate commission detail rows", () => {
     expect(markup).toContain("Checking availability");
     expect(markup).not.toContain("Expected availability");
     expect(markup).not.toContain("6 Nov");
+  });
+
+  it("shows affiliate and actual processor fee rates as percentages", () => {
+    const markup = render(
+      commission({
+        affiliateCommissionRate: "20.00%",
+        processorFee: "1.50%",
+        processorFeeSource: "ACTUAL",
+      }),
+    );
+
+    expect(markup).toContain("Affiliate commission rate</dt>");
+    expect(markup).toContain("20.00%");
+    expect(markup).toContain("Processor fee rate</dt>");
+    expect(markup).toContain("1.50%");
+    expect(markup).toContain("Actual");
+  });
+
+  it("labels fallback processor fees as estimates and omits unavailable history", () => {
+    const estimatedMarkup = render(
+      commission({
+        processorFee: "0.03%",
+        processorFeeSource: "FALLBACK",
+      }),
+    );
+    expect(estimatedMarkup).toContain("Processor fee rate</dt>");
+    expect(estimatedMarkup).toContain("Estimated");
+
+    const legacyMarkup = render(
+      commission({ processorFee: null, processorFeeSource: null }),
+    );
+    expect(legacyMarkup).not.toContain("Processor fee rate");
   });
 
   it("shows the paid date once as a detail row", () => {

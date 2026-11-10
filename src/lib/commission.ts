@@ -66,6 +66,8 @@ export type CommissionRow = {
   saleAmount: string | null;
   /** Provider fee removed before the affiliate rate was applied. */
   providerFeeAmount?: string | null;
+  /** Effective processor fee rate captured when this commission was earned. */
+  providerFeePercent?: string | null;
   providerFeeSource?: "ACTUAL" | "FALLBACK" | null;
   stripePaymentRef: string | null;
   paymentRecord: {
@@ -103,6 +105,7 @@ export type CommissionRow = {
    */
   click: {
     at: Date;
+    commissionRateSnapshot?: string | null;
     linkCode: string | null;
     destinationPath: string | null;
     selfReferralConfirmed: boolean;
@@ -200,6 +203,7 @@ export async function listCommissions(
         grossAmount: true,
         saleAmount: true,
         providerFeeAmount: true,
+        providerFeePercent: true,
         providerFeeSource: true,
         stripePaymentRef: true,
         paymentRecord: {
@@ -232,6 +236,7 @@ export async function listCommissions(
         click: {
           select: {
             createdAt: true,
+            commissionRateSnapshot: true,
             fraudConfirmedAt: true,
             // Nullable: deleting a link leaves its clicks behind, and
             // attribution reads the affiliate, not the link.
@@ -308,6 +313,7 @@ export async function listCommissions(
       providerFeeAmount:
         c.providerFeeAmount?.toFixed(currencyMinorUnitExponent(c.currency)) ??
         null,
+      providerFeePercent: c.providerFeePercent?.toFixed(2) ?? null,
       providerFeeSource: c.providerFeeSource,
       stripePaymentRef: c.stripePaymentRef,
       paymentRecord: c.paymentRecord
@@ -357,6 +363,8 @@ export async function listCommissions(
         : null,
       click: {
         at: c.click.createdAt,
+        commissionRateSnapshot:
+          c.click.commissionRateSnapshot?.toFixed(2) ?? null,
         linkCode: c.click.link?.code ?? null,
         destinationPath: c.click.link?.destinationPath ?? null,
         selfReferralConfirmed: c.click.fraudConfirmedAt !== null,

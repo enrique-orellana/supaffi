@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { CopyValue } from "@/components/CopyValue";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
@@ -70,7 +71,8 @@ export type SheetCommission = {
   grossAmount: string | null;
   /** Eligible sale before the processor fee was subtracted. */
   saleAmount?: string | null;
-  providerFeeAmount?: string | null;
+  affiliateCommissionRatePercent?: string | null;
+  providerFeePercent?: string | null;
   providerFeeSource?: "ACTUAL" | "FALLBACK" | null;
   affiliate: string;
   affiliateEmail: string;
@@ -156,10 +158,36 @@ function Line({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="max-w-60 text-right break-words">{children}</span>
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-3 py-2.5 text-sm">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium text-neutral-900">
+        {children}
+      </dd>
     </div>
+  );
+}
+
+function DetailSection({
+  title,
+  children,
+  note,
+}: {
+  title: string;
+  children: React.ReactNode;
+  note?: string | null;
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-medium text-neutral-900">{title}</h3>
+      <dl className="divide-y divide-neutral-200 rounded-(--radius) border border-neutral-200 bg-neutral-50/40 px-3">
+        {children}
+      </dl>
+      {note && (
+        <p className="rounded-(--radius) border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] leading-relaxed text-muted-foreground">
+          {note}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -249,6 +277,16 @@ export function CommissionSheet({
       commission.status === COMMISSION_STATUS.VOIDED &&
       commission.voidReason === "confirmed self-referral"
     );
+  const statusNote =
+    commission.status === COMMISSION_STATUS.PENDING
+      ? commission.disputed
+        ? "Sale confirmed. Payout is paused while the dispute is open."
+        : commission.payoutHold
+          ? `Mature, clear commissions in this Program and currency total ${commission.payoutHold.eligibleBalance}. The minimum is ${commission.payoutHold.minimum}; ${commission.payoutHold.remaining} more is needed.`
+          : `Sale confirmed. This commission is on hold until ${commission.payableLabel} for review.`
+      : commission.status === COMMISSION_STATUS.PAYABLE
+        ? "This commission is part of its Affiliate, Program, and currency payout group. Record the group from the Payouts page."
+        : null;
 
   const confirmationCopy = confirmation
     ? COMMISSION_ACTION_CONFIRMATION[confirmation]
@@ -274,7 +312,7 @@ export function CommissionSheet({
       type="button"
       size="sm"
       variant="destructive"
-      className="cursor-pointer"
+      className="w-full cursor-pointer whitespace-normal text-center leading-snug"
       onClick={() =>
         setConfirmation(COMMISSION_ROW_ACTION.CONFIRM_SELF_REFERRAL)
       }
@@ -304,7 +342,7 @@ export function CommissionSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex flex-col gap-5 px-5 py-5">
+        <div className="flex flex-col gap-6 px-5 py-5">
           {/* The owner is being asked to accuse someone: the evidence comes
               before the confirm/dismiss controls, never after. */}
           {flag && (
@@ -361,42 +399,58 @@ export function CommissionSheet({
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <Line label="Affiliate">{commission.affiliateEmail}</Line>
+          <DetailSection title="Commission" note={statusNote}>
             <Line label="Status">
-              {commission.disputed
-                ? commission.status === COMMISSION_STATUS.FLAGGED
-                  ? "Flagged, disputed"
-                  : "Disputed"
-                : STATUS_LABELS[commission.status]}
-            </Line>
-            {commission.status === COMMISSION_STATUS.PENDING ? (
-              <p className="text-[13px] text-muted-foreground">
+              <span className="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
                 {commission.disputed
-                  ? "Sale confirmed. Payout is paused while the dispute is open."
-                  : commission.payoutHold
-                    ? `Mature, clear commissions in this Program and currency total ${commission.payoutHold.eligibleBalance}. The minimum is ${commission.payoutHold.minimum}; ${commission.payoutHold.remaining} more is needed.`
-                    : `Sale confirmed. Expected availability is ${commission.payableLabel}, subject to review.`}
-              </p>
-            ) : commission.status === COMMISSION_STATUS.PAYABLE ? (
+                  ? commission.status === COMMISSION_STATUS.FLAGGED
+                    ? "Flagged · disputed"
+                    : "Disputed"
+                  : STATUS_LABELS[commission.status]}
+              </span>
+            </Line>
+            {commission.affiliateCommissionRatePercent && (
+              <Line label="Affiliate rate">
+                {commission.affiliateCommissionRatePercent}%
+              </Line>
+            )}
+            {commission.status === COMMISSION_STATUS.PAYABLE && (
               <Line label="Payable on">{commission.payableLabel}</Line>
-            ) : null}
-            <Line label="Sale">
-              {commission.reference ? (
-                commission.reference.href ? (
-                  <a
-                    href={commission.reference.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="cursor-pointer font-mono text-xs underline underline-offset-2"
-                  >
-                    {commission.reference.text}
-                  </a>
-                ) : (
-                  <span className="font-mono text-xs">
-                    {commission.reference.text}
-                  </span>
-                )
+            )}
+            {commission.status === COMMISSION_STATUS.PAID && (
+              <Line label="Paid on">{commission.stateLabel}</Line>
+            )}
+            {commission.payoutRecord && (
+              <Line label="Payout record">
+                {commission.payoutRecord.total} · recorded {commission.payoutRecord.paidLabel}
+                {commission.payoutRecord.isException
+                  ? " · below-minimum exception"
+                  : ""}
+              </Line>
+            )}
+            {commission.status === COMMISSION_STATUS.VOIDED &&
+              commission.voidedLabel && (
+                <Line label="Voided on">{commission.voidedLabel}</Line>
+              )}
+          </DetailSection>
+
+          <DetailSection title="Sale">
+            <Line label="Payment ref">
+              {commission.reference?.href ? (
+                <a
+                  href={commission.reference.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={commission.reference.text}
+                  className="block max-w-full cursor-pointer truncate font-mono text-xs underline underline-offset-2"
+                >
+                  {commission.reference.text}
+                </a>
+              ) : commission.reference ? (
+                <CopyValue
+                  value={commission.reference.text}
+                  className="justify-end font-mono text-xs"
+                />
               ) : (
                 <span className="text-muted-foreground">No reference</span>
               )}
@@ -405,122 +459,120 @@ export function CommissionSheet({
               <Line label="Provider">{commission.paymentProvider}</Line>
             )}
             {commission.saleAmount && (
-              <Line label="Sale before fee">{commission.saleAmount}</Line>
+              <Line label="Sale amount">{commission.saleAmount}</Line>
             )}
-            {commission.providerFeeSource && commission.providerFeeAmount && (
-              <Line label="Processing fee">
-                {commission.providerFeeAmount} (
-                {commission.providerFeeSource === "ACTUAL"
-                  ? "actual"
-                  : "fallback estimate"}
-                )
+            {commission.providerFeePercent != null && (
+              <Line label="Processor fee">
+                <span>
+                  {commission.providerFeePercent}%
+                  {commission.providerFeeSource && (
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      {commission.providerFeeSource === "FALLBACK"
+                        ? "Estimated"
+                        : "Actual"}
+                    </span>
+                  )}
+                </span>
               </Line>
             )}
             {commission.cryptoAmount && commission.cryptoCurrency && (
               <Line label="Crypto paid">
                 <span className="font-mono text-xs">
-                  {commission.cryptoAmount}{" "}
-                  {commission.cryptoCurrency.toUpperCase()}
+                  {commission.cryptoAmount} {commission.cryptoCurrency.toUpperCase()}
                   {commission.cryptoNetwork
                     ? ` · ${commission.cryptoNetwork.toUpperCase()}`
                     : ""}
                 </span>
               </Line>
             )}
-            <Line label="Click">{commission.clickLabel}</Line>
+          </DetailSection>
+
+          <DetailSection title="Referral">
+            <Line label="Affiliate">{commission.affiliateEmail}</Line>
+            <Line label="Click date">{commission.clickLabel}</Line>
             {commission.linkLabel && (
               <Line label="Link">
-                <span className="font-mono text-xs">
-                  {commission.linkLabel}
-                </span>
+                <span className="font-mono text-xs">{commission.linkLabel}</span>
               </Line>
             )}
-          </div>
+          </DetailSection>
 
-          {commission.status === COMMISSION_STATUS.PAYABLE && (
-            <p className="text-sm text-muted-foreground">
-              This commission is part of its Affiliate, Program, and currency
-              payout group. Record the group from the Payouts page.
-            </p>
-          )}
+          {(commission.status === COMMISSION_STATUS.PENDING ||
+            commission.status === COMMISSION_STATUS.FLAGGED ||
+            canConfirm ||
+            confirmedNote) && (
+            <section className="border-t border-neutral-200 pt-5">
+              <h3 className="text-sm font-medium text-neutral-900">Actions</h3>
+              <div className="mt-3 flex flex-col gap-3">
+                {commission.status === COMMISSION_STATUS.PENDING && (
+                  // Keep the reason beside the action, since the stored note
+                  // explains this decision in the commission's history.
+                  <form
+                    className="flex flex-col gap-2 rounded-(--radius) border border-neutral-200 bg-neutral-50 p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      setConfirmation(COMMISSION_ROW_ACTION.VOID);
+                    }}
+                  >
+                    <Label htmlFor="void-reason" className="text-sm font-medium">
+                      Reason for void
+                    </Label>
+                    <Input
+                      id="void-reason"
+                      name="reason"
+                      value={voidReason}
+                      onChange={(event) => setVoidReason(event.target.value)}
+                      placeholder="Add a note"
+                      maxLength={200}
+                      autoComplete="off"
+                    />
+                    <Button
+                      type="submit"
+                      variant="destructive"
+                      className="w-full cursor-pointer"
+                    >
+                      Void commission
+                    </Button>
+                  </form>
+                )}
 
-          {commission.status === COMMISSION_STATUS.PENDING && (
-            // A reason, because a voided commission is read months later by
-            // somebody asking why an affiliate was not paid for a sale.
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setConfirmation(COMMISSION_ROW_ACTION.VOID);
-              }}
-            >
-              <Label htmlFor="void-reason" className="text-sm font-medium">
-                Reason for void
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="void-reason"
-                  name="reason"
-                  value={voidReason}
-                  onChange={(event) => setVoidReason(event.target.value)}
-                  placeholder="Add a note"
-                  maxLength={200}
-                  className="flex-1"
-                  autoComplete="off"
-                />
-                <Button
-                  type="submit"
-                  size="lg"
-                  variant="secondary"
-                  className="cursor-pointer"
-                >
-                  Void
-                </Button>
+                {commission.status === COMMISSION_STATUS.FLAGGED && (
+                  <div className="flex flex-col gap-2">
+                    {canConfirm && confirmForm}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full cursor-pointer"
+                      onClick={() =>
+                        setConfirmation(COMMISSION_ROW_ACTION.DISMISS_FLAG)
+                      }
+                    >
+                      Dismiss flag
+                    </Button>
+                  </div>
+                )}
+
+                {commission.status !== COMMISSION_STATUS.FLAGGED &&
+                  canConfirm && (
+                    <div className="flex flex-col gap-2 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-3 py-3">
+                      <p className="text-sm font-medium text-neutral-900">
+                        Self-referral review
+                      </p>
+                      <p className="text-[13px] leading-relaxed text-muted-foreground">
+                        Confirming this referral will void its unpaid commissions
+                        and stop future commissions.
+                      </p>
+                      {confirmForm}
+                    </div>
+                  )}
+
+                {confirmedNote && (
+                  <p className="text-sm text-muted-foreground">
+                    Self referral confirmed
+                  </p>
+                )}
               </div>
-            </form>
-          )}
-
-          {commission.status === COMMISSION_STATUS.FLAGGED && (
-            <div className="flex flex-col items-start gap-2">
-              {canConfirm && confirmForm}
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="cursor-pointer"
-                onClick={() =>
-                  setConfirmation(COMMISSION_ROW_ACTION.DISMISS_FLAG)
-                }
-              >
-                Dismiss flag
-              </Button>
-            </div>
-          )}
-
-          {commission.status === COMMISSION_STATUS.PAID && (
-            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-              <p>{commission.stateLabel}</p>
-              {commission.payoutRecord && (
-                <p>
-                  Included in payout {commission.payoutRecord.id} for{" "}
-                  {commission.payoutRecord.total}, recorded{" "}
-                  {commission.payoutRecord.paidLabel}
-                  {commission.payoutRecord.isException
-                    ? " as a below-minimum exception."
-                    : "."}
-                </p>
-              )}
-            </div>
-          )}
-
-          {commission.status !== COMMISSION_STATUS.FLAGGED &&
-            canConfirm &&
-            confirmForm}
-
-          {confirmedNote && (
-            <p className="text-sm text-muted-foreground">
-              Self referral confirmed
-            </p>
+            </section>
           )}
         </div>
 

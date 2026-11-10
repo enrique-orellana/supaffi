@@ -16,7 +16,6 @@ import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
 import { refusalText } from "@/lib/payoutNotices";
 import {
   formatMoney,
-  formatMoneyAtCurrencyPrecision,
   money,
   moneyHint,
   formatDate,
@@ -287,14 +286,9 @@ export default async function CommissionsPage({
         saleAmount: selected.saleAmount
           ? formatMoney(selected.saleAmount, selected.currency)
           : null,
-        providerFeeAmount: selected.providerFeeAmount
-          ? formatMoneyAtCurrencyPrecision(
-              selected.providerFeeAmount,
-              selected.currency,
-            )
-          : selected.providerFeeSource
-            ? formatMoneyAtCurrencyPrecision("0", selected.currency)
-            : null,
+        affiliateCommissionRatePercent:
+          selected.click.commissionRateSnapshot,
+        providerFeePercent: selected.providerFeePercent,
         providerFeeSource: selected.providerFeeSource,
         affiliate: selected.affiliateName ?? selected.affiliateEmail,
         affiliateEmail: selected.affiliateEmail,

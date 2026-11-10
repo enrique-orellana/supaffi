@@ -243,7 +243,12 @@ export async function handleInvoicePaid(
       ? feeMinorInCurrency(charge.processingFee, invoice.currency)
       : null
     : null;
-  const { amount, providerFeeAmount, providerFeeSource } =
+  const {
+    amount,
+    providerFeeAmount,
+    providerFeePercent,
+    providerFeeSource,
+  } =
     commissionAfterProviderFee({
       eligibleSaleMinor: baseMinor,
       currency: invoice.currency,
@@ -268,6 +273,7 @@ export async function handleInvoicePaid(
         currency: invoice.currency,
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
         providerFeeAmount,
+        providerFeePercent,
         providerFeeSource,
         payableAt: computePayableAt(terms.holdingPeriodDays),
         flagReason,
