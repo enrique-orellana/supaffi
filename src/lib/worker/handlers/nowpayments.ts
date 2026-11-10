@@ -374,10 +374,8 @@ async function upsertPaymentRecord(
           ...(input.providerFee === undefined
             ? {}
             : {
-                providerFeeAmount:
-                  input.providerFee?.providerFeeAmount ?? null,
-                providerFeeSource:
-                  input.providerFee?.providerFeeSource ?? null,
+                providerFeeAmount: input.providerFee?.providerFeeAmount ?? null,
+                providerFeeSource: input.providerFee?.providerFeeSource ?? null,
               }),
           ...(providerMetadata === undefined
             ? {}
@@ -401,8 +399,7 @@ async function upsertPaymentRecord(
           cryptoAmount,
           cryptoCurrency: input.cryptoCurrency,
           cryptoNetwork: input.cryptoNetwork,
-          providerFeeAmount:
-            input.providerFee?.providerFeeAmount ?? null,
+          providerFeeAmount: input.providerFee?.providerFeeAmount ?? null,
           providerFeeSource: input.providerFee?.providerFeeSource ?? null,
           providerMetadata: providerMetadata ?? Prisma.DbNull,
           status,
@@ -423,6 +420,7 @@ async function createCommissionIfEligible(
     clickMatches: boolean;
     checkoutAttributionAt: Date | null;
     allowRefundVoidRestore: boolean;
+    providerFeeChanged: boolean;
   },
 ): Promise<void> {
   const { event } = input;
@@ -436,6 +434,9 @@ async function createCommissionIfEligible(
       voidReason: true,
       paidAt: true,
       flagReason: true,
+      amount: true,
+      grossAmount: true,
+      payoutId: true,
     },
   });
   // A replacement payment for the owner-selected invoice may reuse only the
@@ -449,7 +450,18 @@ async function createCommissionIfEligible(
     existing.flagReason === null &&
     existing.paidAt === null,
   );
-  if (existing && !restoreRefundVoid) return;
+  // Only refresh an unpaid, unreduced commission. A fee correction must not
+  // rewrite a payout or compound with an existing refund adjustment.
+  const canRecalculateExistingCommission = Boolean(
+    existing &&
+    input.providerFeeChanged &&
+    UNPAID_COMMISSION_STATUSES.includes(existing.status) &&
+    existing.paidAt === null &&
+    existing.payoutId === null &&
+    existing.grossAmount?.equals(existing.amount),
+  );
+  if (existing && !restoreRefundVoid && !canRecalculateExistingCommission)
+    return;
 
   const lockedClicks = await tx.$queryRaw<
     { fraudConfirmedAt: Date | null }[]
@@ -530,9 +542,10 @@ async function createCommissionIfEligible(
   const eligibleSaleMinor = saleAmount.mul(
     10 ** currencyMinorUnitExponent(saleCurrency),
   );
-  const actualFeeMinor = input.paymentRecord.providerFeeAmount?.mul(
-    10 ** currencyMinorUnitExponent(saleCurrency),
-  ) ?? null;
+  const actualFeeMinor =
+    input.paymentRecord.providerFeeAmount?.mul(
+      10 ** currencyMinorUnitExponent(saleCurrency),
+    ) ?? null;
   const { amount } = commissionAfterProviderFee({
     eligibleSaleMinor,
     currency: saleCurrency,
@@ -540,7 +553,57 @@ async function createCommissionIfEligible(
     actualFeeMinor,
     fallbackPercent: null,
   });
-  if (amount.lte(0)) return;
+  if (amount.lte(0) && !canRecalculateExistingCommission) return;
+
+  if (existing && canRecalculateExistingCommission) {
+    const group = await lockCommissionPayoutEligibilityGroup(
+      tx,
+      existing.id,
+      input.merchantId,
+    );
+    if (!group) return;
+
+    const commissionAfterLock = await tx.commission.findUnique({
+      where: { id: existing.id },
+      select: {
+        status: true,
+        paidAt: true,
+        payoutId: true,
+        amount: true,
+        grossAmount: true,
+      },
+    });
+    if (
+      !commissionAfterLock ||
+      !UNPAID_COMMISSION_STATUSES.includes(commissionAfterLock.status) ||
+      commissionAfterLock.paidAt !== null ||
+      commissionAfterLock.payoutId !== null ||
+      !commissionAfterLock.grossAmount?.equals(commissionAfterLock.amount)
+    )
+      return;
+
+    const updated = await tx.commission.updateMany({
+      where: {
+        id: existing.id,
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
+        paidAt: null,
+        payoutId: null,
+        amount: commissionAfterLock.amount,
+        grossAmount: commissionAfterLock.grossAmount,
+      },
+      data: {
+        amount,
+        grossAmount: amount,
+        ...(amount.lte(0) &&
+        commissionAfterLock.status === COMMISSION_STATUS.PAYABLE
+          ? { status: COMMISSION_STATUS.PENDING }
+          : {}),
+      },
+    });
+    if (updated.count === 0) return;
+    await recalculatePayoutEligibility(tx, group);
+    return;
+  }
 
   const commissionData = {
     affiliateId: click.affiliateId,
@@ -882,14 +945,26 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
             }
             if (
               samePayment &&
-              existing?.providerFeeSource === ProviderFeeSource.ACTUAL &&
-              resolved.providerFeeSource === ProviderFeeSource.FALLBACK
+              resolved.providerFeeSource === ProviderFeeSource.FALLBACK &&
+              (existing?.providerFeeSource === ProviderFeeSource.ACTUAL ||
+                existing?.providerFeeSource === ProviderFeeSource.FALLBACK)
             ) {
+              // The fallback is captured per payment; a later settings change
+              // must not rewrite the fee estimate for an old transaction.
               return undefined;
             }
             return resolved;
           })()
         : undefined;
+    const providerFeeChanged = Boolean(
+      samePayment &&
+      providerFee !== undefined &&
+      (existing?.providerFeeSource !==
+        (providerFee?.providerFeeSource ?? null) ||
+        !(existing?.providerFeeAmount ?? new Prisma.Decimal(0)).equals(
+          providerFee?.providerFeeAmount ?? new Prisma.Decimal(0),
+        )),
+    );
     const providerMetadata =
       event.providerStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED
         ? extractNowPaymentsMetadata(event.rawPayload)
@@ -943,10 +1018,11 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           clickMatches: !checkout?.refundReconciliationPendingAt,
           checkoutAttributionAt:
             effectiveCheckoutAttribution?.createdAt ?? null,
+          providerFeeChanged,
           allowRefundVoidRestore: Boolean(
             !samePayment &&
-            event.providerInvoiceRef &&
-            checkout?.hostedCheckoutRef === event.providerInvoiceRef,
+            providerInvoiceRef &&
+            checkout?.hostedCheckoutRef === providerInvoiceRef,
           ),
         });
       }
@@ -1111,6 +1187,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
       paymentRecord: linkedPayment,
       clickMatches: true,
       checkoutAttributionAt: attribution.createdAt,
+      providerFeeChanged: false,
       allowRefundVoidRestore: false,
     });
   });

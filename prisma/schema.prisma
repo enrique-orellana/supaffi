@@ -377,8 +377,8 @@ model Commission {
   saleAmount       Decimal?       @db.Decimal(18, 2)
 
   // What this commission was before any refund reduced it. Set at creation
-  // and never changed again, so a second partial refund prorates against the
-  // original rather than compounding against an already reduced figure. A
+  // and refreshed only when a NOWPayments fee correction arrives before a
+  // refund or payout, so refunds still prorate against the full commission. A
   // commission created after its refund already happened is written reduced,
   // with this holding the unreduced figure. Nullable for rows written before
   // this existed.
