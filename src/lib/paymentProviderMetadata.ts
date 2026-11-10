@@ -1,4 +1,4 @@
-import { PaymentProvider } from "@/lib/payments/types";
+import type { Prisma } from "@prisma/client";
 
 export type SafeProviderMetadataValue =
   | string
@@ -36,24 +36,13 @@ export type NowPaymentsPaymentMetadata = {
   fee?: NowPaymentsFeeMetadata;
 };
 
-export type PaymentProviderMetadata = {
-  nowpayments?: NowPaymentsPaymentMetadata;
-};
+export type PaymentProviderMetadata = Prisma.InputJsonObject;
 
 export type ProviderMetadataRow = {
+  path: string;
   label: string;
   value: string;
   copyable?: boolean;
-};
-
-export type ProviderMetadataGroup = {
-  title: string;
-  rows: ProviderMetadataRow[];
-};
-
-export type ProviderMetadataDisplay = {
-  title: string;
-  groups: ProviderMetadataGroup[];
 };
 
 const MAX_PAYMENT_EXTRA_IDS_BYTES = 1024;
@@ -179,7 +168,9 @@ export function extractNowPaymentsMetadata(
     if (Object.keys(fee).length > 0) metadata.fee = fee;
   }
 
-  return Object.keys(metadata).length > 0 ? { nowpayments: metadata } : null;
+  return Object.keys(metadata).length > 0
+    ? ({ nowpayments: metadata } as PaymentProviderMetadata)
+    : null;
 }
 
 /** Merge a later callback without discarding fields absent from that callback. */
@@ -191,11 +182,16 @@ export function mergeNowPaymentsMetadata(
   const existingNowPayments = isRecord(existingRoot.nowpayments)
     ? existingRoot.nowpayments
     : {};
-  const incomingNowPayments = incoming.nowpayments ?? {};
+  const incomingNowPaymentsValue: unknown = incoming.nowpayments;
+  const incomingNowPayments = isRecord(incomingNowPaymentsValue)
+    ? incomingNowPaymentsValue
+    : {};
   const existingFee = isRecord(existingNowPayments.fee)
     ? existingNowPayments.fee
     : {};
-  const incomingFee = incomingNowPayments.fee ?? {};
+  const incomingFee = isRecord(incomingNowPayments.fee)
+    ? incomingNowPayments.fee
+    : {};
   const fee = { ...existingFee, ...incomingFee };
 
   return {
@@ -208,111 +204,66 @@ export function mergeNowPaymentsMetadata(
   } as PaymentProviderMetadata;
 }
 
-function displayAmount(amount?: string, currency?: string): string | undefined {
-  if (!amount) return undefined;
-  return currency ? `${amount} ${currency.toUpperCase()}` : amount;
+function humanizeMetadataSegment(segment: string): string {
+  return segment
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word, index) => {
+      if (word.toLowerCase() === "id") return "ID";
+      const normalized = word.toLowerCase();
+      return index === 0
+        ? normalized[0]!.toUpperCase() + normalized.slice(1)
+        : normalized;
+    })
+    .join(" ");
 }
 
-function stringValue(value: SafeProviderMetadataValue): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+function flattenMetadataRows(
+  value: Record<string, unknown>,
+  path: string[],
+  rows: ProviderMetadataRow[],
+): void {
+  for (const [key, nested] of Object.entries(value)) {
+    if (nested === null || nested === undefined) continue;
+
+    const nestedPath = [...path, key];
+    if (isRecord(nested)) {
+      flattenMetadataRows(nested, nestedPath, rows);
+      continue;
+    }
+
+    const renderedValue =
+      typeof nested === "string"
+        ? nested
+        : Array.isArray(nested)
+          ? JSON.stringify(nested)
+          : String(nested);
+    rows.push({
+      path: nestedPath.join("."),
+      label: nestedPath
+        .map(humanizeMetadataSegment)
+        .map((segment, index) =>
+          index === 0 ? segment : segment.toLowerCase(),
+        )
+        .join(" "),
+      value: renderedValue,
+      ...(/(?:id|address)$/i.test(key) ? { copyable: true } : {}),
+    });
+  }
 }
 
-function row(
-  label: string,
-  value: string | undefined,
-  copyable = false,
-): ProviderMetadataRow | null {
-  return value === undefined || value.length === 0
-    ? null
-    : { label, value, ...(copyable ? { copyable: true } : {}) };
-}
-
-function group(
-  title: string,
-  rows: Array<ProviderMetadataRow | null>,
-): ProviderMetadataGroup | null {
-  const visibleRows = rows.filter(
-    (item): item is ProviderMetadataRow => item !== null,
-  );
-  return visibleRows.length > 0 ? { title, rows: visibleRows } : null;
-}
-
-/** Build the admin detail groups for provider metadata; unknown providers stay hidden. */
-export function providerMetadataDisplay(
+/** Flatten saved provider metadata into field rows without provider-specific sections. */
+export function providerMetadataRows(
   provider: string | null | undefined,
   value: unknown,
-): ProviderMetadataDisplay | null {
-  if (provider !== PaymentProvider.NOWPAYMENTS.database || !isRecord(value))
-    return null;
-  const metadata = value.nowpayments;
-  if (!isRecord(metadata)) return null;
+): ProviderMetadataRow[] | null {
+  if (!provider || !isRecord(value)) return null;
 
-  const fee = isRecord(metadata.fee) ? metadata.fee : {};
-  const feeCurrency = readCurrency(fee.currency)?.toUpperCase();
-  const feeAmount = (amount: unknown) => {
-    const parsed = readAmount(amount);
-    return parsed === undefined
-      ? undefined
-      : feeCurrency
-        ? `${parsed} ${feeCurrency}`
-        : parsed;
-  };
-  const extraIds = safeExtraValue(metadata.paymentExtraIds);
-  const groups = [
-    group("References", [
-      row("Payment ID", readIdentifier(metadata.paymentId), true),
-      row("Invoice ID", readIdentifier(metadata.invoiceId), true),
-      row("Order ID", readIdentifier(metadata.orderId), true),
-      row("Purchase ID", readIdentifier(metadata.purchaseId), true),
-      row("Parent payment ID", readIdentifier(metadata.parentPaymentId), true),
-      row("Payment status", readText(metadata.status, 40)),
-    ]),
-    group("Sale and settlement", [
-      row(
-        "Sale price",
-        displayAmount(
-          readAmount(metadata.priceAmount),
-          readCurrency(metadata.priceCurrency),
-        ),
-      ),
-      row(
-        "Pay amount",
-        displayAmount(
-          readAmount(metadata.payAmount),
-          readCurrency(metadata.payCurrency),
-        ),
-      ),
-      row(
-        "Actually paid",
-        displayAmount(
-          readAmount(metadata.actuallyPaid),
-          readCurrency(metadata.payCurrency),
-        ),
-      ),
-      row(
-        "Outcome amount",
-        displayAmount(
-          readAmount(metadata.outcomeAmount),
-          readCurrency(metadata.outcomeCurrency),
-        ),
-      ),
-    ]),
-    group("Processor fee breakdown", [
-      row("Deposit fee", feeAmount(fee.depositFee)),
-      row("Service fee", feeAmount(fee.serviceFee)),
-      row("Withdrawal fee", feeAmount(fee.withdrawalFee)),
-    ]),
-    group("Payment details", [
-      row("Description", readText(metadata.orderDescription, 512)),
-      row("Payment address", readText(metadata.payAddress, 512), true),
-      row("Pay-in extra ID", readIdentifier(metadata.payinExtraId), true),
-      row(
-        "Payment extra IDs",
-        extraIds === undefined ? undefined : stringValue(extraIds),
-        true,
-      ),
-    ]),
-  ].filter((item): item is ProviderMetadataGroup => item !== null);
+  const providerMetadata = value[provider.toLowerCase()];
+  if (!isRecord(providerMetadata)) return null;
 
-  return groups.length > 0 ? { title: "NOWPayments metadata", groups } : null;
+  const rows: ProviderMetadataRow[] = [];
+  flattenMetadataRows(providerMetadata, [], rows);
+  return rows.length > 0 ? rows : null;
 }

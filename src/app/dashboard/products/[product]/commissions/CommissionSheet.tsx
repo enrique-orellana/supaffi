@@ -29,7 +29,7 @@ import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
-  providerMetadataDisplay,
+  providerMetadataRows,
   type PaymentProviderMetadata,
 } from "@/lib/paymentProviderMetadata";
 import {
@@ -295,7 +295,7 @@ export function CommissionSheet({
       : commission.status === COMMISSION_STATUS.PAYABLE
         ? "This commission is part of its Affiliate, Program, and currency payout group. Record the group from the Payouts page."
         : null;
-  const providerMetadata = providerMetadataDisplay(
+  const metadataRows = providerMetadataRows(
     commission.paymentProviderId,
     commission.providerMetadata,
   );
@@ -434,7 +434,8 @@ export function CommissionSheet({
             )}
             {commission.payoutRecord && (
               <Line label="Payout record">
-                {commission.payoutRecord.total} · recorded {commission.payoutRecord.paidLabel}
+                {commission.payoutRecord.total} · recorded{" "}
+                {commission.payoutRecord.paidLabel}
                 {commission.payoutRecord.isException
                   ? " · below-minimum exception"
                   : ""}
@@ -504,7 +505,8 @@ export function CommissionSheet({
             {commission.cryptoAmount && commission.cryptoCurrency && (
               <Line label="Crypto paid">
                 <span className="font-mono text-xs">
-                  {commission.cryptoAmount} {commission.cryptoCurrency.toUpperCase()}
+                  {commission.cryptoAmount}{" "}
+                  {commission.cryptoCurrency.toUpperCase()}
                   {commission.cryptoNetwork
                     ? ` · ${commission.cryptoNetwork.toUpperCase()}`
                     : ""}
@@ -513,38 +515,29 @@ export function CommissionSheet({
             )}
           </DetailSection>
 
-          {providerMetadata && (
+          {metadataRows && (
             <details className="group rounded-(--radius) border border-neutral-200 bg-neutral-50/40">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 text-sm font-medium text-neutral-900 [&::-webkit-details-marker]:hidden">
-                <span>{providerMetadata.title}</span>
+                <span>Metadata</span>
                 <ChevronDown
                   aria-hidden="true"
                   className="size-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180"
                 />
               </summary>
-              <div className="grid gap-4 border-t border-neutral-200 p-3 sm:grid-cols-2">
-                {providerMetadata.groups.map((group) => (
-                  <section className="min-w-0" key={group.title}>
-                    <h4 className="mb-1 text-xs font-medium text-neutral-500">
-                      {group.title}
-                    </h4>
-                    <dl className="divide-y divide-neutral-200">
-                      {group.rows.map((item) => (
-                        <Line key={item.label} label={item.label}>
-                          {item.copyable ? (
-                            <CopyValue
-                              value={item.value}
-                              className="justify-end font-mono text-xs"
-                            />
-                          ) : (
-                            <span className="break-words">{item.value}</span>
-                          )}
-                        </Line>
-                      ))}
-                    </dl>
-                  </section>
+              <dl className="divide-y divide-neutral-200 border-t border-neutral-200 px-3">
+                {metadataRows.map((item) => (
+                  <Line key={item.path} label={item.label}>
+                    {item.copyable ? (
+                      <CopyValue
+                        value={item.value}
+                        className="justify-end font-mono text-xs"
+                      />
+                    ) : (
+                      <span className="break-words">{item.value}</span>
+                    )}
+                  </Line>
                 ))}
-              </div>
+              </dl>
             </details>
           )}
 
@@ -553,7 +546,9 @@ export function CommissionSheet({
             <Line label="Click date">{commission.clickLabel}</Line>
             {commission.linkLabel && (
               <Line label="Link">
-                <span className="font-mono text-xs">{commission.linkLabel}</span>
+                <span className="font-mono text-xs">
+                  {commission.linkLabel}
+                </span>
               </Line>
             )}
           </DetailSection>
@@ -575,7 +570,10 @@ export function CommissionSheet({
                       setConfirmation(COMMISSION_ROW_ACTION.VOID);
                     }}
                   >
-                    <Label htmlFor="void-reason" className="text-sm font-medium">
+                    <Label
+                      htmlFor="void-reason"
+                      className="text-sm font-medium"
+                    >
                       Reason for void
                     </Label>
                     <Input
@@ -620,8 +618,8 @@ export function CommissionSheet({
                         Self-referral review
                       </p>
                       <p className="text-[13px] leading-relaxed text-muted-foreground">
-                        Confirming this referral will void its unpaid commissions
-                        and stop future commissions.
+                        Confirming this referral will void its unpaid
+                        commissions and stop future commissions.
                       </p>
                       {confirmForm}
                     </div>

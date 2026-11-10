@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PaymentProvider } from "@/lib/payments/types";
 import {
   extractNowPaymentsMetadata,
-  providerMetadataDisplay,
+  providerMetadataRows,
 } from "@/lib/paymentProviderMetadata";
 
 describe("NOWPayments provider metadata", () => {
@@ -73,11 +73,14 @@ describe("NOWPayments provider metadata", () => {
     });
   });
 
-  it("builds concise admin detail groups with copyable provider references", () => {
+  it("shows saved fields as flat, provider-agnostic rows", () => {
     const metadata = extractNowPaymentsMetadata({
       payment_id: "5634396091",
       invoice_id: "5100474464",
       order_id: "order-42",
+      purchase_id: "purchase-42",
+      payment_status: "finished",
+      order_description: "Preview payment",
       price_amount: "2",
       price_currency: "eur",
       pay_amount: "25.68649486",
@@ -86,31 +89,68 @@ describe("NOWPayments provider metadata", () => {
       outcome_amount: "2.197182",
       outcome_currency: "usdcsol",
       pay_address: "0x693a23a9465b7EeFF68EC123B0c4A0529CA9Dd0a",
+      fee: {
+        currency: "usdcsol",
+        depositFee: "0.00126",
+        serviceFee: "0.022194",
+        withdrawalFee: "0",
+      },
     });
 
-    const display = providerMetadataDisplay(
+    const rows = providerMetadataRows(
       PaymentProvider.NOWPAYMENTS.database,
       metadata,
     );
 
-    expect(display?.title).toBe("NOWPayments metadata");
-    expect(display?.groups.map((group) => group.title)).toEqual([
-      "References",
-      "Sale and settlement",
-      "Payment details",
+    expect(rows?.map((row) => row.label)).toEqual([
+      "Payment ID",
+      "Invoice ID",
+      "Order ID",
+      "Purchase ID",
+      "Status",
+      "Order description",
+      "Price amount",
+      "Price currency",
+      "Pay amount",
+      "Pay currency",
+      "Actually paid",
+      "Pay address",
+      "Outcome amount",
+      "Outcome currency",
+      "Fee currency",
+      "Fee deposit fee",
+      "Fee service fee",
+      "Fee withdrawal fee",
     ]);
-    expect(display?.groups[0]?.rows[0]).toEqual({
+    expect(rows?.[0]).toEqual({
+      path: "paymentId",
       label: "Payment ID",
       value: "5634396091",
       copyable: true,
     });
-    expect(display?.groups[2]?.rows.at(-1)).toEqual({
-      label: "Payment address",
+    expect(rows?.find((row) => row.label === "Pay address")).toEqual({
+      path: "payAddress",
+      label: "Pay address",
       value: "0x693a23a9465b7EeFF68EC123B0c4A0529CA9Dd0a",
       copyable: true,
     });
+
     expect(
-      providerMetadataDisplay(PaymentProvider.STRIPE.database, metadata),
-    ).toBeNull();
+      providerMetadataRows(PaymentProvider.STRIPE.database, {
+        stripe: { paymentIntentId: "pi_demo_42", status: "succeeded" },
+      }),
+    ).toEqual([
+      {
+        path: "paymentIntentId",
+        label: "Payment intent ID",
+        value: "pi_demo_42",
+        copyable: true,
+      },
+      {
+        path: "status",
+        label: "Status",
+        value: "succeeded",
+      },
+    ]);
   });
 });
