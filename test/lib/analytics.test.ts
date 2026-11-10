@@ -24,7 +24,10 @@ const TEST_RATES = {
   rateDate: "2026-11-09",
   rates: { eur: "1", usd: "2", gbp: "1.5" },
 } satisfies EcbReferenceRates;
-const ranking = (displayCurrency: string) => ({ displayCurrency, rates: TEST_RATES });
+const ranking = (displayCurrency: string) => ({
+  displayCurrency,
+  rates: TEST_RATES,
+});
 
 async function clearAll() {
   await db.commission.deleteMany();
@@ -335,9 +338,13 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       where: { id: programId },
       data: { minimumPayoutAmount: "100.00" },
     });
-    await db.affiliate.update({
-      where: { id: affiliate.id },
-      data: { minimumPayoutAmountOverride: "20.00" },
+    await db.affiliateProgramTerms.create({
+      data: {
+        merchantId,
+        affiliateId: affiliate.id,
+        programId,
+        minimumPayoutAmountOverride: "20.00",
+      },
     });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "10.00",
@@ -492,12 +499,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       amount: "500.00",
     });
 
-    const top = await getTopAffiliates(
-      ownerId,
-      merchantId,
-      ranking("usd"),
-      5,
-    );
+    const top = await getTopAffiliates(ownerId, merchantId, ranking("usd"), 5);
 
     expect(top[0].email).toBe("aff-earner@example.com");
     expect(top[1].email).toBe("aff-busy@example.com");
@@ -515,17 +517,16 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       amount: "100.00",
       currency: "usd",
     });
-    await makeCommission(singleCurrency.id, (await makeClick(singleCurrency.id)).id, {
-      amount: "160.00",
-      currency: "eur",
-    });
-
-    const top = await getTopAffiliates(
-      ownerId,
-      merchantId,
-      ranking("eur"),
-      1,
+    await makeCommission(
+      singleCurrency.id,
+      (await makeClick(singleCurrency.id)).id,
+      {
+        amount: "160.00",
+        currency: "eur",
+      },
     );
+
+    const top = await getTopAffiliates(ownerId, merchantId, ranking("eur"), 1);
 
     expect(top).toHaveLength(1);
     expect(top[0].email).toBe("aff-single@example.com");
@@ -553,12 +554,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       adjustsCommissionId: first.id,
     });
 
-    const top = await getTopAffiliates(
-      ownerId,
-      merchantId,
-      ranking("usd"),
-      5,
-    );
+    const top = await getTopAffiliates(ownerId, merchantId, ranking("usd"), 5);
 
     expect(top).toHaveLength(1);
     expect(top[0].sales).toBe(2);
@@ -581,12 +577,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       adjustsCommissionId: first.id,
     });
 
-    const top = await getTopAffiliates(
-      ownerId,
-      merchantId,
-      ranking("usd"),
-      5,
-    );
+    const top = await getTopAffiliates(ownerId, merchantId, ranking("usd"), 5);
 
     expect(top).toHaveLength(1);
     expect(top[0].earned).toEqual([{ currency: "usd", total: "15.00" }]);
@@ -730,7 +721,11 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       where: { id: result.payoutId },
     });
     expect(payout.total.toFixed(2)).toBe("100.02");
-    expect(await db.commission.count({ where: { affiliateId: affiliate.id, status: "PAID" } })).toBe(5001);
+    expect(
+      await db.commission.count({
+        where: { affiliateId: affiliate.id, status: "PAID" },
+      }),
+    ).toBe(5001);
   });
 
   it("splits payable groups by currency, never summing across them", async () => {

@@ -28,6 +28,10 @@ import type {
 } from "@/lib/programValidation";
 import { COMMISSION_DURATION_OPTIONS } from "@/lib/commissionDuration";
 import {
+  MAX_COMMISSION_DURATION_MONTHS,
+  MAX_COMMISSION_TERM_DAYS,
+} from "@/lib/commissionTermLimits";
+import {
   DEFAULT_DISPLAY_CURRENCY,
   DISPLAY_CURRENCY_OPTIONS,
 } from "@/lib/displayCurrencyOptions";
@@ -216,6 +220,7 @@ export function TermsForm({
               name="commissionDurationMonths"
               type="number"
               min="1"
+              max={MAX_COMMISSION_DURATION_MONTHS}
               step="1"
               defaultValue={values.commissionDurationMonths || "12"}
               className={NUMBER}
@@ -240,6 +245,7 @@ export function TermsForm({
                 name="attributionWindowDays"
                 type="number"
                 min="1"
+                max={MAX_COMMISSION_TERM_DAYS}
                 step="1"
                 defaultValue={values.attributionWindowDays}
                 required
@@ -263,6 +269,7 @@ export function TermsForm({
                 name="holdingPeriodDays"
                 type="number"
                 min="1"
+                max={MAX_COMMISSION_TERM_DAYS}
                 step="1"
                 defaultValue={values.holdingPeriodDays}
                 required

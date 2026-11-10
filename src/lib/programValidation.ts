@@ -1,6 +1,10 @@
 import type { ProgramInput } from "@/lib/program";
 import { isCommissionDuration } from "@/lib/commissionDuration";
 import {
+  MAX_COMMISSION_DURATION_MONTHS,
+  MAX_COMMISSION_TERM_DAYS,
+} from "@/lib/commissionTermLimits";
+import {
   DEFAULT_DISPLAY_CURRENCY,
   normalizeDisplayCurrency,
 } from "@/lib/displayCurrencyOptions";
@@ -58,7 +62,8 @@ export function validateProgramInput(
   const minimumPayoutAmount = input.minimumPayoutAmount?.trim() || "0";
   if (!/^\d{1,16}(?:\.\d{1,2})?$/.test(minimumPayoutAmount)) {
     return {
-      error: "Minimum balance must be zero or more with up to two decimal places",
+      error:
+        "Minimum balance must be zero or more with up to two decimal places",
     };
   }
   const [minimumWhole, minimumFraction = ""] = minimumPayoutAmount.split(".");
@@ -82,6 +87,11 @@ export function validateProgramInput(
     if (!Number.isFinite(months) || months <= 0 || !Number.isInteger(months)) {
       return { error: "Enter how many months the commission is paid for" };
     }
+    if (months > MAX_COMMISSION_DURATION_MONTHS) {
+      return {
+        error: `Commission duration cannot exceed ${MAX_COMMISSION_DURATION_MONTHS.toLocaleString()} months`,
+      };
+    }
     commissionDurationMonths = months;
   }
 
@@ -93,6 +103,11 @@ export function validateProgramInput(
   ) {
     return { error: "Time to buy must be a whole number of days, at least 1" };
   }
+  if (attributionWindowDays > MAX_COMMISSION_TERM_DAYS) {
+    return {
+      error: `Time to buy cannot exceed ${MAX_COMMISSION_TERM_DAYS.toLocaleString()} days`,
+    };
+  }
 
   const holdingPeriodDays = Number(input.holdingPeriodDays);
   if (
@@ -102,6 +117,11 @@ export function validateProgramInput(
   ) {
     return {
       error: "Hold before paying must be a whole number of days, at least 1",
+    };
+  }
+  if (holdingPeriodDays > MAX_COMMISSION_TERM_DAYS) {
+    return {
+      error: `Hold before paying cannot exceed ${MAX_COMMISSION_TERM_DAYS.toLocaleString()} days`,
     };
   }
 

@@ -31,6 +31,10 @@ import {
   commissionDurationLabel,
 } from "@/lib/commissionDuration";
 import {
+  MAX_COMMISSION_DURATION_MONTHS,
+  MAX_COMMISSION_TERM_DAYS,
+} from "@/lib/commissionTermLimits";
+import {
   createPasswordLinkAction,
   saveAffiliateSettingsAction,
 } from "./affiliateActions";
@@ -50,12 +54,15 @@ export type SheetAffiliate = {
   email: string;
   joinedAt: string;
   programId: string;
-  commissionRateOverride: string | null;
-  minimumPayoutAmountOverride: string | null;
-  commissionDurationTypeOverride: CommissionDurationType | null;
-  commissionDurationMonthsOverride: number | null;
-  attributionWindowDaysOverride: number | null;
-  holdingPeriodDaysOverride: number | null;
+  programTerms: {
+    programId: string;
+    commissionRateOverride: string | null;
+    minimumPayoutAmountOverride: string | null;
+    commissionDurationTypeOverride: CommissionDurationType | null;
+    commissionDurationMonthsOverride: number | null;
+    attributionWindowDaysOverride: number | null;
+    holdingPeriodDaysOverride: number | null;
+  }[];
   hasLegacyTermOverrides: boolean;
   payoutDetails: string | null;
   hasPassword: boolean;
@@ -100,13 +107,7 @@ export function AffiliateSheet({
   const router = useRouter();
   const formKey = JSON.stringify({
     programId: affiliate.programId,
-    commissionRateOverride: affiliate.commissionRateOverride,
-    minimumPayoutAmountOverride: affiliate.minimumPayoutAmountOverride,
-    commissionDurationTypeOverride: affiliate.commissionDurationTypeOverride,
-    commissionDurationMonthsOverride:
-      affiliate.commissionDurationMonthsOverride,
-    attributionWindowDaysOverride: affiliate.attributionWindowDaysOverride,
-    holdingPeriodDaysOverride: affiliate.holdingPeriodDaysOverride,
+    programTerms: affiliate.programTerms,
     hasLegacyTermOverrides: affiliate.hasLegacyTermOverrides,
     links: affiliate.links.map((link) => link.id),
   });
@@ -160,9 +161,6 @@ function AffiliateSettingsForm({
   const [selectedProgramId, setSelectedProgramId] = useState(
     affiliate.programId,
   );
-  const [durationOverride, setDurationOverride] = useState<string>(
-    affiliate.commissionDurationTypeOverride ?? "inherit",
-  );
   const selectedProgram = programs.find(
     (program) => program.id === selectedProgramId,
   );
@@ -172,7 +170,6 @@ function AffiliateSettingsForm({
     pendingFormData.current = null;
     setConfirmationOpen(false);
     setSelectedProgramId(affiliate.programId);
-    setDurationOverride(affiliate.commissionDurationTypeOverride ?? "inherit");
     setError("");
   }
 
@@ -230,34 +227,15 @@ function AffiliateSettingsForm({
             </label>
 
             {selectedProgram && (
-              <>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
-                  <ProgramTerm
-                    label="Commission"
-                    value={`${selectedProgram.rate}% ${commissionDurationLabel(selectedProgram.commissionDurationType, selectedProgram.commissionDurationMonths)}`}
-                  />
-                  <ProgramTerm
-                    label="Time to buy"
-                    value={`${selectedProgram.attributionWindowDays} days`}
-                  />
-                  <ProgramTerm
-                    label="Hold before paying"
-                    value={`${selectedProgram.holdingPeriodDays} days`}
-                  />
-                  <ProgramTerm
-                    label="Minimum payable"
-                    value={
-                      Number(selectedProgram.minimumPayoutAmount) === 0
-                        ? "No minimum"
-                        : `${selectedProgram.minimumPayoutAmount} per currency`
-                    }
-                  />
-                </dl>
-                <p className="text-xs text-muted-foreground">
-                  These are the Program defaults. Existing clicks keep the terms
-                  saved when they were created.
-                </p>
-              </>
+              <AffiliateProgramTermFields
+                key={selectedProgram.id}
+                program={selectedProgram}
+                overrides={
+                  affiliate.programTerms.find(
+                    (terms) => terms.programId === selectedProgram.id,
+                  ) ?? null
+                }
+              />
             )}
             {affiliate.hasLegacyTermOverrides && (
               <p className="rounded-md border border-status-warning/30 bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
@@ -266,143 +244,6 @@ function AffiliateSettingsForm({
                 were created.
               </p>
             )}
-          </section>
-
-          <section className="space-y-4 border-t border-border pt-5">
-            <div>
-              <h3 className="text-sm font-medium">Affiliate terms</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Blank fields use the Program default. These terms apply to all
-                of this affiliate&apos;s links.
-              </p>
-            </div>
-
-            <Field label="Commission rate" htmlFor="affiliate-rate-override">
-              <div className="relative">
-                <Input
-                  id="affiliate-rate-override"
-                  name="commissionRateOverride"
-                  type="number"
-                  min="0.01"
-                  max="100"
-                  step="0.01"
-                  defaultValue={affiliate.commissionRateOverride ?? ""}
-                  placeholder={
-                    selectedProgram ? `Program: ${selectedProgram.rate}%` : ""
-                  }
-                  className="pr-8 tabular-nums"
-                />
-                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
-                  %
-                </span>
-              </div>
-            </Field>
-
-            <Field
-              label="Commission duration"
-              htmlFor="affiliate-duration-override"
-            >
-              <select
-                id="affiliate-duration-override"
-                name="commissionDurationTypeOverride"
-                value={durationOverride}
-                onChange={(event) => setDurationOverride(event.target.value)}
-                className={SELECT_FIELD}
-              >
-                <option value="inherit">
-                  Use Program default
-                  {selectedProgram
-                    ? ` · ${durationOptionLabel(selectedProgram.commissionDurationType, selectedProgram.commissionDurationMonths)}`
-                    : ""}
-                </option>
-                {COMMISSION_DURATION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.value === CommissionDuration.FOREVER
-                      ? "Every payment, forever"
-                      : option.value === CommissionDuration.FIXED_MONTHS
-                        ? "Every payment, fixed months"
-                        : "First payment only"}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            {durationOverride === CommissionDuration.FIXED_MONTHS && (
-              <Field
-                label="Duration in months"
-                htmlFor="affiliate-duration-months"
-              >
-                <Input
-                  id="affiliate-duration-months"
-                  name="commissionDurationMonthsOverride"
-                  type="number"
-                  min="1"
-                  step="1"
-                  defaultValue={
-                    affiliate.commissionDurationMonthsOverride ?? ""
-                  }
-                  placeholder={
-                    selectedProgram?.commissionDurationType ===
-                    CommissionDuration.FIXED_MONTHS
-                      ? `Program: ${selectedProgram.commissionDurationMonths ?? "set months"}`
-                      : "For example, 12"
-                  }
-                  className="tabular-nums"
-                />
-              </Field>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="Time to buy"
-                htmlFor="affiliate-time-to-buy-override"
-              >
-                <NumberInput
-                  id="affiliate-time-to-buy-override"
-                  name="attributionWindowDaysOverride"
-                  value={affiliate.attributionWindowDaysOverride}
-                  placeholder={String(
-                    selectedProgram?.attributionWindowDays ?? "",
-                  )}
-                  label="Affiliate time to buy in days"
-                />
-              </Field>
-              <Field
-                label="Hold before paying"
-                htmlFor="affiliate-hold-before-paying-override"
-              >
-                <NumberInput
-                  id="affiliate-hold-before-paying-override"
-                  name="holdingPeriodDaysOverride"
-                  value={affiliate.holdingPeriodDaysOverride}
-                  placeholder={String(selectedProgram?.holdingPeriodDays ?? "")}
-                  label="Affiliate hold before paying in days"
-                />
-              </Field>
-            </div>
-
-            <Field
-              label="Minimum payout per currency"
-              htmlFor="affiliate-minimum-payout-override"
-            >
-              <Input
-                id="affiliate-minimum-payout-override"
-                name="minimumPayoutAmountOverride"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue={affiliate.minimumPayoutAmountOverride ?? ""}
-                placeholder={
-                  selectedProgram
-                    ? `Program: ${selectedProgram.minimumPayoutAmount}`
-                    : ""
-                }
-                className="tabular-nums"
-              />
-              <p className="text-xs text-muted-foreground">
-                Blank uses the Program minimum. Enter 0 to remove the minimum.
-              </p>
-            </Field>
           </section>
 
           <section className="space-y-3 border-t border-border pt-5">
@@ -539,6 +380,176 @@ function AffiliateSettingsForm({
   );
 }
 
+function AffiliateProgramTermFields({
+  program,
+  overrides,
+}: {
+  program: SheetProgram;
+  overrides: SheetAffiliate["programTerms"][number] | null;
+}) {
+  const [durationOverride, setDurationOverride] = useState<string>(
+    overrides?.commissionDurationTypeOverride ?? "inherit",
+  );
+
+  return (
+    <>
+      <section className="space-y-4">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+          <ProgramTerm
+            label="Commission"
+            value={`${program.rate}% ${commissionDurationLabel(program.commissionDurationType, program.commissionDurationMonths)}`}
+          />
+          <ProgramTerm
+            label="Time to buy"
+            value={`${program.attributionWindowDays} days`}
+          />
+          <ProgramTerm
+            label="Hold before paying"
+            value={`${program.holdingPeriodDays} days`}
+          />
+          <ProgramTerm
+            label="Minimum payable"
+            value={
+              Number(program.minimumPayoutAmount) === 0
+                ? "No minimum"
+                : `${program.minimumPayoutAmount} per currency`
+            }
+          />
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          These are the Program defaults. Existing clicks keep the terms saved
+          when they were created.
+        </p>
+      </section>
+
+      <section className="space-y-4 border-t border-border pt-5">
+        <div>
+          <h3 className="text-sm font-medium">
+            Affiliate terms for {program.name}
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Blank fields use the Program default. These overrides apply to all
+            of this affiliate&apos;s links in this Program.
+          </p>
+        </div>
+
+        <Field label="Commission rate" htmlFor="affiliate-rate-override">
+          <div className="relative">
+            <Input
+              id="affiliate-rate-override"
+              name="commissionRateOverride"
+              type="number"
+              min="0.01"
+              max="100"
+              step="0.01"
+              defaultValue={overrides?.commissionRateOverride ?? ""}
+              placeholder={`Program: ${program.rate}%`}
+              className="pr-8 tabular-nums"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+              %
+            </span>
+          </div>
+        </Field>
+
+        <Field
+          label="Commission duration"
+          htmlFor="affiliate-duration-override"
+        >
+          <select
+            id="affiliate-duration-override"
+            name="commissionDurationTypeOverride"
+            value={durationOverride}
+            onChange={(event) => setDurationOverride(event.target.value)}
+            className={SELECT_FIELD}
+          >
+            <option value="inherit">
+              Use Program default ·{" "}
+              {durationOptionLabel(
+                program.commissionDurationType,
+                program.commissionDurationMonths,
+              )}
+            </option>
+            {COMMISSION_DURATION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.value === CommissionDuration.FOREVER
+                  ? "Every payment, forever"
+                  : option.value === CommissionDuration.FIXED_MONTHS
+                    ? "Every payment, fixed months"
+                    : "First payment only"}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {durationOverride === CommissionDuration.FIXED_MONTHS && (
+          <Field label="Duration in months" htmlFor="affiliate-duration-months">
+            <Input
+              id="affiliate-duration-months"
+              name="commissionDurationMonthsOverride"
+              type="number"
+              min="1"
+              max={MAX_COMMISSION_DURATION_MONTHS}
+              step="1"
+              defaultValue={overrides?.commissionDurationMonthsOverride ?? ""}
+              placeholder={
+                program.commissionDurationType ===
+                CommissionDuration.FIXED_MONTHS
+                  ? `Program: ${program.commissionDurationMonths ?? "set months"}`
+                  : "For example, 12"
+              }
+              className="tabular-nums"
+            />
+          </Field>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Time to buy" htmlFor="affiliate-time-to-buy-override">
+            <NumberInput
+              id="affiliate-time-to-buy-override"
+              name="attributionWindowDaysOverride"
+              value={overrides?.attributionWindowDaysOverride ?? null}
+              placeholder={String(program.attributionWindowDays)}
+              label="Affiliate time to buy in days"
+            />
+          </Field>
+          <Field
+            label="Hold before paying"
+            htmlFor="affiliate-hold-before-paying-override"
+          >
+            <NumberInput
+              id="affiliate-hold-before-paying-override"
+              name="holdingPeriodDaysOverride"
+              value={overrides?.holdingPeriodDaysOverride ?? null}
+              placeholder={String(program.holdingPeriodDays)}
+              label="Affiliate hold before paying in days"
+            />
+          </Field>
+        </div>
+
+        <Field
+          label="Minimum payout per currency"
+          htmlFor="affiliate-minimum-payout-override"
+        >
+          <Input
+            id="affiliate-minimum-payout-override"
+            name="minimumPayoutAmountOverride"
+            type="number"
+            min="0"
+            step="0.01"
+            defaultValue={overrides?.minimumPayoutAmountOverride ?? ""}
+            placeholder={`Program: ${program.minimumPayoutAmount}`}
+            className="tabular-nums"
+          />
+          <p className="text-xs text-muted-foreground">
+            Blank uses the Program minimum. Enter 0 to remove the minimum.
+          </p>
+        </Field>
+      </section>
+    </>
+  );
+}
+
 function ProgramTerm({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
@@ -598,6 +609,7 @@ function NumberInput({
         name={name}
         type="number"
         min="1"
+        max={MAX_COMMISSION_TERM_DAYS}
         step="1"
         defaultValue={value ?? ""}
         placeholder={placeholder}

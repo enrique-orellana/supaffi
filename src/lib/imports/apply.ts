@@ -610,6 +610,7 @@ async function processAffiliateChunk(
       existingEmails.add(`${row.merchantId}:${row.email.toLowerCase()}`);
   }
   const createRows: Prisma.AffiliateCreateManyInput[] = [];
+  const rateByImportIdentity = new Map<string, Prisma.Decimal | null>();
   for (const candidate of candidates) {
     if (
       existingEmails.has(
@@ -620,6 +621,12 @@ async function processAffiliateChunk(
       sample(progress.conflictIds, candidate.sourceId);
       continue;
     }
+    const importSourceIdentity = sourceIdentity(
+      batchId,
+      "affiliate",
+      candidate.sourceId,
+      candidate.merchantId,
+    );
     createRows.push({
       merchantId: candidate.merchantId,
       programId: candidate.programId,
@@ -627,17 +634,49 @@ async function processAffiliateChunk(
       name: candidate.name,
       passwordHash: null,
       payoutDetails: null,
-      customCommissionRate: candidate.rate,
-      importSourceIdentity: sourceIdentity(
-        batchId,
-        "affiliate",
-        candidate.sourceId,
-        candidate.merchantId,
-      ),
+      importSourceIdentity,
     });
+    rateByImportIdentity.set(importSourceIdentity, candidate.rate);
   }
-  if (createRows.length)
+  if (createRows.length) {
     await tx.affiliate.createMany({ data: createRows, skipDuplicates: true });
+    const rateIdentities = [...rateByImportIdentity]
+      .filter(([, rate]) => rate !== null)
+      .map(([identity]) => identity);
+    if (rateIdentities.length) {
+      const created = await tx.affiliate.findMany({
+        where: { importSourceIdentity: { in: rateIdentities } },
+        select: {
+          id: true,
+          merchantId: true,
+          programId: true,
+          importSourceIdentity: true,
+        },
+      });
+      const termRows: Prisma.AffiliateProgramTermsCreateManyInput[] =
+        created.flatMap((affiliate) => {
+          const rate = affiliate.importSourceIdentity
+            ? rateByImportIdentity.get(affiliate.importSourceIdentity)
+            : null;
+          return rate === null || rate === undefined
+            ? []
+            : [
+                {
+                  merchantId: affiliate.merchantId,
+                  affiliateId: affiliate.id,
+                  programId: affiliate.programId,
+                  customCommissionRate: rate,
+                },
+              ];
+        });
+      if (termRows.length) {
+        await tx.affiliateProgramTerms.createMany({
+          data: termRows,
+          skipDuplicates: true,
+        });
+      }
+    }
+  }
   progress.processed.affiliates += slice.length;
   progress.cursor += slice.length;
   if (progress.cursor >= bundle.affiliates.length) {

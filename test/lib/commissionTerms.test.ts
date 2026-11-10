@@ -6,7 +6,7 @@ import {
   resolveClickCommissionTerms,
   resolveCurrentCommissionTerms,
   resolveMinimumPayoutAmount,
-  type CommissionTermAffiliate,
+  type CommissionTermOverrides,
   type CommissionTermProgram,
 } from "@/lib/commissionTerms";
 
@@ -26,8 +26,8 @@ function program(
 }
 
 function affiliate(
-  overrides: Partial<CommissionTermAffiliate> = {},
-): CommissionTermAffiliate {
+  overrides: Partial<CommissionTermOverrides> = {},
+): CommissionTermOverrides {
   return {
     programId: "program-1",
     customCommissionRate: null,
@@ -66,27 +66,43 @@ describe("commission term resolution", () => {
     });
   });
 
-  it("does not apply an affiliate override after they move to another program", () => {
-    const terms = resolveCurrentCommissionTerms(
+  it("keeps overrides on their Program after reassignment without applying them to another Program", () => {
+    const affiliateProgramA = affiliate({
+      programId: "program-1",
+      customCommissionRate: new Prisma.Decimal("35"),
+      commissionDurationTypeOverride: "ONE_TIME",
+      attributionWindowDaysOverride: 14,
+      holdingPeriodDaysOverride: 7,
+      minimumPayoutAmountOverride: new Prisma.Decimal("80"),
+    });
+    const programA = resolveCurrentCommissionTerms(
       program(),
-      affiliate({
-        programId: "program-2",
-        customCommissionRate: new Prisma.Decimal("35"),
-        commissionDurationTypeOverride: "ONE_TIME",
-        attributionWindowDaysOverride: 14,
-        holdingPeriodDaysOverride: 7,
-        minimumPayoutAmountOverride: new Prisma.Decimal("80"),
+      affiliateProgramA,
+    );
+    const programB = resolveCurrentCommissionTerms(
+      program({
+        id: "program-2",
+        defaultCommissionRate: new Prisma.Decimal("25"),
       }),
+      affiliateProgramA,
     );
 
-    expect(terms.commissionRate.toString()).toBe("20");
-    expect(terms.commissionDuration).toEqual({
+    expect(programA.commissionRate.toString()).toBe("35");
+    expect(programA.commissionDuration).toEqual({
+      commissionDurationType: "ONE_TIME",
+      commissionDurationMonths: null,
+    });
+    expect(programA.attributionWindowDays).toBe(14);
+    expect(programA.holdingPeriodDays).toBe(7);
+    expect(programA.minimumPayoutAmount.toString()).toBe("80");
+    expect(programB.commissionRate.toString()).toBe("25");
+    expect(programB.commissionDuration).toEqual({
       commissionDurationType: "FIXED_MONTHS",
       commissionDurationMonths: 2,
     });
-    expect(terms.attributionWindowDays).toBe(60);
-    expect(terms.holdingPeriodDays).toBe(30);
-    expect(terms.minimumPayoutAmount.toString()).toBe("50");
+    expect(programB.attributionWindowDays).toBe(60);
+    expect(programB.holdingPeriodDays).toBe(30);
+    expect(programB.minimumPayoutAmount.toString()).toBe("50");
   });
 
   it("inherits the Program month count when only the duration type is overridden", () => {
@@ -162,7 +178,7 @@ describe("commission term resolution", () => {
     });
   });
 
-  it("uses an Affiliate minimum only for its assigned Program", () => {
+  it("uses an Affiliate/Program minimum only for its matching Program", () => {
     const programMinimum = program();
     const affiliateMinimum = affiliate({
       minimumPayoutAmountOverride: new Prisma.Decimal("0"),

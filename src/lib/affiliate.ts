@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
 import { resolveCurrentCommissionTerms } from "@/lib/commissionTerms";
+import {
+  affiliateProgramTermsKey,
+  loadAffiliateProgramTerms,
+} from "@/lib/affiliateProgramTerms";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isLinkCodeTaken, lockLinkCodes } from "@/lib/affiliateLink";
 import { Prisma, type CommissionDurationType } from "@prisma/client";
@@ -858,12 +862,6 @@ export async function listAffiliatesForMerchant(
           where: { isPrimary: true },
           select: { code: true, destinationPath: true },
         },
-        customCommissionRate: true,
-        commissionDurationTypeOverride: true,
-        commissionDurationMonthsOverride: true,
-        attributionWindowDaysOverride: true,
-        holdingPeriodDaysOverride: true,
-        minimumPayoutAmountOverride: true,
         createdAt: true,
         program: {
           select: {
@@ -891,33 +889,45 @@ export async function listAffiliatesForMerchant(
   if (affiliates.length === 0) return { total, rows: [] };
 
   const ids = affiliates.map((a) => a.id);
-  const [clickCounts, conversionCounts, earnedRows] = await Promise.all([
-    db.click.groupBy({
-      by: ["affiliateId"],
-      where: { affiliateId: { in: ids } },
-      _count: { _all: true },
-    }),
-    // Every commission counts as a conversion, voided ones included, which is
-    // what getProductMetrics counts for the rate on the same screen. Money is
-    // the thing a void takes away, not the sale having happened.
-    db.commission.groupBy({
-      by: ["affiliateId"],
-      where: { affiliateId: { in: ids } },
-      _count: { _all: true },
-    }),
-    // An unpaid adjustment row an older version left behind counts nowhere; a
-    // paid one is history and stays in, same rule as every other paid or
-    // earned figure.
-    db.commission.groupBy({
-      by: ["affiliateId", "currency"],
-      where: {
-        affiliateId: { in: ids },
-        status: { notIn: [COMMISSION_STATUS.VOIDED] },
-        OR: [{ status: COMMISSION_STATUS.PAID }, { adjustsCommissionId: null }],
-      },
-      _sum: { amount: true },
-    }),
-  ]);
+  const [clickCounts, conversionCounts, earnedRows, termsByPair] =
+    await Promise.all([
+      db.click.groupBy({
+        by: ["affiliateId"],
+        where: { affiliateId: { in: ids } },
+        _count: { _all: true },
+      }),
+      // Every commission counts as a conversion, voided ones included, which is
+      // what getProductMetrics counts for the rate on the same screen. Money is
+      // the thing a void takes away, not the sale having happened.
+      db.commission.groupBy({
+        by: ["affiliateId"],
+        where: { affiliateId: { in: ids } },
+        _count: { _all: true },
+      }),
+      // An unpaid adjustment row an older version left behind counts nowhere; a
+      // paid one is history and stays in, same rule as every other paid or
+      // earned figure.
+      db.commission.groupBy({
+        by: ["affiliateId", "currency"],
+        where: {
+          affiliateId: { in: ids },
+          status: { notIn: [COMMISSION_STATUS.VOIDED] },
+          OR: [
+            { status: COMMISSION_STATUS.PAID },
+            { adjustsCommissionId: null },
+          ],
+        },
+        _sum: { amount: true },
+      }),
+      loadAffiliateProgramTerms(
+        db,
+        merchantId,
+        affiliates.map((affiliate) => ({
+          affiliateId: affiliate.id,
+          programId: affiliate.programId,
+        })),
+      ),
+    ]);
 
   const clicksById = new Map(
     clickCounts.map((c) => [c.affiliateId, c._count._all]),
@@ -938,6 +948,9 @@ export async function listAffiliatesForMerchant(
   return {
     total,
     rows: affiliates.map((a) => {
+      const affiliateTerms = termsByPair.get(
+        affiliateProgramTermsKey(a.id, a.programId),
+      );
       return {
         id: a.id,
         name: a.name,
@@ -949,16 +962,23 @@ export async function listAffiliatesForMerchant(
         programSlug: a.program.slug,
         commissionRate: resolveCurrentCommissionTerms(
           a.program,
-          a,
+          affiliateTerms,
         ).commissionRate.toString(),
-        rateIsOverride: a.customCommissionRate !== null,
-        commissionRateOverride: a.customCommissionRate?.toString() ?? null,
-        commissionDurationTypeOverride: a.commissionDurationTypeOverride,
-        commissionDurationMonthsOverride: a.commissionDurationMonthsOverride,
-        attributionWindowDaysOverride: a.attributionWindowDaysOverride,
-        holdingPeriodDaysOverride: a.holdingPeriodDaysOverride,
+        rateIsOverride:
+          affiliateTerms?.customCommissionRate !== null &&
+          affiliateTerms?.customCommissionRate !== undefined,
+        commissionRateOverride:
+          affiliateTerms?.customCommissionRate?.toString() ?? null,
+        commissionDurationTypeOverride:
+          affiliateTerms?.commissionDurationTypeOverride ?? null,
+        commissionDurationMonthsOverride:
+          affiliateTerms?.commissionDurationMonthsOverride ?? null,
+        attributionWindowDaysOverride:
+          affiliateTerms?.attributionWindowDaysOverride ?? null,
+        holdingPeriodDaysOverride:
+          affiliateTerms?.holdingPeriodDaysOverride ?? null,
         minimumPayoutAmountOverride:
-          a.minimumPayoutAmountOverride?.toFixed(2) ?? null,
+          affiliateTerms?.minimumPayoutAmountOverride?.toFixed(2) ?? null,
         clicks: clicksById.get(a.id) ?? 0,
         conversions: conversionsById.get(a.id) ?? 0,
         earned: (earnedById.get(a.id) ?? []).sort((x, y) =>

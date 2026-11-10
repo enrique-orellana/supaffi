@@ -7,6 +7,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { isCommissionDuration } from "@/lib/commissionDuration";
+import {
+  MAX_COMMISSION_DURATION_MONTHS,
+  MAX_COMMISSION_TERM_DAYS,
+} from "@/lib/commissionTermLimits";
 import { recalculateAffiliatePayoutEligibility } from "@/lib/payoutEligibility";
 
 async function owner(): Promise<string> {
@@ -61,9 +65,14 @@ function parseOptionalDays(
     return { error: `${label} must be a whole number of days.` };
   }
   const value = Number(raw);
-  return Number.isSafeInteger(value) && value > 0
+  if (!Number.isSafeInteger(value) || value < 1) {
+    return { error: `${label} must be at least 1 day.` };
+  }
+  return value <= MAX_COMMISSION_TERM_DAYS
     ? { value }
-    : { error: `${label} must be at least 1 day.` };
+    : {
+        error: `${label} cannot exceed ${MAX_COMMISSION_TERM_DAYS.toLocaleString()} days.`,
+      };
 }
 
 /** Assigns this Affiliate to a Program and saves its permitted term overrides. */
@@ -122,6 +131,11 @@ export async function saveAffiliateSettingsAction(
         ) {
           return { error: "Enter a whole number of months, at least 1." };
         }
+        if (months > MAX_COMMISSION_DURATION_MONTHS) {
+          return {
+            error: `Duration cannot exceed ${MAX_COMMISSION_DURATION_MONTHS.toLocaleString()} months.`,
+          };
+        }
         durationMonths = months;
       }
     }
@@ -167,16 +181,45 @@ export async function saveAffiliateSettingsAction(
 
     await tx.affiliate.update({
       where: { id: affiliate.id },
-      data: {
-        programId: program.id,
-        customCommissionRate: commissionRate.value,
-        commissionDurationTypeOverride: durationType,
-        commissionDurationMonthsOverride: durationMonths,
-        attributionWindowDaysOverride: attributionDays.value,
-        holdingPeriodDaysOverride: holdingDays.value,
-        minimumPayoutAmountOverride: minimumPayoutAmount.value,
-      },
+      data: { programId: program.id },
     });
+
+    const termOverrides = {
+      customCommissionRate: commissionRate.value,
+      commissionDurationTypeOverride: durationType,
+      commissionDurationMonthsOverride: durationMonths,
+      attributionWindowDaysOverride: attributionDays.value,
+      holdingPeriodDaysOverride: holdingDays.value,
+      minimumPayoutAmountOverride: minimumPayoutAmount.value,
+    };
+    const hasOverrides = Object.values(termOverrides).some(
+      (value) => value !== null,
+    );
+    if (hasOverrides) {
+      await tx.affiliateProgramTerms.upsert({
+        where: {
+          affiliateId_programId: {
+            affiliateId: affiliate.id,
+            programId: program.id,
+          },
+        },
+        create: {
+          merchantId: product.id,
+          affiliateId: affiliate.id,
+          programId: program.id,
+          ...termOverrides,
+        },
+        update: termOverrides,
+      });
+    } else {
+      await tx.affiliateProgramTerms.deleteMany({
+        where: {
+          merchantId: product.id,
+          affiliateId: affiliate.id,
+          programId: program.id,
+        },
+      });
+    }
 
     await recalculateAffiliatePayoutEligibility(tx, product.id, affiliate.id);
 

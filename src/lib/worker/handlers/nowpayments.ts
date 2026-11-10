@@ -1,7 +1,10 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
+import {
+  clickNeedsCurrentTermFallback,
+  resolveClickCommissionTerms,
+} from "@/lib/commissionTerms";
 import type {
   CommerceCheckout,
   PaymentRecord,
@@ -423,9 +426,19 @@ async function createCommissionIfEligible(
   });
   if (lockedClick.fraudConfirmedAt !== null) return;
 
+  const affiliateTerms = clickNeedsCurrentTermFallback(click)
+    ? await tx.affiliateProgramTerms.findUnique({
+        where: {
+          affiliateId_programId: {
+            affiliateId: click.affiliateId,
+            programId: click.programId,
+          },
+        },
+      })
+    : null;
   const terms = resolveClickCommissionTerms(
     click.program,
-    click.affiliate,
+    affiliateTerms,
     click,
   );
   const rate = terms.commissionRate;

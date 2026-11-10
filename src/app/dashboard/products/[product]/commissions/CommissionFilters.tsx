@@ -135,7 +135,7 @@ export function CommissionFilters({
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 px-5 py-3">
       <FilterMenu
         label="All affiliates"
         active={affiliateId}

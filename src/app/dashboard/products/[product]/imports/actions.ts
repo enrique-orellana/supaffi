@@ -2,6 +2,10 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import {
+  affiliateProgramTermsKey,
+  loadAffiliateProgramTerms,
+} from "@/lib/affiliateProgramTerms";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import {
   createAffiliateImportPreview,
@@ -99,7 +103,6 @@ export async function previewAffiliateImportAction(
           merchantId: true,
           programId: true,
           email: true,
-          customCommissionRate: true,
         },
       }),
       db.affiliateLink.findMany({
@@ -124,6 +127,24 @@ export async function previewAffiliateImportAction(
       where: { merchantId: { in: products.map((merchant) => merchant.id) } },
       select: { merchantId: true, code: true },
     });
+    const pairsByMerchant = new Map<
+      string,
+      { affiliateId: string; programId: string }[]
+    >();
+    for (const affiliate of affiliates) {
+      const pairs = pairsByMerchant.get(affiliate.merchantId) ?? [];
+      pairs.push({ affiliateId: affiliate.id, programId: affiliate.programId });
+      pairsByMerchant.set(affiliate.merchantId, pairs);
+    }
+    const termsByPair = new Map(
+      (
+        await Promise.all(
+          [...pairsByMerchant].map(([merchantId, pairs]) =>
+            loadAffiliateProgramTerms(db, merchantId, pairs),
+          ),
+        )
+      ).flatMap((terms) => [...terms]),
+    );
     let mappingChoices: AffiliateImportMappingChoices = {};
     const rawMappings = formData.get("mappingChoices");
     if (typeof rawMappings === "string" && rawMappings.trim()) {
@@ -144,15 +165,21 @@ export async function previewAffiliateImportAction(
       mappingChoices,
       now,
       context: {
-        affiliates: affiliates.map((affiliate) => ({
-          id: affiliate.id,
-          merchantId: affiliate.merchantId,
-          programId: affiliate.programId,
-          email: affiliate.email,
-          commissionRateBps: affiliate.customCommissionRate
-            ? Number(affiliate.customCommissionRate) * 100
-            : null,
-        })),
+        affiliates: affiliates.map((affiliate) => {
+          const commissionRate = termsByPair.get(
+            affiliateProgramTermsKey(affiliate.id, affiliate.programId),
+          )?.customCommissionRate;
+          return {
+            id: affiliate.id,
+            merchantId: affiliate.merchantId,
+            programId: affiliate.programId,
+            email: affiliate.email,
+            commissionRateBps:
+              commissionRate === null || commissionRate === undefined
+                ? null
+                : Number(commissionRate) * 100,
+          };
+        }),
         referralCodes: referralCodes.map((link) => ({
           ...link,
           commissionRateOverrideBps: link.commissionRateOverride

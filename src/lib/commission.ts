@@ -614,11 +614,18 @@ export async function markCommissionsPaid(
         MAX_SHOWN,
         now,
       );
+      const snapshotAmounts = new Map(
+        expectedRows.map((row) => [row.id, row.amount]),
+      );
       if (
-        expectedRows.length !== rows.length ||
-        expectedRows.some((row) => {
+        rows.some((row) => {
+          const snapshotAmount = snapshotAmounts.get(row.id);
           const shownAmount = amounts.get(row.id);
-          return shownAmount === undefined || !row.amount.eq(shownAmount);
+          return (
+            snapshotAmount === undefined ||
+            shownAmount === undefined ||
+            !snapshotAmount.eq(shownAmount)
+          );
         })
       ) {
         return { error: PAYOUT_ERROR.INELIGIBLE };

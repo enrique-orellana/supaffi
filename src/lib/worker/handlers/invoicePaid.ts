@@ -2,7 +2,10 @@ import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
-import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
+import {
+  clickNeedsCurrentTermFallback,
+  resolveClickCommissionTerms,
+} from "@/lib/commissionTerms";
 import {
   computePayableAt,
   hasExclusionFlag,
@@ -111,7 +114,17 @@ export async function handleInvoicePaid(
   // above, so this subscription's own first payment is part of that history.
   const program = click.program;
   const affiliate = click.affiliate;
-  const terms = resolveClickCommissionTerms(program, affiliate, click);
+  const affiliateTerms = clickNeedsCurrentTermFallback(click)
+    ? await db.affiliateProgramTerms.findUnique({
+        where: {
+          affiliateId_programId: {
+            affiliateId: click.affiliateId,
+            programId: click.programId,
+          },
+        },
+      })
+    : null;
+  const terms = resolveClickCommissionTerms(program, affiliateTerms, click);
   if (
     !(await referralStillEarns(
       merchant.id,

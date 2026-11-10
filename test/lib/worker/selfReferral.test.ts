@@ -13,7 +13,6 @@ function affiliateFixture(overrides: Partial<Affiliate> = {}): Affiliate {
     programId: "prog_1",
     email: "sarah@example.com",
     name: null,
-    customCommissionRate: null,
     payoutDetails: null,
     createdAt: new Date(),
     ...overrides,

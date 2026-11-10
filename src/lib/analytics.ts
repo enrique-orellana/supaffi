@@ -10,6 +10,10 @@ import {
 import { DEFAULT_RANGE } from "@/lib/analyticsShared";
 import type { ChartRange } from "@/lib/analyticsShared";
 import { resolveMinimumPayoutAmount } from "@/lib/commissionTerms";
+import {
+  affiliateProgramTermsKey,
+  loadAffiliateProgramTerms,
+} from "@/lib/affiliateProgramTerms";
 
 export {
   CHART_RANGES,
@@ -655,10 +659,7 @@ export async function getTopAffiliates(
   });
   if (earned.length === 0) return [];
 
-  const byAffiliate = new Map<
-    string,
-    { earned: CurrencyTotal[] }
-  >();
+  const byAffiliate = new Map<string, { earned: CurrencyTotal[] }>();
   for (const row of earned) {
     const amount = row._sum.amount ?? new Prisma.Decimal(0);
     const existing = byAffiliate.get(row.affiliateId) ?? {
@@ -828,13 +829,21 @@ async function payoutGroupsForStatus(
           name: true,
           email: true,
           payoutDetails: true,
-          programId: true,
-          minimumPayoutAmountOverride: true,
         },
       },
     },
     orderBy: [{ payableAt: "asc" }, { id: "asc" }],
   });
+
+  const affiliateTerms = await loadAffiliateProgramTerms(
+    db,
+    merchantId,
+    rows.flatMap((row) =>
+      row.programId
+        ? [{ affiliateId: row.affiliate.id, programId: row.programId }]
+        : [],
+    ),
+  );
 
   const groups = new Map<
     string,
@@ -857,7 +866,12 @@ async function payoutGroupsForStatus(
       existing.commissionIds.push(row.id);
       existing.commissions.push(shown);
     } else {
-      const minimum = resolveMinimumPayoutAmount(row.program, row.affiliate);
+      const minimum = resolveMinimumPayoutAmount(
+        row.program,
+        affiliateTerms.get(
+          affiliateProgramTermsKey(row.affiliate.id, row.programId),
+        ),
+      );
       groups.set(key, {
         affiliateId: row.affiliate.id,
         affiliateName: row.affiliate.name,

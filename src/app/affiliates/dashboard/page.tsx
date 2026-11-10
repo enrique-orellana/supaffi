@@ -88,12 +88,17 @@ export default async function AffiliateOverviewPage({
       where: { id: affiliateId },
       select: {
         programId: true,
-        customCommissionRate: true,
-        commissionDurationTypeOverride: true,
-        commissionDurationMonthsOverride: true,
-        attributionWindowDaysOverride: true,
-        holdingPeriodDaysOverride: true,
-        minimumPayoutAmountOverride: true,
+        programTermOverrides: {
+          select: {
+            programId: true,
+            customCommissionRate: true,
+            commissionDurationTypeOverride: true,
+            commissionDurationMonthsOverride: true,
+            attributionWindowDaysOverride: true,
+            holdingPeriodDaysOverride: true,
+            minimumPayoutAmountOverride: true,
+          },
+        },
         program: {
           select: {
             id: true,
@@ -201,8 +206,11 @@ export default async function AffiliateOverviewPage({
   // The signup link: the one the merchant's own dashboard shows and the one in
   // every email they have had from this program.
   const primary = links.find((link) => link.isPrimary) ?? links[0] ?? null;
+  const affiliateTerms = program?.programTermOverrides.find(
+    (terms) => terms.programId === program.programId,
+  );
   const currentTerms = program
-    ? resolveCurrentCommissionTerms(program.program, program)
+    ? resolveCurrentCommissionTerms(program.program, affiliateTerms)
     : null;
 
   return (

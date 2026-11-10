@@ -6,6 +6,7 @@ import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import {
   listCommissions,
   getCommissionFilterOptions,
+  getCommissionTotals,
   COMMISSION_STATUSES,
   COMMISSIONS_PAGE_SIZE,
   type CommissionRow,
@@ -32,7 +33,7 @@ import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
 /**
  * Every referred sale and what it is waiting on.
  *
- * Four tabs over one ledger, and one commission read in a sheet the URL
+ * Five tabs over one ledger, and one commission read in a sheet the URL
  * selects, so the panel is rendered here rather than held on the client: a
  * payout or a void lands back on this page and the sheet is simply drawn again
  * from the new rows. Flagged is a tab, never a page of its own.
@@ -154,14 +155,24 @@ export default async function CommissionsPage({
 
   // Owed and payable now come from the same helper the overview uses, so the
   // two screens cannot disagree.
-  const [{ rows, total }, options, { owed, payableNow }] = await Promise.all([
-    listCommissions(ownerId, merchant.id, filters, {
-      page,
-      pageSize: COMMISSIONS_PAGE_SIZE,
-    }),
-    getCommissionFilterOptions(ownerId, merchant.id),
-    getOwedTotals(ownerId, merchant.id),
-  ]);
+  const [{ rows, total }, options, { owed, payableNow }, statusTotals] =
+    await Promise.all([
+      listCommissions(ownerId, merchant.id, filters, {
+        page,
+        pageSize: COMMISSIONS_PAGE_SIZE,
+      }),
+      getCommissionFilterOptions(ownerId, merchant.id),
+      getOwedTotals(ownerId, merchant.id),
+      getCommissionTotals(ownerId, merchant.id),
+    ]);
+
+  const countByStatus = new Map(
+    statusTotals.map(({ status, count }) => [status, count] as const),
+  );
+  const allCommissionCount = statusTotals.reduce(
+    (sum, { count }) => sum + count,
+    0,
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / COMMISSIONS_PAGE_SIZE));
 
@@ -176,12 +187,12 @@ export default async function CommissionsPage({
 
   const anyFilterActive = Boolean(
     filters.status ||
-      filters.affiliateId ||
-      filters.currency ||
-      filters.programId ||
-      filters.payoutId ||
-      filters.payoutGroup ||
-      filters.query,
+    filters.affiliateId ||
+    filters.currency ||
+    filters.programId ||
+    filters.payoutId ||
+    filters.payoutGroup ||
+    filters.query,
   );
 
   // Every href keeps what is already on and changes one thing, so switching
@@ -344,6 +355,11 @@ export default async function CommissionsPage({
                   }
                 >
                   {tab.label}
+                  <span className="ml-1.5 text-muted-foreground tabular-nums">
+                    {tab.status === null
+                      ? allCommissionCount
+                      : (countByStatus.get(tab.status) ?? 0)}
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -357,21 +373,15 @@ export default async function CommissionsPage({
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}
-      <Section
-        flush
-        scroll
-        className="overflow-hidden"
-        actions={
-          <CommissionFilters
-            affiliates={options.affiliates}
-            currencies={options.currencies}
-            affiliateId={filters.affiliateId}
-            currency={filters.currency}
-            query={filters.query ?? ""}
-            anyFilterActive={anyFilterActive}
-          />
-        }
-      >
+      <Section flush scroll className="overflow-hidden">
+        <CommissionFilters
+          affiliates={options.affiliates}
+          currencies={options.currencies}
+          affiliateId={filters.affiliateId}
+          currency={filters.currency}
+          query={filters.query ?? ""}
+          anyFilterActive={anyFilterActive}
+        />
         <CommissionTable
           rows={ledgerRows}
           selectedId={selected?.id ?? null}

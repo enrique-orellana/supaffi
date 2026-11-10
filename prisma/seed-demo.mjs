@@ -220,7 +220,28 @@ async function main() {
 
   await insertMany(
     "affiliate",
-    affiliates.map(({ weight, joinedDaysAgo, rate, linkIds, ...row }) => row)
+    affiliates.map(
+      ({ id, merchantId, programId, email, name, payoutDetails, createdAt }) => ({
+        id,
+        merchantId,
+        programId,
+        email,
+        name,
+        payoutDetails,
+        createdAt,
+      }),
+    ),
+  );
+  await insertMany(
+    "affiliateProgramTerms",
+    affiliates
+      .filter((affiliate) => affiliate.customCommissionRate !== null)
+      .map((affiliate) => ({
+        merchantId: affiliate.merchantId,
+        affiliateId: affiliate.id,
+        programId: affiliate.programId,
+        customCommissionRate: affiliate.customCommissionRate,
+      })),
   );
   await insertMany("affiliateLink", links);
 

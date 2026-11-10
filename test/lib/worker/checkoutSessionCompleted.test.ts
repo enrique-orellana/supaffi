@@ -646,6 +646,62 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(payout.currency).toBe("usd");
   });
 
+  it("uses Affiliate/Program overrides on a paid checkout and pays after that minimum is met", async () => {
+    await db.program.update({
+      where: { id: clickInput.programId },
+      data: {
+        defaultCommissionRate: "80.00",
+        holdingPeriodDays: 30,
+        minimumPayoutAmount: "100.00",
+      },
+    });
+    await db.affiliateProgramTerms.create({
+      data: {
+        merchantId: merchant.id,
+        affiliateId: clickInput.affiliateId,
+        programId: clickInput.programId,
+        customCommissionRate: "12.50",
+        holdingPeriodDaysOverride: 0,
+        minimumPayoutAmountOverride: "10.00",
+      },
+    });
+
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({
+        mode: "payment",
+        paymentIntent: "pi_affiliate_program_terms",
+        amountTotal: 10000,
+      }),
+    );
+
+    const commission = await db.commission.findFirstOrThrow({
+      where: { stripePaymentRef: "pi_affiliate_program_terms" },
+    });
+    expect(commission.saleAmount?.toFixed(2)).toBe("100.00");
+    expect(commission.amount.toFixed(2)).toBe("12.50");
+    expect(commission.payableAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(commission.status).toBe(COMMISSION_STATUS.PAYABLE);
+
+    const result = await markCommissionsPaid(
+      merchant.ownerId,
+      merchant.id,
+      [{ id: commission.id, amount: commission.amount.toFixed(2) }],
+      new Date().toISOString(),
+    );
+    expect(result).toMatchObject({ count: 1 });
+    if ("error" in result) throw new Error(`Payout failed: ${result.error}`);
+
+    const [paid, payout] = await Promise.all([
+      db.commission.findUniqueOrThrow({ where: { id: commission.id } }),
+      db.payout.findUniqueOrThrow({ where: { id: result.payoutId } }),
+    ]);
+    expect(paid.status).toBe(COMMISSION_STATUS.PAID);
+    expect(paid.payoutId).toBe(payout.id);
+    expect(payout.programId).toBe(clickInput.programId);
+    expect(payout.total.toFixed(2)).toBe("12.50");
+  });
+
   it("creates nothing when the only thing paid for was shipping", async () => {
     await handleCheckoutSessionCompleted(
       merchant,

@@ -14,9 +14,13 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { markCommissionsPaid, PAYOUT_ERROR } from "@/lib/commission";
+import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import { GET } from "@/app/api/resolve/route";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { resetTrackThrottle } from "@/lib/trackThrottle";
+import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
+import { getPayoutEligibility } from "@/lib/payoutEligibility";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -88,6 +92,8 @@ function requestFor(
 describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
   beforeEach(async () => {
     resetTrackThrottle();
+    await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.retiredLinkCode.deleteMany();
@@ -99,6 +105,8 @@ describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
   });
 
   afterAll(async () => {
+    await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.retiredLinkCode.deleteMany();
@@ -173,9 +181,11 @@ describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
 
   it("snapshots the affiliate's program terms on each new click", async () => {
     const a = await seedMerchantWithAffiliate("terms");
-    await db.affiliate.update({
-      where: { id: a.affiliate.id },
+    await db.affiliateProgramTerms.create({
       data: {
+        merchantId: a.affiliate.merchantId,
+        affiliateId: a.affiliate.id,
+        programId: a.affiliate.programId,
         customCommissionRate: "12.50",
         commissionDurationTypeOverride: "FIXED_MONTHS",
         commissionDurationMonthsOverride: 8,
@@ -211,6 +221,232 @@ describe.skipIf(!hasDatabase)("GET /api/resolve", () => {
     expect(click.expiresAt.getTime() - click.createdAt.getTime()).toBeLessThan(
       14 * 24 * 60 * 60 * 1000 + 1000,
     );
+  });
+
+  it("keeps a full referral and payout flow scoped to each affiliate/program pair", async () => {
+    const owner = await db.owner.create({
+      data: {
+        email: `track-route-lifecycle-owner-${crypto.randomUUID()}@example.com`,
+        passwordHash: "x",
+      },
+    });
+    const merchant = await db.merchant.create({
+      data: {
+        slug: crypto.randomUUID(),
+        ownerId: owner.id,
+        name: "Payout lifecycle",
+        domain: `track-route-lifecycle-${crypto.randomUUID()}.example.com`,
+        websiteUrl: "https://payout-lifecycle.example.com",
+      },
+    });
+    const programA = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId: merchant.id,
+        name: "Program A",
+        defaultCommissionRate: "10.00",
+        minimumPayoutAmount: "100.00",
+        commissionDurationType: "FOREVER",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 0,
+      },
+    });
+    const affiliate = await db.affiliate.create({
+      data: {
+        merchantId: merchant.id,
+        programId: programA.id,
+        email: `track-route-lifecycle-${crypto.randomUUID()}@example.com`,
+        links: { create: { code: crypto.randomUUID(), isPrimary: true } },
+      },
+    });
+    const link = await db.affiliateLink.findFirstOrThrow({
+      where: { affiliateId: affiliate.id },
+    });
+    await db.affiliateProgramTerms.create({
+      data: {
+        merchantId: merchant.id,
+        affiliateId: affiliate.id,
+        programId: programA.id,
+        customCommissionRate: "20.00",
+        holdingPeriodDaysOverride: 0,
+        minimumPayoutAmountOverride: "25.00",
+      },
+    });
+
+    const firstClickResponse = await GET(
+      requestFor(merchant.domain, link.code),
+    );
+    expect(firstClickResponse.status).toBe(200);
+    const firstToken = (await firstClickResponse.json()).referralToken;
+    const firstClick = await db.click.findUniqueOrThrow({
+      where: { referralToken: firstToken },
+    });
+    expect(firstClick.programId).toBe(programA.id);
+    expect(firstClick.commissionRateSnapshot?.toFixed(2)).toBe("20.00");
+
+    async function recordSale(
+      clickId: string,
+      paymentRef: string,
+      amount: string,
+    ) {
+      expect(
+        await createCommissionUnlessSelfReferral({
+          data: {
+            affiliateId: affiliate.id,
+            clickId,
+            stripePaymentRef: paymentRef,
+            amount,
+            grossAmount: amount,
+            currency: "usd",
+            status: COMMISSION_STATUS.PENDING,
+            payableAt: new Date(Date.now() - 1_000),
+          },
+        }),
+      ).toBe(true);
+      return db.commission.findFirstOrThrow({
+        where: { stripePaymentRef: paymentRef },
+      });
+    }
+
+    const aFirst = await recordSale(firstClick.id, "lifecycle-a-1", "10.00");
+    expect(aFirst.status).toBe(COMMISSION_STATUS.PENDING);
+    const aSecond = await recordSale(firstClick.id, "lifecycle-a-2", "20.00");
+    expect(aSecond.status).toBe(COMMISSION_STATUS.PAYABLE);
+    const aGroup = await db.commission.findMany({
+      where: { affiliateId: affiliate.id, programId: programA.id },
+      orderBy: { stripePaymentRef: "asc" },
+    });
+    expect(aGroup.map((commission) => commission.status)).toEqual([
+      COMMISSION_STATUS.PAYABLE,
+      COMMISSION_STATUS.PAYABLE,
+    ]);
+
+    const programB = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId: merchant.id,
+        name: "Program B",
+        defaultCommissionRate: "5.00",
+        minimumPayoutAmount: "200.00",
+        commissionDurationType: "FOREVER",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 0,
+      },
+    });
+    await db.affiliateProgramTerms.create({
+      data: {
+        merchantId: merchant.id,
+        affiliateId: affiliate.id,
+        programId: programB.id,
+        customCommissionRate: "30.00",
+        commissionDurationTypeOverride: "FIXED_MONTHS",
+        commissionDurationMonthsOverride: 6,
+        attributionWindowDaysOverride: 10,
+        holdingPeriodDaysOverride: 0,
+        minimumPayoutAmountOverride: "50.00",
+      },
+    });
+    await db.affiliate.update({
+      where: { id: affiliate.id },
+      data: { programId: programB.id },
+    });
+
+    const oldProgramEligibility = await getPayoutEligibility(db, {
+      merchantId: merchant.id,
+      affiliateId: affiliate.id,
+      programId: programA.id,
+      currency: "usd",
+    });
+    expect(oldProgramEligibility).not.toBeNull();
+    expect(oldProgramEligibility?.payable).toBe(true);
+    expect(oldProgramEligibility?.minimum.toFixed(2)).toBe("25.00");
+    expect(oldProgramEligibility?.eligibleBalance.toFixed(2)).toBe("30.00");
+
+    const secondClickResponse = await GET(
+      requestFor(merchant.domain, link.code),
+    );
+    expect(secondClickResponse.status).toBe(200);
+    const secondToken = (await secondClickResponse.json()).referralToken;
+    const secondClick = await db.click.findUniqueOrThrow({
+      where: { referralToken: secondToken },
+    });
+    expect(secondClick.programId).toBe(programB.id);
+    expect(secondClick.commissionRateSnapshot?.toFixed(2)).toBe("30.00");
+    expect(secondClick.commissionDurationTypeSnapshot).toBe("FIXED_MONTHS");
+    expect(secondClick.commissionDurationMonthsSnapshot).toBe(6);
+    expect(
+      secondClick.expiresAt.getTime() - secondClick.createdAt.getTime(),
+    ).toBe(10 * 24 * 60 * 60 * 1000);
+
+    const bFirst = await recordSale(secondClick.id, "lifecycle-b-1", "30.00");
+    expect(bFirst.status).toBe(COMMISSION_STATUS.PENDING);
+    const mixedAttempt = await markCommissionsPaid(
+      owner.id,
+      merchant.id,
+      [
+        { id: aGroup[0].id, amount: aGroup[0].amount.toFixed(2) },
+        { id: bFirst.id, amount: bFirst.amount.toFixed(2) },
+      ],
+      new Date().toISOString(),
+    );
+    expect(mixedAttempt).toEqual({ error: PAYOUT_ERROR.MIXED_GROUP });
+    expect(await db.payout.count()).toBe(0);
+
+    const bSecond = await recordSale(secondClick.id, "lifecycle-b-2", "30.00");
+    expect(bSecond.status).toBe(COMMISSION_STATUS.PAYABLE);
+    const bGroup = await db.commission.findMany({
+      where: { affiliateId: affiliate.id, programId: programB.id },
+      orderBy: { stripePaymentRef: "asc" },
+    });
+    expect(bGroup.map((commission) => commission.status)).toEqual([
+      COMMISSION_STATUS.PAYABLE,
+      COMMISSION_STATUS.PAYABLE,
+    ]);
+
+    const paidA = await markCommissionsPaid(
+      owner.id,
+      merchant.id,
+      aGroup.map((commission) => ({
+        id: commission.id,
+        amount: commission.amount.toFixed(2),
+      })),
+      new Date().toISOString(),
+    );
+    expect(paidA).toMatchObject({ count: 2 });
+    const paidB = await markCommissionsPaid(
+      owner.id,
+      merchant.id,
+      bGroup.map((commission) => ({
+        id: commission.id,
+        amount: commission.amount.toFixed(2),
+      })),
+      new Date().toISOString(),
+    );
+    expect(paidB).toMatchObject({ count: 2 });
+
+    const payouts = await db.payout.findMany({
+      where: { merchantId: merchant.id },
+      orderBy: { programId: "asc" },
+    });
+    expect(payouts).toHaveLength(2);
+    expect(
+      payouts.map((payout) => [payout.programId, payout.total.toFixed(2)]),
+    ).toEqual(
+      [
+        [programA.id, "30.00"],
+        [programB.id, "60.00"],
+      ].sort(([programIdA], [programIdB]) =>
+        programIdA.localeCompare(programIdB),
+      ),
+    );
+    expect(
+      await db.commission.count({
+        where: {
+          affiliateId: affiliate.id,
+          status: COMMISSION_STATUS.PAID,
+        },
+      }),
+    ).toBe(4);
   });
 
   it("gives two visitors behind one address their own clicks", async () => {

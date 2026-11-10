@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { Affiliate, Click, Program } from "@prisma/client";
+import type { AffiliateProgramTerms, Click, Program } from "@prisma/client";
 
 export type CommissionTermProgram = Pick<
   Program,
@@ -12,18 +12,16 @@ export type CommissionTermProgram = Pick<
   | "minimumPayoutAmount"
 >;
 
-export type CommissionTermAffiliate = Pick<Affiliate, "programId"> &
-  Partial<
-    Pick<
-      Affiliate,
-      | "customCommissionRate"
-      | "commissionDurationTypeOverride"
-      | "commissionDurationMonthsOverride"
-      | "attributionWindowDaysOverride"
-      | "holdingPeriodDaysOverride"
-      | "minimumPayoutAmountOverride"
-    >
-  >;
+export type CommissionTermOverrides = Pick<
+  AffiliateProgramTerms,
+  | "programId"
+  | "customCommissionRate"
+  | "commissionDurationTypeOverride"
+  | "commissionDurationMonthsOverride"
+  | "attributionWindowDaysOverride"
+  | "holdingPeriodDaysOverride"
+  | "minimumPayoutAmountOverride"
+>;
 
 export type ClickCommissionTermSnapshot = Pick<
   Click,
@@ -32,6 +30,16 @@ export type ClickCommissionTermSnapshot = Pick<
   | "commissionDurationMonthsSnapshot"
   | "holdingPeriodDaysSnapshot"
 >;
+
+export function clickNeedsCurrentTermFallback(
+  click: ClickCommissionTermSnapshot,
+): boolean {
+  return (
+    click.commissionRateSnapshot === null ||
+    click.commissionDurationTypeSnapshot === null ||
+    click.holdingPeriodDaysSnapshot === null
+  );
+}
 
 export type CommissionDurationTerms = Pick<
   Program,
@@ -62,9 +70,12 @@ function affiliateTermsForProgram<T extends { programId: string }>(
 /** Resolve Program defaults and any overrides for the Affiliate assigned to it. */
 export function resolveCurrentCommissionTerms(
   program: CommissionTermProgram,
-  affiliate?: CommissionTermAffiliate | null,
+  affiliateTerms?: CommissionTermOverrides | null,
 ): CurrentCommissionTerms {
-  const assignedAffiliate = affiliateTermsForProgram(program.id, affiliate);
+  const assignedAffiliate = affiliateTermsForProgram(
+    program.id,
+    affiliateTerms,
+  );
   const durationType =
     assignedAffiliate?.commissionDurationTypeOverride ??
     program.commissionDurationType;
@@ -116,10 +127,10 @@ export function attributionExpiry(createdAt: Date, windowDays: number): Date {
 /** A click freezes commission terms; legacy clicks inherit current terms. */
 export function resolveClickCommissionTerms(
   program: CommissionTermProgram,
-  affiliate: CommissionTermAffiliate | null | undefined,
+  affiliateTerms: CommissionTermOverrides | null | undefined,
   click: ClickCommissionTermSnapshot | null | undefined,
 ): ClickCommissionTerms {
-  const current = resolveCurrentCommissionTerms(program, affiliate);
+  const current = resolveCurrentCommissionTerms(program, affiliateTerms);
   const capturedDurationType = click?.commissionDurationTypeSnapshot;
 
   return {
@@ -142,14 +153,14 @@ export function resolveClickCommissionTerms(
 /** Resolve the assigned Affiliate's payout minimum, falling back to its Program. */
 export function resolveMinimumPayoutAmount(
   program: Pick<Program, "id" | "minimumPayoutAmount">,
-  affiliate?:
-    | (Pick<Affiliate, "programId"> &
-        Partial<Pick<Affiliate, "minimumPayoutAmountOverride">>)
-    | null,
+  affiliateTerms?: Pick<
+    AffiliateProgramTerms,
+    "programId" | "minimumPayoutAmountOverride"
+  > | null,
 ): Prisma.Decimal {
   const override =
-    affiliate?.programId === program.id
-      ? affiliate.minimumPayoutAmountOverride
+    affiliateTerms?.programId === program.id
+      ? affiliateTerms.minimumPayoutAmountOverride
       : null;
   if (override !== null && override !== undefined) return override;
   return program.minimumPayoutAmount;

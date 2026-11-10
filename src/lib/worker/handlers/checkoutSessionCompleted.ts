@@ -2,7 +2,10 @@ import type { Merchant, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
-import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
+import {
+  clickNeedsCurrentTermFallback,
+  resolveClickCommissionTerms,
+} from "@/lib/commissionTerms";
 import { computePayableAt, isExcluded, saleAmountFor } from "../commission";
 import {
   commissionFieldsAtCreation,
@@ -235,7 +238,17 @@ export async function handleCheckoutSessionCompleted(
   // money moved decides whether its first payment is claimed.
   const affiliate = click.affiliate;
   const program = click.program;
-  const terms = resolveClickCommissionTerms(program, affiliate, click);
+  const affiliateTerms = clickNeedsCurrentTermFallback(click)
+    ? await db.affiliateProgramTerms.findUnique({
+        where: {
+          affiliateId_programId: {
+            affiliateId: click.affiliateId,
+            programId: click.programId,
+          },
+        },
+      })
+    : null;
+  const terms = resolveClickCommissionTerms(program, affiliateTerms, click);
   const sale = { ref: stripePaymentRef, at: completedAt };
   if (
     !(await referralStillEarns(

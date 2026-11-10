@@ -210,15 +210,14 @@ export async function updateProgram(
     ) {
       // Affiliate overrides that inherited the old fixed duration must keep
       // that duration when the Program no longer has a month count to inherit.
-      await tx.affiliate.updateMany({
+      await tx.affiliateProgramTerms.updateMany({
         where: {
           programId,
           commissionDurationTypeOverride: "FIXED_MONTHS",
           commissionDurationMonthsOverride: null,
         },
         data: {
-          commissionDurationMonthsOverride:
-            existing.commissionDurationMonths,
+          commissionDurationMonthsOverride: existing.commissionDurationMonths,
         },
       });
     }

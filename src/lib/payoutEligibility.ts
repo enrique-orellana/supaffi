@@ -128,18 +128,23 @@ export async function getPayoutEligibility(
   eligibleBalance: Prisma.Decimal;
   payable: boolean;
 } | null> {
-  const [program, affiliate, aggregate] = await Promise.all([
+  const [program, affiliate, affiliateTerms, aggregate] = await Promise.all([
     client.program.findFirst({
       where: { id: group.programId, merchantId: group.merchantId },
       select: { id: true, minimumPayoutAmount: true },
     }),
     client.affiliate.findFirst({
       where: { id: group.affiliateId, merchantId: group.merchantId },
-      select: {
-        id: true,
-        programId: true,
-        minimumPayoutAmountOverride: true,
+      select: { id: true },
+    }),
+    client.affiliateProgramTerms.findUnique({
+      where: {
+        affiliateId_programId: {
+          affiliateId: group.affiliateId,
+          programId: group.programId,
+        },
       },
+      select: { programId: true, minimumPayoutAmountOverride: true },
     }),
     client.commission.aggregate({
       where: eligibleCommissionWhere(group, now),
@@ -147,7 +152,7 @@ export async function getPayoutEligibility(
     }),
   ]);
   if (!program || !affiliate) return null;
-  const minimum = resolveMinimumPayoutAmount(program, affiliate);
+  const minimum = resolveMinimumPayoutAmount(program, affiliateTerms);
   const eligibleBalance = aggregate._sum.amount ?? new Prisma.Decimal(0);
   return {
     minimum,
@@ -357,20 +362,31 @@ export async function getProgramMinimumImpact(
   );
   if (candidates.length === 0) return [];
 
-  const affiliates = await client.affiliate.findMany({
-    where: {
-      id: { in: [...new Set(candidates.map((group) => group.affiliateId))] },
-      merchantId,
-    },
-    select: {
-      id: true,
-      name: true,
-      programId: true,
-      minimumPayoutAmountOverride: true,
-    },
-  });
+  const affiliateIds = [
+    ...new Set(candidates.map((group) => group.affiliateId)),
+  ];
+  const [affiliates, affiliateTerms] = await Promise.all([
+    client.affiliate.findMany({
+      where: {
+        id: { in: affiliateIds },
+        merchantId,
+      },
+      select: { id: true, name: true },
+    }),
+    client.affiliateProgramTerms.findMany({
+      where: { merchantId, programId, affiliateId: { in: affiliateIds } },
+      select: {
+        affiliateId: true,
+        programId: true,
+        minimumPayoutAmountOverride: true,
+      },
+    }),
+  ]);
   const affiliatesById = new Map(
     affiliates.map((affiliate) => [affiliate.id, affiliate]),
+  );
+  const termsByAffiliateId = new Map(
+    affiliateTerms.map((terms) => [terms.affiliateId, terms]),
   );
   const proposedProgram = {
     id: programId,
@@ -380,7 +396,7 @@ export async function getProgramMinimumImpact(
     group.eligibleBalance.lt(
       resolveMinimumPayoutAmount(
         proposedProgram,
-        affiliatesById.get(group.affiliateId),
+        termsByAffiliateId.get(group.affiliateId),
       ),
     ),
   );

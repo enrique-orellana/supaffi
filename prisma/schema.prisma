@@ -98,13 +98,14 @@ model Program {
   // open to whoever guesses its slug. The Owner moves Affiliates in instead.
   signupOpen               Boolean                @default(true)
 
-  affiliates          Affiliate[]
-  clicks              Click[]
-  commissions         Commission[]
-  payouts             Payout[]
-  importedCommissions ImportedCommission[]
-  importedPayouts     ImportedPayout[]
-  createdAt           DateTime             @default(now())
+  affiliates             Affiliate[]
+  affiliateTermOverrides AffiliateProgramTerms[]
+  clicks                 Click[]
+  commissions            Commission[]
+  payouts                Payout[]
+  importedCommissions    ImportedCommission[]
+  importedPayouts        ImportedPayout[]
+  createdAt              DateTime                @default(now())
 
   @@unique([merchantId, slug])
   @@unique([id, merchantId])
@@ -129,27 +130,43 @@ model Affiliate {
   importSourceIdentity String?   @unique
   /// Null follows the current Program's currency; otherwise an affiliate-chosen dashboard display currency.
   displayCurrency      String?   @db.VarChar(3)
-  customCommissionRate Decimal?  @db.Decimal(5, 2) // Affiliate-level commission rate override; null inherits the Program.
-  commissionDurationTypeOverride   CommissionDurationType? // Null inherits the Program; applies to every link.
-  commissionDurationMonthsOverride Int? // Used only when the duration override is FIXED_MONTHS.
-  attributionWindowDaysOverride    Int? // Null inherits the Program; applies to every link.
-  holdingPeriodDaysOverride        Int? // Null inherits the Program; applies to every link.
-  minimumPayoutAmountOverride      Decimal?  @db.Decimal(18, 2) // Null inherits the Program; 0 means no minimum.
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
-  links               AffiliateLink[]
-  clicks              Click[]
-  commissions         Commission[]
-  payouts             Payout[]
-  importedCommissions ImportedCommission[]
-  importedPayouts     ImportedPayout[]
-  loginTokens         AffiliateLoginToken[]
-  createdAt           DateTime              @default(now())
+  links                AffiliateLink[]
+  programTermOverrides AffiliateProgramTerms[]
+  clicks               Click[]
+  commissions          Commission[]
+  payouts              Payout[]
+  importedCommissions  ImportedCommission[]
+  importedPayouts      ImportedPayout[]
+  loginTokens          AffiliateLoginToken[]
+  createdAt            DateTime                @default(now())
 
   @@unique([merchantId, email])
   // Supports AffiliateLink's composite foreign key, which prevents a link
   // from naming a Merchant different from its Affiliate's Merchant.
   @@unique([id, merchantId])
+}
+
+/// Optional terms for one Affiliate in one Program. These survive reassignment,
+/// so historical commissions keep resolving the terms for their own Program.
+model AffiliateProgramTerms {
+  merchantId  String
+  affiliateId String
+  programId   String
+
+  customCommissionRate             Decimal?                @db.Decimal(5, 2)
+  commissionDurationTypeOverride   CommissionDurationType?
+  commissionDurationMonthsOverride Int?
+  attributionWindowDaysOverride    Int?
+  holdingPeriodDaysOverride        Int?
+  minimumPayoutAmountOverride      Decimal?                @db.Decimal(18, 2)
+
+  affiliate Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: Cascade)
+  program   Program   @relation(fields: [programId, merchantId], references: [id, merchantId], onDelete: Cascade)
+
+  @@id([affiliateId, programId])
+  @@index([merchantId, programId])
 }
 
 /// One shareable referral URL. An Affiliate starts with a primary link created

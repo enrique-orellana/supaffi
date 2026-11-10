@@ -4,12 +4,16 @@ const {
   affiliateFindFirstMock,
   programFindFirstMock,
   affiliateUpdateMock,
+  affiliateTermsUpsertMock,
+  affiliateTermsDeleteMock,
   transactionMock,
   recalculateAffiliateMock,
 } = vi.hoisted(() => ({
   affiliateFindFirstMock: vi.fn(),
   programFindFirstMock: vi.fn(),
   affiliateUpdateMock: vi.fn(),
+  affiliateTermsUpsertMock: vi.fn(),
+  affiliateTermsDeleteMock: vi.fn(),
   transactionMock: vi.fn(),
   recalculateAffiliateMock: vi.fn(),
 }));
@@ -44,6 +48,10 @@ const TX = {
     findFirst: affiliateFindFirstMock,
     update: affiliateUpdateMock,
   },
+  affiliateProgramTerms: {
+    upsert: affiliateTermsUpsertMock,
+    deleteMany: affiliateTermsDeleteMock,
+  },
   program: { findFirst: programFindFirstMock },
 };
 
@@ -60,6 +68,8 @@ describe("saveAffiliateSettingsAction", () => {
     affiliateFindFirstMock.mockReset().mockResolvedValue({ id: "affiliate-1" });
     programFindFirstMock.mockReset().mockResolvedValue({ id: "program-1" });
     affiliateUpdateMock.mockReset().mockResolvedValue({});
+    affiliateTermsUpsertMock.mockReset().mockResolvedValue({});
+    affiliateTermsDeleteMock.mockReset().mockResolvedValue({ count: 0 });
     transactionMock
       .mockReset()
       .mockImplementation(async (callback) => callback(TX));
@@ -79,8 +89,23 @@ describe("saveAffiliateSettingsAction", () => {
     expect(result).toEqual({ success: true });
     expect(affiliateUpdateMock).toHaveBeenCalledWith({
       where: { id: "affiliate-1" },
-      data: expect.objectContaining({
+      data: { programId: "program-1" },
+    });
+    expect(affiliateTermsUpsertMock).toHaveBeenCalledWith({
+      where: {
+        affiliateId_programId: {
+          affiliateId: "affiliate-1",
+          programId: "program-1",
+        },
+      },
+      create: expect.objectContaining({
+        merchantId: PRODUCT.id,
+        affiliateId: "affiliate-1",
         programId: "program-1",
+        customCommissionRate: "27.50",
+        minimumPayoutAmountOverride: "75.00",
+      }),
+      update: expect.objectContaining({
         customCommissionRate: "27.50",
         minimumPayoutAmountOverride: "75.00",
       }),
@@ -105,11 +130,46 @@ describe("saveAffiliateSettingsAction", () => {
     expect(result).toEqual({ success: true });
     expect(affiliateUpdateMock).toHaveBeenCalledWith({
       where: { id: "affiliate-1" },
-      data: expect.objectContaining({
-        customCommissionRate: null,
-        minimumPayoutAmountOverride: null,
-      }),
+      data: { programId: "program-1" },
     });
+    expect(affiliateTermsDeleteMock).toHaveBeenCalledWith({
+      where: {
+        merchantId: PRODUCT.id,
+        affiliateId: "affiliate-1",
+        programId: "program-1",
+      },
+    });
+  });
+
+  it("writes overrides to the selected Affiliate/Program pair", async () => {
+    programFindFirstMock.mockResolvedValue({ id: "program-2" });
+
+    const result = await saveAffiliateSettingsAction(
+      PRODUCT,
+      "affiliate-1",
+      settings({
+        programId: "program-2",
+        commissionRateOverride: "35",
+      }),
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(affiliateTermsUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          affiliateId_programId: {
+            affiliateId: "affiliate-1",
+            programId: "program-2",
+          },
+        },
+        create: expect.objectContaining({
+          affiliateId: "affiliate-1",
+          programId: "program-2",
+          customCommissionRate: "35.00",
+        }),
+      }),
+    );
+    expect(affiliateTermsDeleteMock).not.toHaveBeenCalled();
   });
 
   it("rejects rates outside the supported percentage range", async () => {

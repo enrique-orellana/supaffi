@@ -36,14 +36,24 @@ describe("getProgramMinimumImpact", () => {
         findMany: vi.fn().mockResolvedValue([
           {
             id: "no-minimum",
-            programId: "program-1",
             name: "No minimum",
-            minimumPayoutAmountOverride: new Prisma.Decimal("0"),
           },
           {
             id: "program-minimum",
-            programId: "program-1",
             name: "Program minimum",
+          },
+        ]),
+      },
+      affiliateProgramTerms: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            affiliateId: "no-minimum",
+            programId: "program-1",
+            minimumPayoutAmountOverride: new Prisma.Decimal("0"),
+          },
+          {
+            affiliateId: "program-minimum",
+            programId: "program-1",
             minimumPayoutAmountOverride: null,
           },
         ]),
@@ -82,6 +92,52 @@ describe("getPayoutEligibility", () => {
       affiliate: {
         findFirst: vi.fn().mockResolvedValue({
           id: "affiliate-1",
+        }),
+      },
+      affiliateProgramTerms: {
+        findUnique: vi.fn().mockResolvedValue({
+          affiliateId: "affiliate-1",
+          programId: "program-1",
+          minimumPayoutAmountOverride: new Prisma.Decimal("25"),
+        }),
+      },
+      commission: {
+        aggregate: vi.fn().mockResolvedValue({
+          _sum: { amount: new Prisma.Decimal("50") },
+        }),
+      },
+    };
+
+    const eligibility = await getPayoutEligibility(
+      client as unknown as Parameters<typeof getPayoutEligibility>[0],
+      GROUP,
+      new Date("2026-11-10T12:00:00.000Z"),
+    );
+
+    expect(eligibility).toEqual({
+      minimum: new Prisma.Decimal("25"),
+      eligibleBalance: new Prisma.Decimal("50"),
+      payable: true,
+    });
+  });
+
+  it("keeps Program A's override for its commissions after reassignment to Program B", async () => {
+    const client = {
+      program: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "program-1",
+          minimumPayoutAmount: new Prisma.Decimal("100"),
+        }),
+      },
+      affiliate: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "affiliate-1",
+          programId: "program-2",
+        }),
+      },
+      affiliateProgramTerms: {
+        findUnique: vi.fn().mockResolvedValue({
+          affiliateId: "affiliate-1",
           programId: "program-1",
           minimumPayoutAmountOverride: new Prisma.Decimal("25"),
         }),

@@ -32,12 +32,6 @@ const TRACKING_LINK_SELECT = {
     select: {
       id: true,
       programId: true,
-      customCommissionRate: true,
-      commissionDurationTypeOverride: true,
-      commissionDurationMonthsOverride: true,
-      attributionWindowDaysOverride: true,
-      holdingPeriodDaysOverride: true,
-      minimumPayoutAmountOverride: true,
       program: {
         select: {
           id: true,
@@ -192,9 +186,17 @@ export async function GET(req: NextRequest) {
 
   const referralToken = newBrowserToken ?? randomUUID();
   const createdAt = new Date();
+  const affiliateTerms = await db.affiliateProgramTerms.findUnique({
+    where: {
+      affiliateId_programId: {
+        affiliateId: link.affiliate.id,
+        programId: link.affiliate.program.id,
+      },
+    },
+  });
   const terms = resolveCurrentCommissionTerms(
     link.affiliate.program,
-    link.affiliate,
+    affiliateTerms,
   );
   const expiresAt = attributionExpiry(createdAt, terms.attributionWindowDays);
   const termSnapshot = clickCommissionTermSnapshot(terms);

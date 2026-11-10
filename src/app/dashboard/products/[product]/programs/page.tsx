@@ -86,39 +86,74 @@ export default async function ProgramsPage({
     ? (programs.find((p) => p.id === query.edit) ?? null)
     : null;
   const storedRateOverrides: StoredRateOverride[] = editing
-    ? (
-        await db.affiliate.findMany({
-          where: {
-            merchantId: merchant.id,
-            programId: editing.id,
-            OR: [
-              { customCommissionRate: { not: null } },
-              { links: { some: { commissionRateOverride: { not: null } } } },
-            ],
-          },
-          orderBy: [{ name: "asc" }, { email: "asc" }],
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            customCommissionRate: true,
-            links: {
-              where: { commissionRateOverride: { not: null } },
-              orderBy: { code: "asc" },
-              select: { code: true, commissionRateOverride: true },
+    ? await (async () => {
+        const [terms, affiliatesWithLegacyLinkRates] = await Promise.all([
+          db.affiliateProgramTerms.findMany({
+            where: {
+              merchantId: merchant.id,
+              programId: editing.id,
+              customCommissionRate: { not: null },
             },
-          },
-        })
-      ).map((affiliate) => ({
-        affiliateId: affiliate.id,
-        affiliateName: affiliate.name ?? affiliate.email,
-        affiliateRate: affiliate.customCommissionRate?.toString() ?? null,
-        linkRates: affiliate.links.flatMap((link) =>
-          link.commissionRateOverride === null
-            ? []
-            : [{ code: link.code, rate: link.commissionRateOverride.toString() }],
-        ),
-      }))
+            orderBy: { affiliate: { name: "asc" } },
+            select: {
+              affiliateId: true,
+              customCommissionRate: true,
+              affiliate: {
+                select: { name: true, email: true },
+              },
+            },
+          }),
+          db.affiliate.findMany({
+            where: {
+              merchantId: merchant.id,
+              programId: editing.id,
+              links: { some: { commissionRateOverride: { not: null } } },
+            },
+            orderBy: [{ name: "asc" }, { email: "asc" }],
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              links: {
+                where: { commissionRateOverride: { not: null } },
+                orderBy: { code: "asc" },
+                select: { code: true, commissionRateOverride: true },
+              },
+            },
+          }),
+        ]);
+        const overrides = new Map<string, StoredRateOverride>();
+        for (const term of terms) {
+          overrides.set(term.affiliateId, {
+            affiliateId: term.affiliateId,
+            affiliateName: term.affiliate.name ?? term.affiliate.email,
+            affiliateRate: term.customCommissionRate?.toString() ?? null,
+            linkRates: [],
+          });
+        }
+        for (const affiliate of affiliatesWithLegacyLinkRates) {
+          const row = overrides.get(affiliate.id) ?? {
+            affiliateId: affiliate.id,
+            affiliateName: affiliate.name ?? affiliate.email,
+            affiliateRate: null,
+            linkRates: [],
+          };
+          row.linkRates = affiliate.links.flatMap((link) =>
+            link.commissionRateOverride === null
+              ? []
+              : [
+                  {
+                    code: link.code,
+                    rate: link.commissionRateOverride.toString(),
+                  },
+                ],
+          );
+          overrides.set(affiliate.id, row);
+        }
+        return [...overrides.values()].sort((a, b) =>
+          a.affiliateName.localeCompare(b.affiliateName),
+        );
+      })()
     : [];
 
   return (

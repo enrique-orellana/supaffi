@@ -381,16 +381,26 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     customCommissionRate?: string;
     merchantId?: string;
   }) {
-    return db.affiliate.create({
+    const affiliate = await db.affiliate.create({
       data: {
         merchantId: fields.merchantId ?? merchantId,
         programId: fields.programId ?? programId,
         email: fields.email,
         name: fields.name ?? null,
         links: { create: { code: fields.referralCode, isPrimary: true } },
-        customCommissionRate: fields.customCommissionRate ?? null,
       },
     });
+    if (fields.customCommissionRate !== undefined) {
+      await db.affiliateProgramTerms.create({
+        data: {
+          merchantId: fields.merchantId ?? merchantId,
+          affiliateId: affiliate.id,
+          programId: fields.programId ?? programId,
+          customCommissionRate: fields.customCommissionRate,
+        },
+      });
+    }
+    return affiliate;
   }
 
   async function makeClick(affiliateId: string) {
@@ -741,7 +751,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(row?.programId).toBe(vipProgramId);
     });
 
-    it("preserves a stored legacy rate when moving programs", async () => {
+    it("keeps the rate attached to the original Program when moving programs", async () => {
       const affiliate = await makeAffiliate({
         email: "rate@example.com",
         referralCode: "rate",
@@ -751,10 +761,76 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       await updateAffiliate(ownerId, merchantId, affiliate.id, {
         programId: vipProgramId,
       });
-      const updated = await db.affiliate.findUnique({
-        where: { id: affiliate.id },
+      const [updated, movedRate] = await Promise.all([
+        db.affiliate.findUnique({ where: { id: affiliate.id } }),
+        db.affiliateProgramTerms.findUnique({
+          where: {
+            affiliateId_programId: {
+              affiliateId: affiliate.id,
+              programId,
+            },
+          },
+        }),
+      ]);
+      expect(updated?.programId).toBe(vipProgramId);
+      expect(Number(movedRate?.customCommissionRate)).toBe(25);
+      expect(
+        await db.affiliateProgramTerms.findUnique({
+          where: {
+            affiliateId_programId: {
+              affiliateId: affiliate.id,
+              programId: vipProgramId,
+            },
+          },
+        }),
+      ).toBeNull();
+    });
+
+    it("restores each Program's Affiliate override when reassigned back", async () => {
+      const affiliate = await makeAffiliate({
+        email: "pair-terms@example.com",
+        referralCode: "pair-terms",
+        customCommissionRate: "25.00",
       });
-      expect(Number(updated?.customCommissionRate)).toBe(25);
+
+      await updateAffiliate(ownerId, merchantId, affiliate.id, {
+        programId: vipProgramId,
+      });
+      await db.affiliateProgramTerms.create({
+        data: {
+          merchantId,
+          affiliateId: affiliate.id,
+          programId: vipProgramId,
+          customCommissionRate: "42.50",
+        },
+      });
+
+      const vipRows = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: null, query: "pair-terms@example.com" },
+        { page: 1, pageSize: 25 },
+      );
+      expect(vipRows.rows[0]?.commissionRate).toBe("42.5");
+
+      await updateAffiliate(ownerId, merchantId, affiliate.id, { programId });
+      const standardRows = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: null, query: "pair-terms@example.com" },
+        { page: 1, pageSize: 25 },
+      );
+      expect(standardRows.rows[0]?.commissionRate).toBe("25");
+
+      const storedVipTerms = await db.affiliateProgramTerms.findUnique({
+        where: {
+          affiliateId_programId: {
+            affiliateId: affiliate.id,
+            programId: vipProgramId,
+          },
+        },
+      });
+      expect(Number(storedVipTerms?.customCommissionRate)).toBe(42.5);
     });
 
     it("refuses a program that belongs to another product", async () => {

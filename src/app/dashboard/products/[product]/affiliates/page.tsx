@@ -11,6 +11,7 @@ import {
   AFFILIATES_PAGE_SIZE,
 } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
+import { db } from "@/lib/db";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
 import {
@@ -171,10 +172,22 @@ export default async function AffiliatesPage({
 
   let sheetAffiliate: SheetAffiliate | null = null;
   if (selected) {
-    const [details, links, linkTerms] = await Promise.all([
+    const [details, links, linkTerms, programTerms] = await Promise.all([
       getAffiliateDetails(ownerId, merchant.id, [selected.id]),
       listLinksWithStats(selected.id),
       listOwnerLinkTerms(ownerId, merchant.id, selected.id),
+      db.affiliateProgramTerms.findMany({
+        where: { merchantId: merchant.id, affiliateId: selected.id },
+        select: {
+          programId: true,
+          customCommissionRate: true,
+          minimumPayoutAmountOverride: true,
+          commissionDurationTypeOverride: true,
+          commissionDurationMonthsOverride: true,
+          attributionWindowDaysOverride: true,
+          holdingPeriodDaysOverride: true,
+        },
+      }),
     ]);
     const detail = details[selected.id];
     const hasLegacyLinkTerms = linkTerms.some(
@@ -191,14 +204,18 @@ export default async function AffiliatesPage({
       email: selected.email,
       joinedAt: formatDate(selected.createdAt),
       programId: selected.programId,
+      programTerms: programTerms.map((terms) => ({
+        programId: terms.programId,
+        commissionRateOverride: terms.customCommissionRate?.toString() ?? null,
+        minimumPayoutAmountOverride:
+          terms.minimumPayoutAmountOverride?.toFixed(2) ?? null,
+        commissionDurationTypeOverride: terms.commissionDurationTypeOverride,
+        commissionDurationMonthsOverride:
+          terms.commissionDurationMonthsOverride,
+        attributionWindowDaysOverride: terms.attributionWindowDaysOverride,
+        holdingPeriodDaysOverride: terms.holdingPeriodDaysOverride,
+      })),
       hasLegacyTermOverrides: hasLegacyLinkTerms,
-      commissionRateOverride: selected.commissionRateOverride,
-      minimumPayoutAmountOverride: selected.minimumPayoutAmountOverride,
-      commissionDurationTypeOverride: selected.commissionDurationTypeOverride,
-      commissionDurationMonthsOverride:
-        selected.commissionDurationMonthsOverride,
-      attributionWindowDaysOverride: selected.attributionWindowDaysOverride,
-      holdingPeriodDaysOverride: selected.holdingPeriodDaysOverride,
       payoutDetails: detail?.payoutDetails ?? null,
       hasPassword: detail?.hasPassword ?? true,
       links: links.map((l) => ({

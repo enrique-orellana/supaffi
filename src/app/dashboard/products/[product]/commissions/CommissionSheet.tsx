@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sheet,
@@ -11,6 +12,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
@@ -22,7 +33,8 @@ import {
 } from "./commissionActions";
 
 /**
- * One commission in detail, and the one action that fits the state it is in.
+ * One commission in detail, with state-appropriate actions confirmed before
+ * they run.
  *
  * The list selects with `?commission=<id>` and the panel is rendered on the
  * server from that row, so there is no client copy of a commission to keep in
@@ -95,6 +107,47 @@ const STATUS_LABELS: Record<CommissionStatus, string> = {
   [COMMISSION_STATUS.VOIDED]: "Voided",
 };
 
+const COMMISSION_ROW_ACTION = {
+  CONFIRM_SELF_REFERRAL: "confirm-self-referral",
+  DISMISS_FLAG: "dismiss-flag",
+  VOID: "void",
+} as const;
+
+type CommissionRowAction =
+  (typeof COMMISSION_ROW_ACTION)[keyof typeof COMMISSION_ROW_ACTION];
+
+const COMMISSION_ACTION_CONFIRMATION: Record<
+  CommissionRowAction,
+  {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    destructive: boolean;
+  }
+> = {
+  [COMMISSION_ROW_ACTION.CONFIRM_SELF_REFERRAL]: {
+    title: "Confirm this self-referral?",
+    description:
+      "This will void its unpaid commissions and stop future commissions tied to this referral. Already paid commissions remain unchanged.",
+    confirmLabel: "Confirm self-referral",
+    destructive: true,
+  },
+  [COMMISSION_ROW_ACTION.DISMISS_FLAG]: {
+    title: "Dismiss this flag?",
+    description:
+      "This clears the review flag and returns the commission to normal payout checks. Any hold or dispute still applies.",
+    confirmLabel: "Dismiss flag",
+    destructive: false,
+  },
+  [COMMISSION_ROW_ACTION.VOID]: {
+    title: "Void this commission?",
+    description:
+      "This removes the commission from unpaid balances and records the reason in its history.",
+    confirmLabel: "Void commission",
+    destructive: true,
+  },
+};
+
 function Line({
   label,
   children,
@@ -165,6 +218,11 @@ export function CommissionSheet({
   listHref: string;
 }) {
   const router = useRouter();
+  const [confirmation, setConfirmation] = useState<CommissionRowAction | null>(
+    null,
+  );
+  const [voidReason, setVoidReason] = useState("");
+  const [pending, startTransition] = useTransition();
 
   const flag =
     commission.status === COMMISSION_STATUS.FLAGGED
@@ -192,19 +250,37 @@ export function CommissionSheet({
       commission.voidReason === "confirmed self-referral"
     );
 
+  const confirmationCopy = confirmation
+    ? COMMISSION_ACTION_CONFIRMATION[confirmation]
+    : null;
+
+  function submitConfirmedAction() {
+    if (!confirmation) return;
+    startTransition(async () => {
+      if (confirmation === COMMISSION_ROW_ACTION.CONFIRM_SELF_REFERRAL) {
+        await confirmFraudAction(listHref, product, commission.id);
+      } else if (confirmation === COMMISSION_ROW_ACTION.DISMISS_FLAG) {
+        await dismissFlagAction(listHref, product, commission.id);
+      } else {
+        const formData = new FormData();
+        formData.set("reason", voidReason);
+        await voidAction(listHref, product, commission.id, formData);
+      }
+    });
+  }
+
   const confirmForm = (
-    <form
-      action={confirmFraudAction.bind(null, listHref, product, commission.id)}
+    <Button
+      type="button"
+      size="sm"
+      variant="destructive"
+      className="cursor-pointer"
+      onClick={() =>
+        setConfirmation(COMMISSION_ROW_ACTION.CONFIRM_SELF_REFERRAL)
+      }
     >
-      <Button
-        type="submit"
-        size="sm"
-        variant="destructive"
-        className="cursor-pointer"
-      >
-        Confirm self referral and stop its commissions
-      </Button>
-    </form>
+      Confirm self referral and stop its commissions
+    </Button>
   );
 
   return (
@@ -372,8 +448,11 @@ export function CommissionSheet({
             // A reason, because a voided commission is read months later by
             // somebody asking why an affiliate was not paid for a sale.
             <form
-              action={voidAction.bind(null, listHref, product, commission.id)}
               className="flex flex-col gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setConfirmation(COMMISSION_ROW_ACTION.VOID);
+              }}
             >
               <Label htmlFor="void-reason" className="text-sm font-medium">
                 Reason for void
@@ -382,6 +461,8 @@ export function CommissionSheet({
                 <Input
                   id="void-reason"
                   name="reason"
+                  value={voidReason}
+                  onChange={(event) => setVoidReason(event.target.value)}
                   placeholder="Add a note"
                   maxLength={200}
                   className="flex-1"
@@ -400,25 +481,19 @@ export function CommissionSheet({
           )}
 
           {commission.status === COMMISSION_STATUS.FLAGGED && (
-            <div className="flex gap-2">
+            <div className="flex flex-col items-start gap-2">
               {canConfirm && confirmForm}
-              <form
-                action={dismissFlagAction.bind(
-                  null,
-                  listHref,
-                  product,
-                  commission.id,
-                )}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="cursor-pointer"
+                onClick={() =>
+                  setConfirmation(COMMISSION_ROW_ACTION.DISMISS_FLAG)
+                }
               >
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="secondary"
-                  className="cursor-pointer"
-                >
-                  Dismiss flag
-                </Button>
-              </form>
+                Dismiss flag
+              </Button>
             </div>
           )}
 
@@ -428,7 +503,8 @@ export function CommissionSheet({
               {commission.payoutRecord && (
                 <p>
                   Included in payout {commission.payoutRecord.id} for{" "}
-                  {commission.payoutRecord.total}, recorded {commission.payoutRecord.paidLabel}
+                  {commission.payoutRecord.total}, recorded{" "}
+                  {commission.payoutRecord.paidLabel}
                   {commission.payoutRecord.isException
                     ? " as a below-minimum exception."
                     : "."}
@@ -447,6 +523,44 @@ export function CommissionSheet({
             </p>
           )}
         </div>
+
+        <AlertDialog
+          open={confirmation !== null}
+          onOpenChange={(open) => {
+            if (!open && !pending) setConfirmation(null);
+          }}
+        >
+          <AlertDialogContent>
+            {confirmationCopy && (
+              <AlertDialogHeader>
+                <AlertDialogTitle>{confirmationCopy.title}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {confirmationCopy.description}
+                  {confirmation === COMMISSION_ROW_ACTION.VOID && (
+                    <span className="mt-2 block">
+                      Reason: {voidReason.trim() || "voided by owner"}
+                    </span>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                variant={
+                  confirmationCopy?.destructive ? "destructive" : "secondary"
+                }
+                disabled={pending}
+                onClick={submitConfirmedAction}
+              >
+                {pending
+                  ? "Working"
+                  : (confirmationCopy?.confirmLabel ?? "Confirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   );
