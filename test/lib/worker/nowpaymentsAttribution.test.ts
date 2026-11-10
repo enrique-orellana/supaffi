@@ -345,10 +345,10 @@ describe("NOWPayments checkout attribution", () => {
         throw new Error("Mock IPN relay did not bind to a TCP port");
 
       const invoiceRequest = {
-        price_amount: 31.25,
+        price_amount: 2,
         price_currency: "eur",
-        order_id: "local-order-21",
-        order_description: "Product",
+        order_id: "ord_-ziATqSArs_4Do7m",
+        order_description: "Editing Room Monochrome - Lukin",
         success_url: "https://product.example.com/thanks",
         cancel_url: "https://product.example.com/cancel",
         ipn_callback_url: `http://127.0.0.1:${relayAddress.port}/ipn`,
@@ -402,25 +402,30 @@ describe("NOWPayments checkout attribution", () => {
       );
       expect(attributionResponse.status).toBe(204);
 
-      const providerUpdatedAt = new Date(Date.now() + 1_000).toISOString();
       const ipnPayload = {
-        payment_id: 90021,
+        fee: {
+          currency: "usdcsol",
+          depositFee: "0.00126",
+          serviceFee: "0.022194",
+          withdrawalFee: "0",
+        },
+        order_id: "ord_-ziATqSArs_4Do7m",
         invoice_id: invoice.id,
+        pay_amount: "25.68649486",
+        payment_id: "5634396091",
+        pay_address: "0x693a23a9465b7EeFF68EC123B0c4A0529CA9Dd0a",
+        purchase_id: "5528364594",
+        pay_currency: "maticmainnet",
+        price_amount: "2",
+        actually_paid: "25.68649486",
+        outcome_amount: "2.197182",
+        payin_extra_id: null,
         payment_status: "finished",
-        pay_address: "mock-address",
-        price_amount: 31.25,
-        price_currency: "EUR",
-        pay_amount: 0.0005,
-        actually_paid: 0.0005,
-        pay_currency: "BTC",
-        order_id: "local-order-21",
-        order_description: "Product",
-        purchase_id: "mock-purchase-21",
-        outcome_amount: 0.00049,
-        outcome_currency: "BTC",
-        created_at: new Date().toISOString(),
-        updated_at: providerUpdatedAt,
-        network: "btc",
+        price_currency: "eur",
+        outcome_currency: "usdcsol",
+        parent_payment_id: null,
+        payment_extra_ids: null,
+        actually_paid_at_fiat: "0",
       };
       const signature = createHmac("sha512", NOWPAYMENTS_SECRET)
         .update(JSON.stringify(sortForSignature(ipnPayload)), "utf8")
@@ -450,20 +455,20 @@ describe("NOWPayments checkout attribution", () => {
 
       await runTick();
 
-      const payment = await getPayment("local-order-21");
-      expect(payment.paymentRef).toBe("90021");
+      const payment = await getPayment("ord_-ziATqSArs_4Do7m");
+      expect(payment.paymentRef).toBe("5634396091");
       expect(payment.checkoutRef).toBe(MOCK_INVOICE_REFERENCE);
       expect(payment.status).toBe("finished");
       expect(payment.clickId).toBe(clickId);
-      expect(payment.saleAmount.toString()).toBe("31.25");
-      expect(payment.cryptoAmount?.toString()).toBe("0.0005");
-      expect(payment.cryptoCurrency).toBe("btc");
-      expect(payment.cryptoNetwork).toBe("btc");
+      expect(payment.saleAmount.toString()).toBe("2");
+      expect(payment.cryptoAmount?.toString()).toBe("25.68649486");
+      expect(payment.cryptoCurrency).toBe("maticmainnet");
+      expect(payment.cryptoNetwork).toBeNull();
       const commission = await db.commission.findUniqueOrThrow({
         where: { paymentRecordId: payment.id },
       });
-      expect(commission.amount.toString()).toBe("6.25");
-      expect(commission.saleAmount?.toString()).toBe("31.25");
+      expect(commission.amount.toString()).toBe("0.39");
+      expect(commission.saleAmount?.toString()).toBe("2");
       expect(
         await db.webhookEvent.count({
           where: { merchantId: merchant.id, status: "PROCESSED" },
@@ -520,7 +525,7 @@ describe("NOWPayments checkout attribution", () => {
     ).toBe(1);
   });
 
-  it("records a finished payment without affiliate credit when provider timestamps are missing", async () => {
+  it("credits the invoice referral when NOWPayments omits provider timestamps", async () => {
     await registerCheckout();
     const event = queuedEvent("finished");
     delete event.rawPayload.updated_at;
@@ -530,7 +535,87 @@ describe("NOWPayments checkout attribution", () => {
     const payment = await getPayment();
     expect(payment.status).toBe("finished");
     expect(payment.clickId).toBe(clickId);
-    expect(await db.commission.count()).toBe(0);
+    expect(await db.commission.count()).toBe(1);
+  });
+
+  it("uses payment ID to retain the invoice referral when a later status omits its invoice and order IDs", async () => {
+    await registerCheckout();
+    const waiting = queuedEvent("waiting");
+    await processEvent(waiting);
+
+    const finished = queuedEvent("finished");
+    delete finished.rawPayload.invoice_id;
+    delete finished.rawPayload.order_id;
+    delete finished.rawPayload.updated_at;
+    await processEvent(finished);
+    await processEvent(finished, "finished-retry");
+
+    const payment = await db.paymentRecord.findUniqueOrThrow({
+      where: {
+        merchantId_provider_paymentRef: {
+          merchantId: merchant.id,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+          paymentRef: "payment-21",
+        },
+      },
+    });
+    expect(payment.sourceOrderId).toBe("local-order-21");
+    expect(payment.checkoutRef).toBe(INVOICE_REFERENCE);
+    expect(payment.clickId).toBe(clickId);
+    expect(payment.status).toBe("finished");
+    expect(await db.paymentRecord.count()).toBe(1);
+    expect(
+      await db.commission.count({ where: { paymentRecordId: payment.id } }),
+    ).toBe(1);
+  });
+
+  it("measures fixed commission duration from invoice capture when the webhook arrives late without timestamps", async () => {
+    const clickCreatedAt = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const firstCommissionAt = new Date(
+      clickCreatedAt.getTime() + 10 * 24 * 60 * 60 * 1000,
+    );
+    const invoiceCapturedAt = new Date(
+      clickCreatedAt.getTime() + 20 * 24 * 60 * 60 * 1000,
+    );
+    const webhookReceivedAt = new Date(
+      clickCreatedAt.getTime() + 50 * 24 * 60 * 60 * 1000,
+    );
+    await db.click.update({
+      where: { id: clickId },
+      data: {
+        createdAt: clickCreatedAt,
+        expiresAt: new Date(
+          clickCreatedAt.getTime() + 60 * 24 * 60 * 60 * 1000,
+        ),
+      },
+    });
+    await db.program.updateMany({
+      where: { merchantId: merchant.id },
+      data: {
+        commissionDurationType: "FIXED_MONTHS",
+        commissionDurationMonths: 1,
+      },
+    });
+    await registerCheckout(INVOICE_REFERENCE, invoiceCapturedAt);
+    await db.commission.create({
+      data: {
+        affiliateId: firstAffiliateId,
+        clickId,
+        stripePaymentRef: "historical-payment",
+        amount: "1.00",
+        currency: "eur",
+        status: "PAID",
+        payableAt: firstCommissionAt,
+        createdAt: firstCommissionAt,
+      },
+    });
+
+    const event = queuedEvent("finished");
+    delete event.rawPayload.updated_at;
+    event.occurredAt = webhookReceivedAt;
+    await processEvent(event, event.eventId, webhookReceivedAt);
+
+    expect(await db.commission.count({ where: { clickId } })).toBe(2);
   });
 
   it("does not match a checkout attribution created after a created-at-only IPN", async () => {
@@ -662,6 +747,43 @@ describe("NOWPayments checkout attribution", () => {
     });
 
     const payment = await getPayment();
+    expect(payment.clickId).toBe(clickId);
+    expect(
+      await db.commission.count({
+        where: { paymentRecordId: payment.id, clickId },
+      }),
+    ).toBe(1);
+  });
+
+  it("reconciles against the stored invoice when a later finish reports a different invoice ID", async () => {
+    const invoiceCapturedAt = new Date(Date.now() - 2_000);
+    const waiting = queuedEvent("waiting");
+    waiting.occurredAt = invoiceCapturedAt;
+    waiting.rawPayload.updated_at = invoiceCapturedAt.toISOString();
+    await processEvent(waiting, waiting.eventId, invoiceCapturedAt);
+
+    const finished = queuedEvent("finished");
+    finished.rawPayload.invoice_id = "altered-invoice";
+    const finishedAt = new Date();
+    finished.occurredAt = finishedAt;
+    finished.rawPayload.updated_at = finishedAt.toISOString();
+    const ipnReceivedAt = new Date(finishedAt.getTime() + 100);
+    await persistEvent(finished, ipnReceivedAt);
+    await processEvent(finished, finished.eventId, ipnReceivedAt);
+
+    const paymentBeforeRegistration = await getPayment();
+    expect(paymentBeforeRegistration.checkoutRef).toBe(INVOICE_REFERENCE);
+    expect(paymentBeforeRegistration.clickId).toBeNull();
+
+    await registerCheckout(INVOICE_REFERENCE, invoiceCapturedAt);
+    await reconcileNowPaymentsCheckoutAttribution({
+      merchantId: merchant.id,
+      providerCheckoutRef: INVOICE_REFERENCE,
+      clickId,
+    });
+
+    const payment = await getPayment();
+    expect(payment.checkoutRef).toBe(INVOICE_REFERENCE);
     expect(payment.clickId).toBe(clickId);
     expect(
       await db.commission.count({

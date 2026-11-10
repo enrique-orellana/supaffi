@@ -205,8 +205,17 @@ function providerTimestamp(event: QueuedNowPaymentsEvent): Date | null {
   return null;
 }
 
-function hasProviderTimestamp(event: QueuedNowPaymentsEvent): boolean {
-  return providerTimestamp(event) !== null;
+async function lockNowPaymentsReference(
+  tx: Prisma.TransactionClient,
+  merchantId: string,
+  kind: "payment" | "invoice" | "order",
+  reference: string,
+): Promise<void> {
+  const lockSeed = `${merchantId}\0${kind}\0${reference}`;
+  const lockBytes = createHash("sha256").update(lockSeed, "utf8").digest();
+  await tx.$queryRaw<{ locked: boolean }[]>`
+    SELECT pg_advisory_xact_lock(${lockBytes.readInt32BE(0)}::integer, ${lockBytes.readInt32BE(4)}::integer) IS NULL AS locked
+  `;
 }
 
 function statusAfter(current: string | null, incoming: string): string {
@@ -264,6 +273,32 @@ function paymentTerminalSnapshot(
   };
 }
 
+async function findExistingPaymentRecord(
+  tx: Prisma.TransactionClient,
+  input: { merchantId: string; sourceOrderId: string; paymentRef: string },
+): Promise<PaymentRecord | null> {
+  const byPaymentId = await tx.paymentRecord.findUnique({
+    where: {
+      merchantId_provider_paymentRef: {
+        merchantId: input.merchantId,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+        paymentRef: input.paymentRef,
+      },
+    },
+  });
+  if (byPaymentId) return byPaymentId;
+
+  return tx.paymentRecord.findUnique({
+    where: {
+      merchantId_provider_sourceOrderId: {
+        merchantId: input.merchantId,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+        sourceOrderId: input.sourceOrderId,
+      },
+    },
+  });
+}
+
 async function upsertPaymentRecord(
   tx: Prisma.TransactionClient,
   input: {
@@ -283,14 +318,10 @@ async function upsertPaymentRecord(
     providerFee: ResolvedProviderFee | null | undefined;
   },
 ): Promise<PaymentRecord> {
-  const existing = await tx.paymentRecord.findUnique({
-    where: {
-      merchantId_provider_sourceOrderId: {
-        merchantId: input.merchantId,
-        provider: PaymentProvider.NOWPAYMENTS.database,
-        sourceOrderId: input.sourceOrderId,
-      },
-    },
+  const existing = await findExistingPaymentRecord(tx, {
+    merchantId: input.merchantId,
+    sourceOrderId: input.sourceOrderId,
+    paymentRef: input.paymentRef,
   });
   const samePayment = existing?.paymentRef === input.paymentRef;
   const status = samePayment
@@ -370,16 +401,12 @@ async function createCommissionIfEligible(
     clickId: string | null;
     paymentRecord: PaymentRecord;
     clickMatches: boolean;
+    checkoutAttributionAt: Date | null;
     allowRefundVoidRestore: boolean;
   },
 ): Promise<void> {
   const { event } = input;
-  // Receipt time is a safe fallback for recording a payment, but cannot prove
-  // when the provider's sale happened. Don't grant affiliate credit from that
-  // fallback: an old payment with a missing provider timestamp could otherwise
-  // be replayed after a new click and look as though it earned that referral.
-  if (!input.clickId || !input.clickMatches || !hasProviderTimestamp(event))
-    return;
+  if (!input.clickId || !input.clickMatches) return;
 
   const existing = await tx.commission.findUnique({
     where: { paymentRecordId: input.paymentRecord.id },
@@ -423,10 +450,16 @@ async function createCommissionIfEligible(
       program: true,
     },
   });
+  // NOWPayments IPNs may omit created_at and updated_at. The invoice mapping
+  // was saved by the browser when it observed this invoice, before the buyer
+  // was sent to pay; use that capture time for the attribution window. Other
+  // valid checkout paths fall back to the event's provider or receipt time.
+  const attributionAt =
+    providerTimestamp(event) ?? input.checkoutAttributionAt ?? event.occurredAt;
   if (
     !click ||
-    event.occurredAt < click.createdAt ||
-    event.occurredAt > click.expiresAt
+    attributionAt < click.createdAt ||
+    attributionAt > click.expiresAt
   )
     return;
 
@@ -458,7 +491,7 @@ async function createCommissionIfEligible(
   const rate = terms.commissionRate;
   if (rate.lte(0)) return;
 
-  const sale = { ref: event.paymentRef, at: event.occurredAt };
+  const sale = { ref: event.paymentRef, at: attributionAt };
   if (
     !(await referralStillEarns(
       input.merchantId,
@@ -562,13 +595,67 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     : null;
 
   await db.$transaction(async (tx) => {
-    // Serialize different statuses for the same order across worker instances.
-    // The key is scoped to the Merchant and the provider order reference.
-    const lockSeed = `${row.merchantId}\0${event.providerInvoiceRef ?? event.sourceOrderId}`;
-    const lockBytes = createHash("sha256").update(lockSeed, "utf8").digest();
-    await tx.$queryRaw<{ locked: boolean }[]>`
-      SELECT pg_advisory_xact_lock(${lockBytes.readInt32BE(0)}::integer, ${lockBytes.readInt32BE(4)}::integer) IS NULL AS locked
-    `;
+    // Payment ID is the stable identity across status callbacks. Lock it first,
+    // then lock the invoice and order references in a stable order so retries
+    // and multiple payments for one invoice cannot race each other.
+    await lockNowPaymentsReference(
+      tx,
+      row.merchantId,
+      "payment",
+      event.paymentRef,
+    );
+    const existingPaymentById = await tx.paymentRecord.findUnique({
+      where: {
+        merchantId_provider_paymentRef: {
+          merchantId: row.merchantId,
+          provider: PaymentProvider.NOWPAYMENTS.database,
+          paymentRef: event.paymentRef,
+        },
+      },
+    });
+    const sourceOrderId =
+      existingPaymentById?.sourceOrderId ?? event.sourceOrderId;
+    const providerInvoiceRef =
+      existingPaymentById?.checkoutRef ?? event.providerInvoiceRef;
+    if (
+      existingPaymentById?.checkoutRef &&
+      event.providerInvoiceRef &&
+      existingPaymentById.checkoutRef !== event.providerInvoiceRef
+    ) {
+      console.warn(
+        "[worker] NOWPayments payment ID was reported with a different invoice ID; keeping its original invoice",
+      );
+    }
+    const secondaryLocks = [
+      ...(providerInvoiceRef
+        ? [{ kind: "invoice" as const, reference: providerInvoiceRef }]
+        : []),
+      { kind: "order" as const, reference: sourceOrderId },
+    ].sort((left, right) =>
+      `${left.kind}:${left.reference}`.localeCompare(
+        `${right.kind}:${right.reference}`,
+      ),
+    );
+    for (const lock of secondaryLocks) {
+      await lockNowPaymentsReference(
+        tx,
+        row.merchantId,
+        lock.kind,
+        lock.reference,
+      );
+    }
+    const existingByOrder = existingPaymentById
+      ? null
+      : await tx.paymentRecord.findUnique({
+          where: {
+            merchantId_provider_sourceOrderId: {
+              merchantId: row.merchantId,
+              provider: PaymentProvider.NOWPAYMENTS.database,
+              sourceOrderId,
+            },
+          },
+        });
+    const existing = existingPaymentById ?? existingByOrder;
 
     const connection = await tx.paymentConnection.findUnique({
       where: {
@@ -594,18 +681,18 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         merchantId_provider_sourceOrderId: {
           merchantId: row.merchantId,
           provider: PaymentProvider.NOWPAYMENTS.database,
-          sourceOrderId: event.sourceOrderId,
+          sourceOrderId,
         },
       },
       select: { id: true },
     });
-    const storedCheckoutAttribution = event.providerInvoiceRef
+    const storedCheckoutAttribution = providerInvoiceRef
       ? await tx.checkoutAttribution.findUnique({
           where: {
             merchantId_provider_providerCheckoutRef: {
               merchantId: row.merchantId,
               provider: PaymentProvider.NOWPAYMENTS.database,
-              providerCheckoutRef: event.providerInvoiceRef,
+              providerCheckoutRef: providerInvoiceRef,
             },
           },
           select: { clickId: true, createdAt: true },
@@ -620,12 +707,12 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       storedCheckoutAttribution.createdAt <= attributionCutoff
         ? storedCheckoutAttribution
         : null;
-    const otherCompletedInvoicePayment = event.providerInvoiceRef
+    const otherCompletedInvoicePayment = providerInvoiceRef
       ? await tx.paymentRecord.findFirst({
           where: {
             merchantId: row.merchantId,
             provider: PaymentProvider.NOWPAYMENTS.database,
-            checkoutRef: event.providerInvoiceRef,
+            checkoutRef: providerInvoiceRef,
             paymentRef: { not: event.paymentRef },
             status: {
               in: [
@@ -684,10 +771,10 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     );
     const invoiceMatches = Boolean(
       checkout &&
-      event.providerInvoiceRef &&
+      providerInvoiceRef &&
       !checkout.alternateCheckoutRef &&
       checkout.hostedCheckoutRef &&
-      checkout.hostedCheckoutRef === event.providerInvoiceRef,
+      checkout.hostedCheckoutRef === providerInvoiceRef,
     );
     let checkoutMatches = Boolean(
       checkout &&
@@ -696,11 +783,11 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       currencyMatches &&
       invoiceMatches,
     );
-    if (checkout && event.providerInvoiceRef) {
+    if (checkout && providerInvoiceRef) {
       const reference = await recordCommerceCheckoutReference(
         tx,
         checkout.id,
-        event.providerInvoiceRef,
+        providerInvoiceRef,
       );
       const refreshed = await tx.commerceCheckout.findUnique({
         where: { id: checkout.id },
@@ -714,7 +801,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         checkoutMatches &&
         reference.matchesPrimary &&
         refreshed?.status === "READY" &&
-        refreshed.hostedCheckoutRef === event.providerInvoiceRef &&
+        refreshed.hostedCheckoutRef === providerInvoiceRef &&
         !refreshed.alternateCheckoutRef,
       );
       if (refreshed) {
@@ -726,16 +813,6 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         };
       }
     }
-    const existing = await tx.paymentRecord.findUnique({
-      where: {
-        merchantId_provider_sourceOrderId: {
-          merchantId: row.merchantId,
-          provider: PaymentProvider.NOWPAYMENTS.database,
-          sourceOrderId: event.sourceOrderId,
-        },
-      },
-      select: { status: true, paymentRef: true, providerFeeSource: true },
-    });
     const samePayment = existing?.paymentRef === event.paymentRef;
     if (existing && !samePayment && !checkoutMatches) {
       console.warn(
@@ -744,7 +821,7 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
     }
     const unmatchedInvoiceLessEventAfterFound = Boolean(
       checkout?.reconciliationResolution === "FOUND" &&
-      !event.providerInvoiceRef &&
+      !providerInvoiceRef &&
       !samePayment,
     );
     if (unmatchedInvoiceLessEventAfterFound) {
@@ -804,13 +881,13 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
         connectionId: connection.id,
         checkoutId: checkout?.id ?? null,
         clickId: attributedClickId,
-        sourceOrderId: event.sourceOrderId,
+        sourceOrderId,
         paymentRef: event.paymentRef,
         checkoutRef:
-          event.providerInvoiceRef ??
+          providerInvoiceRef ??
           (checkoutMatches &&
           event.checkoutRef &&
-          event.checkoutRef !== event.sourceOrderId
+          event.checkoutRef !== sourceOrderId
             ? event.checkoutRef
             : null),
         saleAmount,
@@ -839,6 +916,8 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
           clickId: attributedClickId,
           paymentRecord,
           clickMatches: !checkout?.refundReconciliationPendingAt,
+          checkoutAttributionAt:
+            effectiveCheckoutAttribution?.createdAt ?? null,
           allowRefundVoidRestore: Boolean(
             !samePayment &&
             event.providerInvoiceRef &&
@@ -864,15 +943,15 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       nextStatus === NOWPAYMENTS_PAYMENT_STATUS.FINISHED &&
       checkout.status === "READY" &&
       checkout.hostedCheckoutRef !== null &&
-      (!event.providerInvoiceRef ||
-        checkout.hostedCheckoutRef === event.providerInvoiceRef) &&
+      (!providerInvoiceRef ||
+        checkout.hostedCheckoutRef === providerInvoiceRef) &&
       checkout.refundReconciliationPendingAt === null
     ) {
       await releaseCheckoutConflictHold(
         tx,
         checkout.id,
         row.merchantId,
-        event.sourceOrderId,
+        sourceOrderId,
         checkout.hostedCheckoutRef,
         NOWPAYMENTS_PAYMENT_STATUS.FINISHED,
         paymentTerminalSnapshot(event, paymentRecord),
@@ -887,13 +966,13 @@ export async function handleNowPaymentsEvent(row: WebhookEvent): Promise<void> {
       nextStatus === NOWPAYMENTS_PAYMENT_STATUS.REFUNDED &&
       checkout.status === "READY" &&
       checkout.hostedCheckoutRef !== null &&
-      checkout.hostedCheckoutRef === event.providerInvoiceRef
+      checkout.hostedCheckoutRef === providerInvoiceRef
     ) {
       await releaseCheckoutConflictHold(
         tx,
         checkout.id,
         row.merchantId,
-        event.sourceOrderId,
+        sourceOrderId,
         checkout.hostedCheckoutRef,
         NOWPAYMENTS_PAYMENT_STATUS.REFUNDED,
         paymentTerminalSnapshot(event, paymentRecord),
@@ -938,11 +1017,28 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
     const candidate = candidates[0];
     if (!candidate.paymentRef || !candidate.sourceOrderId) return;
 
-    const lockSeed = `${input.merchantId}\0${candidate.sourceOrderId}`;
-    const lockBytes = createHash("sha256").update(lockSeed, "utf8").digest();
-    await tx.$queryRaw<{ locked: boolean }[]>`
-      SELECT pg_advisory_xact_lock(${lockBytes.readInt32BE(0)}::integer, ${lockBytes.readInt32BE(4)}::integer) IS NULL AS locked
-    `;
+    await lockNowPaymentsReference(
+      tx,
+      input.merchantId,
+      "payment",
+      candidate.paymentRef,
+    );
+    const secondaryLocks = [
+      { kind: "invoice" as const, reference: input.providerCheckoutRef },
+      { kind: "order" as const, reference: candidate.sourceOrderId },
+    ].sort((left, right) =>
+      `${left.kind}:${left.reference}`.localeCompare(
+        `${right.kind}:${right.reference}`,
+      ),
+    );
+    for (const lock of secondaryLocks) {
+      await lockNowPaymentsReference(
+        tx,
+        input.merchantId,
+        lock.kind,
+        lock.reference,
+      );
+    }
 
     const payment = await tx.paymentRecord.findUnique({
       where: { id: candidate.id },
@@ -970,9 +1066,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
     if (
       !event ||
       event.providerStatus !== NOWPAYMENTS_PAYMENT_STATUS.FINISHED ||
-      event.paymentRef !== payment.paymentRef ||
-      event.sourceOrderId !== payment.sourceOrderId ||
-      event.providerInvoiceRef !== input.providerCheckoutRef
+      event.paymentRef !== payment.paymentRef
     )
       return;
     const attributionCutoff = providerTimestamp(event) ?? eventRecord.createdAt;
@@ -991,6 +1085,7 @@ export async function reconcileNowPaymentsCheckoutAttribution(input: {
       clickId: input.clickId,
       paymentRecord: linkedPayment,
       clickMatches: true,
+      checkoutAttributionAt: attribution.createdAt,
       allowRefundVoidRestore: false,
     });
   });

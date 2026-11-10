@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { clickedRecently, getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
@@ -15,6 +16,8 @@ import {
   listPaymentProviderSetups,
   listPaymentTrackingGuides,
 } from "@/lib/payments/setupRegistry";
+import { PaymentProvider } from "@/lib/payments/types";
+import { NOWPAYMENTS_PAYMENT_STATUS } from "@/lib/payments/providers/nowpayments";
 
 /**
  * Where tracking stands, and the two snippets that fix it when it does not.
@@ -51,7 +54,13 @@ export default async function TrackingPage({
   const forceFresh = query.fresh === "1";
   const providerSetups = listPaymentProviderSetups();
 
-  const [checks, timestamps, metrics, paymentStatuses] = await Promise.all([
+  const [
+    checks,
+    timestamps,
+    metrics,
+    paymentStatuses,
+    unattributedPaymentRows,
+  ] = await Promise.all([
     runProductChecks(
       ownerId,
       merchant.id,
@@ -65,7 +74,33 @@ export default async function TrackingPage({
         connected: (await readStatus(ownerId, merchant.id)).connected,
       })),
     ),
+    db.paymentRecord.findMany({
+      where: {
+        merchantId: merchant.id,
+        provider: PaymentProvider.NOWPAYMENTS.database,
+        status: NOWPAYMENTS_PAYMENT_STATUS.FINISHED,
+        clickId: null,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 25,
+      select: {
+        id: true,
+        createdAt: true,
+        saleAmount: true,
+        saleCurrency: true,
+        paymentRef: true,
+        checkoutRef: true,
+      },
+    }),
   ]);
+  const unattributedPayments = unattributedPaymentRows.map((payment) => ({
+    id: payment.id,
+    recordedAt: payment.createdAt,
+    amount: payment.saleAmount.toString(),
+    currency: payment.saleCurrency,
+    paymentId: payment.paymentRef,
+    invoiceId: payment.checkoutRef,
+  }));
   const trackingGuides = listPaymentTrackingGuides(
     paymentStatuses
       .filter(({ connected }) => connected)
@@ -95,6 +130,7 @@ export default async function TrackingPage({
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
       trackingGuides={trackingGuides}
+      unattributedPayments={unattributedPayments}
       scriptPrompt={trackingScriptPrompt({
         websiteUrl: merchant.websiteUrl,
         scriptTag,
