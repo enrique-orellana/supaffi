@@ -12,7 +12,7 @@ import {
   type CommissionStatus,
 } from "@/lib/commission";
 import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
-import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
+import { refusalText } from "@/lib/payoutNotices";
 import {
   formatMoney,
   formatMoneyAtCurrencyPrecision,
@@ -41,6 +41,7 @@ import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
   { label: "Payable", status: COMMISSION_STATUS.PAYABLE },
+  { label: "On hold", status: COMMISSION_STATUS.PENDING },
   { label: "Flagged", status: COMMISSION_STATUS.FLAGGED },
   { label: "Paid", status: COMMISSION_STATUS.PAID },
 ];
@@ -72,6 +73,8 @@ function stateLabel(row: CommissionRow): string {
     case COMMISSION_STATUS.PENDING:
       if (row.disputed)
         return "Sale confirmed · payout paused while dispute is open";
+      if (row.payoutHold)
+        return `Below minimum: ${formatMoney(row.payoutHold.eligibleBalance, row.currency)} eligible; ${formatMoney(row.payoutHold.remaining, row.currency)} still needed`;
       if (row.payableAt.getTime() <= Date.now()) return "Checking availability";
       return `Available ${formatDate(row.payableAt)}`;
     case COMMISSION_STATUS.PAYABLE:
@@ -117,14 +120,13 @@ export default async function CommissionsPage({
     status?: string;
     affiliate?: string;
     currency?: string;
+    program?: string;
+    payout?: string;
+    payoutGroup?: string;
     q?: string;
     page?: string;
     commission?: string;
     error?: string;
-    skipped?: string;
-    already?: string;
-    paidOn?: string;
-    recorded?: string;
   }>;
 }) {
   const { product } = await params;
@@ -137,17 +139,18 @@ export default async function CommissionsPage({
   if (!merchant) notFound();
 
   const base = `/dashboard/products/${merchant.slug}`;
+  const programFilter = (query.program ?? "").slice(0, 64);
+  const payoutFilter = (query.payout ?? "").slice(0, 64);
   const filters = {
-    status: parseStatus(query.status),
+    status: payoutFilter ? COMMISSION_STATUS.PAID : parseStatus(query.status),
     affiliateId: query.affiliate ?? null,
     currency: query.currency ?? null,
+    programId: programFilter || null,
+    payoutId: payoutFilter || null,
+    payoutGroup: query.payoutGroup === "1",
     query: query.q ?? null,
   };
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
-
-  // Taken before any commission is read. Mark paid compares it with when a
-  // refund voided a shown row, so it has to be no later than the read.
-  const renderedAt = new Date().toISOString();
 
   // Owed and payable now come from the same helper the overview uses, so the
   // two screens cannot disagree.
@@ -172,7 +175,13 @@ export default async function CommissionsPage({
   }
 
   const anyFilterActive = Boolean(
-    filters.status || filters.affiliateId || filters.currency || filters.query,
+    filters.status ||
+      filters.affiliateId ||
+      filters.currency ||
+      filters.programId ||
+      filters.payoutId ||
+      filters.payoutGroup ||
+      filters.query,
   );
 
   // Every href keeps what is already on and changes one thing, so switching
@@ -184,10 +193,17 @@ export default async function CommissionsPage({
       status: filters.status,
       affiliate: filters.affiliateId,
       currency: filters.currency,
+      program: filters.programId,
+      payout: filters.payoutId,
+      payoutGroup: filters.payoutGroup ? "1" : null,
       q: filters.query,
       page: page > 1 ? String(page) : null,
-      ...changes,
     };
+    if ("status" in changes) {
+      current.payout = null;
+      current.payoutGroup = null;
+    }
+    Object.assign(current, changes);
     for (const [key, value] of Object.entries(current)) {
       if (value) params.set(key, value);
     }
@@ -222,6 +238,33 @@ export default async function CommissionsPage({
         id: selected.id,
         status: selected.status,
         disputed: selected.disputed,
+        payoutHold: selected.payoutHold
+          ? {
+              eligibleBalance: formatMoney(
+                selected.payoutHold.eligibleBalance,
+                selected.currency,
+              ),
+              minimum: formatMoney(
+                selected.payoutHold.minimum,
+                selected.currency,
+              ),
+              remaining: formatMoney(
+                selected.payoutHold.remaining,
+                selected.currency,
+              ),
+            }
+          : null,
+        payoutRecord: selected.payoutRecord
+          ? {
+              id: selected.payoutRecord.id,
+              total: formatMoney(
+                selected.payoutRecord.total,
+                selected.payoutRecord.currency,
+              ),
+              paidLabel: formatDate(selected.payoutRecord.paidAt),
+              isException: selected.payoutRecord.isException,
+            }
+          : null,
         amount: formatMoney(selected.amount, selected.currency),
         payTotal: selected.amount,
         // Only carried when it actually differs, so the sheet can tell "was
@@ -280,12 +323,6 @@ export default async function CommissionsPage({
   const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
   const refusal = refusalText(query.error);
-  const skipped = skippedNote(query.skipped);
-  const alreadyPaid = alreadyPaidNote(
-    query.already,
-    query.paidOn,
-    query.recorded,
-  );
 
   return (
     <Page>
@@ -316,14 +353,6 @@ export default async function CommissionsPage({
 
       {refusal && (
         <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>
-      )}
-      {skipped && (
-        <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>
-      )}
-      {alreadyPaid && (
-        <p className="shrink-0 text-[13px] text-status-warning">
-          {alreadyPaid}
-        </p>
       )}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
@@ -362,7 +391,6 @@ export default async function CommissionsPage({
           commission={sheetCommission}
           product={{ id: merchant.id, slug: merchant.slug }}
           listHref={listHref}
-          renderedAt={renderedAt}
         />
       )}
     </Page>

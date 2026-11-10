@@ -1,6 +1,7 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
 import type {
   CommerceCheckout,
   PaymentRecord,
@@ -17,16 +18,17 @@ import {
   recordCommerceCheckoutReference,
   releaseCheckoutConflictHold,
 } from "@/lib/commerceCheckoutReferences";
-import { commissionRateFor, computePayableAt } from "../commission";
+import {
+  lockCommissionPayoutEligibilityGroup,
+  recalculatePayoutEligibility,
+} from "@/lib/payoutEligibility";
+import { computePayableAt } from "../commission";
 import {
   commissionAfterProviderFee,
   nowPaymentsFeeMinorInCurrency,
 } from "../providerFees";
 import { currencyMinorUnitExponent } from "@/lib/currency";
-import {
-  commissionDurationForClick,
-  referralStillEarns,
-} from "../referralDuration";
+import { referralStillEarns } from "../referralDuration";
 
 type JsonObject = Record<string, unknown>;
 
@@ -400,14 +402,8 @@ async function createCommissionIfEligible(
   const click = await tx.click.findFirst({
     where: { id: input.clickId, merchantId: input.merchantId },
     include: {
-      affiliate: { include: { program: true } },
-      link: {
-        select: {
-          commissionRateOverride: true,
-          activeFrom: true,
-          activeUntil: true,
-        },
-      },
+      affiliate: true,
+      program: true,
     },
   });
   if (
@@ -427,18 +423,12 @@ async function createCommissionIfEligible(
   });
   if (lockedClick.fraudConfirmedAt !== null) return;
 
-  const linkActiveAtClick =
-    (!click.link?.activeFrom || click.createdAt >= click.link.activeFrom) &&
-    (!click.link?.activeUntil || click.createdAt <= click.link.activeUntil);
-  const linkForRate = linkActiveAtClick ? click.link : null;
-  const rate = new Prisma.Decimal(
-    commissionRateFor(
-      click.affiliate,
-      click.affiliate.program,
-      linkForRate,
-      click,
-    ),
+  const terms = resolveClickCommissionTerms(
+    click.program,
+    click.affiliate,
+    click,
   );
+  const rate = terms.commissionRate;
   if (rate.lte(0)) return;
 
   const sale = { ref: event.paymentRef, at: event.occurredAt };
@@ -446,11 +436,11 @@ async function createCommissionIfEligible(
     !(await referralStillEarns(
       input.merchantId,
       click.id,
-      click.affiliate.program,
+      click.program,
       sale,
       [],
       tx,
-      commissionDurationForClick(click.affiliate.program, click),
+      terms.commissionDuration,
     ))
   )
     return;
@@ -482,6 +472,7 @@ async function createCommissionIfEligible(
   const commissionData = {
     affiliateId: click.affiliateId,
     merchantId: click.merchantId,
+    programId: click.programId,
     clickId: click.id,
     paymentRecordId: input.paymentRecord.id,
     stripePaymentRef: null,
@@ -492,11 +483,7 @@ async function createCommissionIfEligible(
     providerFeeAmount,
     providerFeeSource,
     status: COMMISSION_STATUS.PENDING,
-    payableAt: computePayableAt(
-      click.affiliate.program,
-      undefined,
-      click.holdingPeriodDaysSnapshot ?? undefined,
-    ),
+    payableAt: computePayableAt(terms.holdingPeriodDays),
     paidAt: null,
     voidedAt: null,
     voidReason: null,
@@ -512,12 +499,25 @@ async function createCommissionIfEligible(
   } else {
     await tx.commission.create({ data: commissionData });
   }
+  await recalculatePayoutEligibility(tx, {
+    merchantId: click.merchantId,
+    affiliateId: click.affiliateId,
+    programId: click.programId,
+    currency: saleCurrency,
+  });
 }
 
 async function markCommissionRefunded(
   tx: Prisma.TransactionClient,
   paymentRecordId: string,
 ): Promise<void> {
+  const commission = await tx.commission.findUnique({
+    where: { paymentRecordId },
+    select: { id: true },
+  });
+  if (!commission) return;
+  const group = await lockCommissionPayoutEligibilityGroup(tx, commission.id);
+  if (!group) return;
   await tx.commission.updateMany({
     where: {
       paymentRecordId,
@@ -530,6 +530,7 @@ async function markCommissionRefunded(
       disputeOpenedAt: null,
     },
   });
+  await recalculatePayoutEligibility(tx, group);
 }
 
 /** Process a NOWPayments update after the webhook route verifies its signature. */

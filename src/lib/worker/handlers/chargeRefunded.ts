@@ -8,6 +8,10 @@ import {
 } from "@/lib/commissionStatus";
 import { stripeClientFor } from "@/lib/stripe";
 import { readStoredReferredShare } from "../referredEarning";
+import {
+  lockCommissionPayoutEligibilityGroup,
+  recalculatePayoutEligibility,
+} from "@/lib/payoutEligibility";
 
 export type ReversalOutcome = { void: true } | { void: false; amount: number };
 
@@ -98,34 +102,54 @@ export async function reverseCommission(
   // creation handlers read it when they finally write the row.
   if (!commission) return;
 
-  if (commission.status === COMMISSION_STATUS.PAID) {
+  let paidIsFinal = false;
+  await db.$transaction(async (tx) => {
+    const group = await lockCommissionPayoutEligibilityGroup(
+      tx,
+      commission.id,
+      merchant.id,
+    );
+    if (!group) return;
+    const current = await tx.commission.findUnique({
+      where: { id: commission.id },
+    });
+    if (!current) return;
+    if (current.status === COMMISSION_STATUS.PAID) {
+      paidIsFinal = true;
+      return;
+    }
+    if (current.status === COMMISSION_STATUS.VOIDED) return;
+
+    const outcome = outcomeFor(current);
+    const { count } = outcome.void
+      ? await tx.commission.updateMany({
+          where: {
+            id: current.id,
+            status: { in: [...UNPAID_STATUSES] },
+          },
+          data: {
+            status: COMMISSION_STATUS.VOIDED,
+            voidedAt: new Date(),
+            voidReason,
+          },
+        })
+      : await tx.commission.updateMany({
+          where: {
+            id: current.id,
+            status: { in: [...UNPAID_STATUSES] },
+            amount: { gt: new Prisma.Decimal(outcome.amount) },
+          },
+          data: {
+            amount: new Prisma.Decimal(outcome.amount),
+            voidReason: "partial refund",
+          },
+        });
+    if (count > 0) await recalculatePayoutEligibility(tx, group);
+  });
+  if (paidIsFinal) {
     logPaidIsFinal(commission.id, voidReason);
     return;
   }
-  if (commission.status === COMMISSION_STATUS.VOIDED) return; // idempotent no-op (redelivered event)
-
-  const outcome = outcomeFor(commission);
-  const { count } = outcome.void
-    ? await db.commission.updateMany({
-        where: { id: commission.id, status: { in: [...UNPAID_STATUSES] } },
-        data: {
-          status: COMMISSION_STATUS.VOIDED,
-          voidedAt: new Date(),
-          voidReason,
-        },
-      })
-    : await db.commission.updateMany({
-        where: {
-          id: commission.id,
-          status: { in: [...UNPAID_STATUSES] },
-          amount: { gt: new Prisma.Decimal(outcome.amount) },
-        },
-        data: {
-          amount: new Prisma.Decimal(outcome.amount),
-          voidReason: "partial refund",
-        },
-      });
-  if (count > 0) return;
 
   // Nothing written: the amount was already at or below this figure, or the
   // status moved since the read. Only a payout in between is worth a log line.

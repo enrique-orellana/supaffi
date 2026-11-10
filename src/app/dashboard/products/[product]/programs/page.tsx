@@ -4,13 +4,14 @@ import { Plus } from "lucide-react";
 import type { CommissionDurationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
+import { db } from "@/lib/db";
 import { listProgramsForMerchant } from "@/lib/program";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { signupLinkFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle } from "@/components/dashboard/Page";
 import { ProgramCard } from "@/components/dashboard/ProgramCard";
-import { ProgramSheet } from "./ProgramSheet";
+import { ProgramSheet, type StoredRateOverride } from "./ProgramSheet";
 import { createProgramAction, updateProgramAction } from "./programActions";
 
 /**
@@ -30,6 +31,7 @@ type Program = {
   attributionWindowDays: number;
   holdingPeriodDays: number;
   currency: string;
+  minimumPayoutAmount: string;
   signupOpen: boolean;
   affiliateCount: number;
 };
@@ -54,6 +56,7 @@ function toFormValues(p: Program): ProgramFormValues {
     attributionWindowDays: String(p.attributionWindowDays),
     holdingPeriodDays: String(p.holdingPeriodDays),
     currency: p.currency,
+    minimumPayoutAmount: p.minimumPayoutAmount,
   };
 }
 
@@ -82,6 +85,41 @@ export default async function ProgramsPage({
   const editing = query.edit
     ? (programs.find((p) => p.id === query.edit) ?? null)
     : null;
+  const storedRateOverrides: StoredRateOverride[] = editing
+    ? (
+        await db.affiliate.findMany({
+          where: {
+            merchantId: merchant.id,
+            programId: editing.id,
+            OR: [
+              { customCommissionRate: { not: null } },
+              { links: { some: { commissionRateOverride: { not: null } } } },
+            ],
+          },
+          orderBy: [{ name: "asc" }, { email: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            customCommissionRate: true,
+            links: {
+              where: { commissionRateOverride: { not: null } },
+              orderBy: { code: "asc" },
+              select: { code: true, commissionRateOverride: true },
+            },
+          },
+        })
+      ).map((affiliate) => ({
+        affiliateId: affiliate.id,
+        affiliateName: affiliate.name ?? affiliate.email,
+        affiliateRate: affiliate.customCommissionRate?.toString() ?? null,
+        linkRates: affiliate.links.flatMap((link) =>
+          link.commissionRateOverride === null
+            ? []
+            : [{ code: link.code, rate: link.commissionRateOverride.toString() }],
+        ),
+      }))
+    : [];
 
   return (
     <Page>
@@ -107,6 +145,7 @@ export default async function ProgramsPage({
             rate={String(p.defaultCommissionRate)}
             dashboardCurrency={p.currency}
             duration={durationLabel(p)}
+            minimumPayoutAmount={p.minimumPayoutAmount}
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
@@ -135,6 +174,7 @@ export default async function ProgramsPage({
           initial={toFormValues(editing)}
           signupOpen={editing.signupOpen}
           listHref={base}
+          storedRateOverrides={storedRateOverrides}
         />
       )}
     </Page>

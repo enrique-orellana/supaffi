@@ -24,7 +24,11 @@ import { TablePagination } from "@/components/dashboard/TablePagination";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { AffiliateFilters } from "./AffiliateFilters";
 import { AffiliateTable, type AffiliateRowView } from "./AffiliateTable";
-import { AffiliateSheet, type SheetAffiliate } from "./AffiliateSheet";
+import {
+  AffiliateSheet,
+  type SheetAffiliate,
+  type SheetProgram,
+} from "./AffiliateSheet";
 
 /**
  * Everyone promoting this product, and what they have brought in.
@@ -147,6 +151,7 @@ export default async function AffiliatesPage({
       earnedHint: moneyHint(row.earned) ?? null,
       rate: `${row.commissionRate}%`,
       rateIsOverride: row.rateIsOverride,
+      legacyRateOverride: row.commissionRateOverride,
       // Nothing when the program has no recurring commission to churn out of,
       // or when nobody has converted yet.
       retention:
@@ -172,9 +177,13 @@ export default async function AffiliatesPage({
       listOwnerLinkTerms(ownerId, merchant.id, selected.id),
     ]);
     const detail = details[selected.id];
-    const termsByLinkId = new Map(linkTerms.map((terms) => [terms.id, terms]));
-    const program = programs.find(
-      (candidate) => candidate.id === selected.programId,
+    const hasLegacyLinkTerms = linkTerms.some(
+      (terms) =>
+        terms.commissionRateOverride !== null ||
+        terms.commissionDurationTypeOverride !== null ||
+        terms.commissionDurationMonthsOverride !== null ||
+        terms.attributionWindowDaysOverride !== null ||
+        terms.holdingPeriodDaysOverride !== null,
     );
     sheetAffiliate = {
       id: selected.id,
@@ -182,31 +191,21 @@ export default async function AffiliatesPage({
       email: selected.email,
       joinedAt: formatDate(selected.createdAt),
       programId: selected.programId,
-      programName: selected.programName,
-      rate: selected.commissionRate,
-      rateIsOverride: selected.rateIsOverride,
-      commissionDurationType: program?.commissionDurationType ?? "FOREVER",
-      commissionDurationMonths: program?.commissionDurationMonths ?? null,
-      attributionWindowDays: program?.attributionWindowDays ?? 60,
-      holdingPeriodDays: program?.holdingPeriodDays ?? 30,
+      hasLegacyTermOverrides: hasLegacyLinkTerms,
+      commissionRateOverride: selected.commissionRateOverride,
+      minimumPayoutAmountOverride: selected.minimumPayoutAmountOverride,
+      commissionDurationTypeOverride: selected.commissionDurationTypeOverride,
+      commissionDurationMonthsOverride:
+        selected.commissionDurationMonthsOverride,
+      attributionWindowDaysOverride: selected.attributionWindowDaysOverride,
+      holdingPeriodDaysOverride: selected.holdingPeriodDaysOverride,
       payoutDetails: detail?.payoutDetails ?? null,
       hasPassword: detail?.hasPassword ?? true,
-      links: links.map((l) => {
-        const terms = termsByLinkId.get(l.id);
-        return {
-          id: l.id,
-          url: linkUrl(merchant.websiteUrl, l),
-          clicks: l.clicks,
-          commissionRateOverride: terms?.commissionRateOverride ?? null,
-          commissionDurationTypeOverride:
-            terms?.commissionDurationTypeOverride ?? null,
-          commissionDurationMonthsOverride:
-            terms?.commissionDurationMonthsOverride ?? null,
-          attributionWindowDaysOverride:
-            terms?.attributionWindowDaysOverride ?? null,
-          holdingPeriodDaysOverride: terms?.holdingPeriodDaysOverride ?? null,
-        };
-      }),
+      links: links.map((l) => ({
+        id: l.id,
+        url: linkUrl(merchant.websiteUrl, l),
+        clicks: l.clicks,
+      })),
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),
@@ -295,7 +294,16 @@ export default async function AffiliatesPage({
         <AffiliateSheet
           affiliate={sheetAffiliate}
           productDomain={merchant.domain}
-          programs={programs.map((p) => ({ id: p.id, name: p.name }))}
+          programs={programs.map((p): SheetProgram => ({
+            id: p.id,
+            name: p.name,
+            rate: String(p.defaultCommissionRate),
+            commissionDurationType: p.commissionDurationType,
+            commissionDurationMonths: p.commissionDurationMonths,
+            attributionWindowDays: p.attributionWindowDays,
+            holdingPeriodDays: p.holdingPeriodDays,
+            minimumPayoutAmount: p.minimumPayoutAmount,
+          }))}
           product={{ id: merchant.id, slug: merchant.slug }}
           listHref={listHref}
         />

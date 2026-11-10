@@ -1,7 +1,16 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
-import { COMMISSION_STATUS } from "@/lib/commissionStatus";
+import {
+  COMMISSION_STATUS,
+  UNPAID_COMMISSION_STATUSES,
+} from "@/lib/commissionStatus";
 import { SqlSchema } from "@/lib/sqlSchema";
+import {
+  lockPayoutEligibilityGroup,
+  lockPayoutEligibilityProgram,
+  recalculatePayoutEligibility,
+  type PayoutEligibilityGroup,
+} from "@/lib/payoutEligibility";
 
 type CheckoutReferenceRow = {
   merchantId: string;
@@ -16,10 +25,68 @@ const UNRESOLVED_REFERENCE_MESSAGE =
 const PENDING_REFERENCE_MESSAGE =
   "Provider invoice reference received before checkout creation settled";
 
+async function checkoutPayoutGroups(
+  tx: Prisma.TransactionClient,
+  checkoutId: string,
+): Promise<PayoutEligibilityGroup[]> {
+  const rows = await tx.commission.findMany({
+    where: {
+      paymentRecord: { is: { checkoutId } },
+      status: { in: [...UNPAID_COMMISSION_STATUSES] },
+      programId: { not: null },
+      merchantId: { not: null },
+    },
+    distinct: ["merchantId", "affiliateId", "programId", "currency"],
+    select: {
+      merchantId: true,
+      affiliateId: true,
+      programId: true,
+      currency: true,
+    },
+  });
+  return rows
+    .filter((row) => row.merchantId && row.programId)
+    .map((row) => ({
+      merchantId: row.merchantId!,
+      affiliateId: row.affiliateId,
+      programId: row.programId!,
+      currency: row.currency,
+    }))
+    .sort((a, b) =>
+      `${a.merchantId}:${a.programId}:${a.affiliateId}:${a.currency}`.localeCompare(
+        `${b.merchantId}:${b.programId}:${b.affiliateId}:${b.currency}`,
+      ),
+    );
+}
+
+async function lockPayoutGroups(
+  tx: Prisma.TransactionClient,
+  groups: PayoutEligibilityGroup[],
+): Promise<void> {
+  for (const group of groups) {
+    if (!(await lockPayoutEligibilityProgram(tx, group.merchantId, group.programId))) {
+      continue;
+    }
+    await lockPayoutEligibilityGroup(tx, group);
+  }
+}
+
+async function recalculatePayoutGroups(
+  tx: Prisma.TransactionClient,
+  groups: PayoutEligibilityGroup[],
+  now: Date,
+): Promise<void> {
+  for (const group of groups) {
+    await recalculatePayoutEligibility(tx, group, now);
+  }
+}
+
 export async function holdUnpaidCheckoutCommissions(
   tx: Prisma.TransactionClient,
   checkoutId: string,
 ): Promise<void> {
+  const groups = await checkoutPayoutGroups(tx, checkoutId);
+  await lockPayoutGroups(tx, groups);
   await tx.$executeRaw(Prisma.sql`
     UPDATE ${SqlSchema.tables.Commission.name} AS commission
     SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = COALESCE(commission.${SqlSchema.tables.Commission.checkoutConflictHeldAt}, now()),
@@ -36,6 +103,7 @@ export async function holdUnpaidCheckoutCommissions(
         ${COMMISSION_STATUS.FLAGGED}::${SqlSchema.types.CommissionStatus}
       )
   `);
+  await recalculatePayoutGroups(tx, groups, new Date());
 }
 
 export async function releaseCheckoutConflictHold(
@@ -112,6 +180,8 @@ export async function releaseCheckoutConflictHold(
   if (appliedTerminalStatus && storedPaymentStatus !== appliedTerminalStatus)
     return;
   const selectedPaymentRef = payment.paymentRef;
+  const groups = await checkoutPayoutGroups(tx, checkoutId);
+  await lockPayoutGroups(tx, groups);
   if (appliedTerminalStatus === "refunded") {
     await tx.commerceCheckout.updateMany({
       where: { id: checkoutId, refundReconciliationPendingAt: { not: null } },
@@ -135,14 +205,7 @@ export async function releaseCheckoutConflictHold(
     } else {
       await tx.$executeRaw(Prisma.sql`
         UPDATE ${SqlSchema.tables.Commission.name} AS commission
-        SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = NULL,
-            ${SqlSchema.tables.Commission.status} = CASE
-              WHEN commission.${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus}
-                AND commission.${SqlSchema.tables.Commission.payableAt} <= ${now}
-                AND commission.${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
-                THEN ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus}
-              ELSE commission.${SqlSchema.tables.Commission.status}
-            END
+        SET ${SqlSchema.tables.Commission.checkoutConflictHeldAt} = NULL
         FROM ${SqlSchema.tables.PaymentRecord.name} AS payment
         WHERE payment.${SqlSchema.tables.PaymentRecord.checkoutId} = ${checkoutId}
           AND payment.${SqlSchema.tables.PaymentRecord.id} = ${payment.id}
@@ -159,6 +222,7 @@ export async function releaseCheckoutConflictHold(
       `);
     }
   }
+  await recalculatePayoutGroups(tx, groups, now);
 }
 
 /** Record a provider invoice reference without discarding any existing reference. */

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import {
+  attributionExpiry,
+  clickCommissionTermSnapshot,
+  resolveCurrentCommissionTerms,
+} from "@/lib/commissionTerms";
 import {
   REFERRAL_QUERY_PARAM,
   REFERRAL_RELOAD_WINDOW_MS,
@@ -13,6 +19,39 @@ import { isClickLimited, rememberClick } from "@/lib/trackThrottle";
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
 const referralTokenPattern = new RegExp(REFERRAL_TOKEN_PATTERN, "i");
+
+const TRACKING_LINK_SELECT = {
+  id: true,
+  code: true,
+  legacyAliases: true,
+  legacyQueryParamAliases: true,
+  importSourceIdentity: true,
+  activeFrom: true,
+  activeUntil: true,
+  affiliate: {
+    select: {
+      id: true,
+      programId: true,
+      customCommissionRate: true,
+      commissionDurationTypeOverride: true,
+      commissionDurationMonthsOverride: true,
+      attributionWindowDaysOverride: true,
+      holdingPeriodDaysOverride: true,
+      minimumPayoutAmountOverride: true,
+      program: {
+        select: {
+          id: true,
+          defaultCommissionRate: true,
+          commissionDurationType: true,
+          commissionDurationMonths: true,
+          attributionWindowDays: true,
+          holdingPeriodDays: true,
+          minimumPayoutAmount: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.AffiliateLinkSelect;
 
 // Called cross-origin, from the Merchant's own site (wherever the tracking
 // script is embedded), not from this Merchant's own domain — so this is
@@ -67,35 +106,7 @@ export async function GET(req: NextRequest) {
               { legacyAliases: { has: referralCode } },
             ],
           },
-          select: {
-            id: true,
-            code: true,
-            legacyAliases: true,
-            legacyQueryParamAliases: true,
-            importSourceIdentity: true,
-            activeFrom: true,
-            activeUntil: true,
-            commissionRateOverride: true,
-            commissionDurationTypeOverride: true,
-            commissionDurationMonthsOverride: true,
-            attributionWindowDaysOverride: true,
-            holdingPeriodDaysOverride: true,
-            affiliate: {
-              select: {
-                id: true,
-                customCommissionRate: true,
-                program: {
-                  select: {
-                    defaultCommissionRate: true,
-                    commissionDurationType: true,
-                    commissionDurationMonths: true,
-                    attributionWindowDays: true,
-                    holdingPeriodDays: true,
-                  },
-                },
-              },
-            },
-          },
+          select: TRACKING_LINK_SELECT,
         })
       : Promise.resolve([]),
     legacyValues.length
@@ -108,35 +119,7 @@ export async function GET(req: NextRequest) {
               legacyAliases: { has: value },
             })),
           },
-          select: {
-            id: true,
-            code: true,
-            legacyAliases: true,
-            legacyQueryParamAliases: true,
-            importSourceIdentity: true,
-            activeFrom: true,
-            activeUntil: true,
-            commissionRateOverride: true,
-            commissionDurationTypeOverride: true,
-            commissionDurationMonthsOverride: true,
-            attributionWindowDaysOverride: true,
-            holdingPeriodDaysOverride: true,
-            affiliate: {
-              select: {
-                id: true,
-                customCommissionRate: true,
-                program: {
-                  select: {
-                    defaultCommissionRate: true,
-                    commissionDurationType: true,
-                    commissionDurationMonths: true,
-                    attributionWindowDays: true,
-                    holdingPeriodDays: true,
-                  },
-                },
-              },
-            },
-          },
+          select: TRACKING_LINK_SELECT,
         })
       : Promise.resolve([]),
   ]);
@@ -209,40 +192,23 @@ export async function GET(req: NextRequest) {
 
   const referralToken = newBrowserToken ?? randomUUID();
   const createdAt = new Date();
-  const attributionWindowDays =
-    link.attributionWindowDaysOverride ??
-    link.affiliate.program.attributionWindowDays;
-  const commissionRateSnapshot =
-    link.commissionRateOverride ??
-    link.affiliate.customCommissionRate ??
-    link.affiliate.program.defaultCommissionRate;
-  const commissionDurationTypeSnapshot =
-    link.commissionDurationTypeOverride ??
-    link.affiliate.program.commissionDurationType;
-  const commissionDurationMonthsSnapshot =
-    commissionDurationTypeSnapshot === "FIXED_MONTHS"
-      ? link.commissionDurationTypeOverride === "FIXED_MONTHS"
-        ? link.commissionDurationMonthsOverride
-        : link.affiliate.program.commissionDurationMonths
-      : null;
-  const holdingPeriodDaysSnapshot =
-    link.holdingPeriodDaysOverride ?? link.affiliate.program.holdingPeriodDays;
-  const expiresAt = new Date(
-    createdAt.getTime() + attributionWindowDays * 24 * 60 * 60 * 1000,
+  const terms = resolveCurrentCommissionTerms(
+    link.affiliate.program,
+    link.affiliate,
   );
+  const expiresAt = attributionExpiry(createdAt, terms.attributionWindowDays);
+  const termSnapshot = clickCommissionTermSnapshot(terms);
 
   try {
     await db.click.create({
       data: {
         merchantId: merchant.id,
         affiliateId: link.affiliate.id,
+        programId: link.affiliate.program.id,
         linkId: link.id,
         referralToken,
         expiresAt,
-        commissionRateSnapshot,
-        commissionDurationTypeSnapshot,
-        commissionDurationMonthsSnapshot,
-        holdingPeriodDaysSnapshot,
+        ...termSnapshot,
         createdAt,
       },
     });

@@ -1,9 +1,6 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
-import {
-  DEFAULT_DISPLAY_CURRENCY,
-  type SupportedDisplayCurrency,
-} from "@/lib/displayCurrencyOptions";
+import { DEFAULT_DISPLAY_CURRENCY } from "@/lib/displayCurrencyOptions";
 
 export type AffiliateDisplaySettings = {
   preference: string | null;
@@ -35,16 +32,3 @@ export const getAffiliateDisplaySettings = cache(
     };
   },
 );
-
-/** Scope the write to both the authenticated Affiliate and their current Merchant. */
-export async function updateAffiliateDisplayCurrency(
-  affiliateId: string,
-  merchantId: string,
-  displayCurrency: SupportedDisplayCurrency | null,
-): Promise<boolean> {
-  const result = await db.affiliate.updateMany({
-    where: { id: affiliateId, merchantId },
-    data: { displayCurrency },
-  });
-  return result.count === 1;
-}

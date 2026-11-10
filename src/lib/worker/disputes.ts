@@ -3,8 +3,12 @@ import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import {
   COMMISSION_STATUS,
-  PENDING_OR_FLAGGED_COMMISSION_STATUSES,
+  UNPAID_COMMISSION_STATUSES,
 } from "@/lib/commissionStatus";
+import {
+  lockCommissionPayoutEligibilityGroup,
+  recalculatePayoutEligibility,
+} from "@/lib/payoutEligibility";
 import { stripeClientFor } from "@/lib/stripe";
 import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 import {
@@ -169,60 +173,58 @@ export async function disputedPayment(
 /**
  * Holds an unpaid commission while a dispute is open.
  *
- * A held commission is never PAYABLE, which is what keeps every payable screen,
- * total and badge right without each one knowing about disputes. So a PAYABLE
- * row goes back to PENDING, while a PENDING or FLAGGED one keeps its status.
- *
- * The order of the two writes matters. PENDING and FLAGGED rows are marked
- * first; if the sweep promotes an unmarked row in between, the second write
- * finds it PAYABLE and takes it back. Each write names the statuses it expects,
- * so a row being marked paid at the same moment ends up PAID and untouched: a
- * paid commission is final. The first date is kept on a repeated event.
+ * Hold the row and recalculate its entire Affiliate/Program/currency bucket
+ * under the same locks used by the maturity sweep and payout action. The
+ * first date is kept on a repeated event, and paid rows remain final.
  */
 export async function holdForDispute(
   commissionId: string,
   now: Date = new Date(),
 ): Promise<void> {
-  await db.commission.updateMany({
-    where: {
-      id: commissionId,
-      status: { in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES] },
-      disputeOpenedAt: null,
-    },
-    data: { disputeOpenedAt: now },
-  });
-  await db.commission.updateMany({
-    where: { id: commissionId, status: COMMISSION_STATUS.PAYABLE },
-    data: { status: COMMISSION_STATUS.PENDING, disputeOpenedAt: now },
+  await db.$transaction(async (tx) => {
+    const group = await lockCommissionPayoutEligibilityGroup(tx, commissionId);
+    if (!group) return;
+    await tx.commission.updateMany({
+      where: {
+        id: commissionId,
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
+        disputeOpenedAt: null,
+      },
+      data: { disputeOpenedAt: now },
+    });
+    await tx.commission.updateMany({
+      where: {
+        id: commissionId,
+        status: COMMISSION_STATUS.PAYABLE,
+        disputeOpenedAt: now,
+      },
+      data: { status: COMMISSION_STATUS.PENDING },
+    });
+    await recalculatePayoutEligibility(tx, group, now);
   });
 }
 
 /**
- * Lifts the hold once no dispute on the payment is open, the same way
- * dismissing a flag does: PAYABLE when the Holding Period is over, otherwise
- * PENDING for the sweep. A flagged row stays flagged.
+ * Lifts the hold and lets the shared eligibility calculation decide whether
+ * the row is payable or still below the Program minimum. Flagged rows stay
+ * flagged and excluded from the balance.
  */
 export async function releaseDisputeHold(
   commissionId: string,
   now: Date = new Date(),
 ): Promise<void> {
-  await db.commission.updateMany({
-    where: {
-      id: commissionId,
-      status: COMMISSION_STATUS.PENDING,
-      disputeOpenedAt: { not: null },
-      checkoutConflictHeldAt: null,
-      payableAt: { lte: now },
-    },
-    data: { status: COMMISSION_STATUS.PAYABLE, disputeOpenedAt: null },
-  });
-  await db.commission.updateMany({
-    where: {
-      id: commissionId,
-      status: { in: [...PENDING_OR_FLAGGED_COMMISSION_STATUSES] },
-      disputeOpenedAt: { not: null },
-    },
-    data: { disputeOpenedAt: null },
+  await db.$transaction(async (tx) => {
+    const group = await lockCommissionPayoutEligibilityGroup(tx, commissionId);
+    if (!group) return;
+    await tx.commission.updateMany({
+      where: {
+        id: commissionId,
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
+        disputeOpenedAt: { not: null },
+      },
+      data: { disputeOpenedAt: null },
+    });
+    await recalculatePayoutEligibility(tx, group, now);
   });
 }
 

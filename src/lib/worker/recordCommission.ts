@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { SqlSchema } from "@/lib/sqlSchema";
+import { recalculatePayoutEligibility } from "@/lib/payoutEligibility";
 
 /**
  * Writes a commission unless the Owner has confirmed its referral as a self
@@ -22,15 +23,30 @@ export async function createCommissionUnlessSelfReferral(args: {
 }): Promise<boolean> {
   return db.$transaction(async (tx) => {
     const [click] = await tx.$queryRaw<
-      { fraudConfirmedAt: Date | null }[]
+      {
+        fraudConfirmedAt: Date | null;
+        merchantId: string;
+        affiliateId: string;
+        programId: string;
+      }[]
     >(Prisma.sql`
-      SELECT ${SqlSchema.tables.Click.fraudConfirmedAt}
+      SELECT
+        ${SqlSchema.tables.Click.fraudConfirmedAt},
+        ${SqlSchema.tables.Click.merchantId},
+        ${SqlSchema.tables.Click.affiliateId},
+        ${SqlSchema.tables.Click.programId}
       FROM ${SqlSchema.tables.Click.name}
       WHERE ${SqlSchema.tables.Click.id} = ${args.data.clickId}
       FOR SHARE
     `);
     if (!click || click.fraudConfirmedAt !== null) return false;
     await tx.commission.create(args);
+    await recalculatePayoutEligibility(tx, {
+      merchantId: click.merchantId,
+      affiliateId: click.affiliateId,
+      programId: click.programId,
+      currency: args.data.currency,
+    });
     return true;
   });
 }

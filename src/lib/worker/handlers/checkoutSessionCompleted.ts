@@ -2,12 +2,8 @@ import type { Merchant, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
-import {
-  commissionRateFor,
-  computePayableAt,
-  isExcluded,
-  saleAmountFor,
-} from "../commission";
+import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
+import { computePayableAt, isExcluded, saleAmountFor } from "../commission";
 import {
   commissionFieldsAtCreation,
   disputeStateAtCreation,
@@ -37,10 +33,7 @@ import {
   recordReferredSubscription,
   subscriptionProductIds,
 } from "../referredSubscription";
-import {
-  commissionDurationForClick,
-  referralStillEarns,
-} from "../referralDuration";
+import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 import {
   commissionAfterProviderFee,
@@ -71,8 +64,8 @@ export async function handleCheckoutSessionCompleted(
   const click = await db.click.findUnique({
     where: { referralToken, affiliate: { merchantId: merchant.id } },
     include: {
-      affiliate: { include: { program: true } },
-      link: { select: { commissionRateOverride: true } },
+      affiliate: true,
+      program: true,
     },
   });
   if (!click) return; // token doesn't match one of this Merchant's Clicks
@@ -240,16 +233,19 @@ export async function handleCheckoutSessionCompleted(
   // tax and exclusion reads below, so a sale that cannot earn costs none of
   // them. A subscription's first invoice is read above it, because whether
   // money moved decides whether its first payment is claimed.
+  const affiliate = click.affiliate;
+  const program = click.program;
+  const terms = resolveClickCommissionTerms(program, affiliate, click);
   const sale = { ref: stripePaymentRef, at: completedAt };
   if (
     !(await referralStillEarns(
       merchant.id,
       click.id,
-      click.affiliate.program,
+      click.program,
       sale,
       earlierPaymentRef ? [earlierPaymentRef] : [],
       db,
-      commissionDurationForClick(click.affiliate.program, click),
+      terms.commissionDuration,
     ))
   )
     return;
@@ -264,9 +260,7 @@ export async function handleCheckoutSessionCompleted(
   // the rate is checked before the base is computed: a one-time purchase's
   // base needs a Stripe read of its own (see below), and there is no reason
   // to spend it on a sale that cannot pay anything.
-  const affiliate = click.affiliate;
-  const program = affiliate.program;
-  const rate = commissionRateFor(affiliate, program, click.link, click);
+  const rate = terms.commissionRate.toNumber();
   if (rate <= 0) return;
 
   // Earned on the sale before tax and shipping. A subscription's first payment
@@ -422,11 +416,7 @@ export async function handleCheckoutSessionCompleted(
         saleAmount: saleAmountFor(baseMinor, session.currency),
         providerFeeAmount,
         providerFeeSource,
-        payableAt: computePayableAt(
-          program,
-          undefined,
-          click.holdingPeriodDaysSnapshot ?? undefined,
-        ),
+        payableAt: computePayableAt(terms.holdingPeriodDays),
         flagReason,
         // Stored through storableReferredShare exactly as invoicePaid.ts
         // does, matching renewals: a bigint column, never a null/too-large

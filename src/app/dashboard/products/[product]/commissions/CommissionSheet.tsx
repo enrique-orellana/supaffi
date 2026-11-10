@@ -16,7 +16,6 @@ import { COMMISSION_STATUS } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
-  markPaidAction,
   confirmFraudAction,
   dismissFlagAction,
   voidAction,
@@ -37,6 +36,17 @@ export type SheetCommission = {
   status: CommissionStatus;
   /** Held back from payment by an open dispute. Shown as the status. */
   disputed?: boolean;
+  payoutHold?: {
+    eligibleBalance: string;
+    minimum: string;
+    remaining: string;
+  } | null;
+  payoutRecord?: {
+    id: string;
+    total: string;
+    paidLabel: string;
+    isException: boolean;
+  } | null;
   /** Already carries its currency, since amounts are never converted. */
   amount: string;
   /**
@@ -149,13 +159,10 @@ export function CommissionSheet({
   commission,
   product,
   listHref,
-  renderedAt,
 }: {
   commission: SheetCommission;
   product: { id: string; slug: string };
   listHref: string;
-  /** When the page read this commission, as an ISO string. Bound into Mark paid. */
-  renderedAt: string;
 }) {
   const router = useRouter();
 
@@ -291,9 +298,11 @@ export function CommissionSheet({
               <p className="text-[13px] text-muted-foreground">
                 {commission.disputed
                   ? "Sale confirmed. Payout is paused while the dispute is open."
-                  : `Sale confirmed. Expected availability is ${commission.payableLabel}, subject to review.`}
+                  : commission.payoutHold
+                    ? `Mature, clear commissions in this Program and currency total ${commission.payoutHold.eligibleBalance}. The minimum is ${commission.payoutHold.minimum}; ${commission.payoutHold.remaining} more is needed.`
+                    : `Sale confirmed. Expected availability is ${commission.payableLabel}, subject to review.`}
               </p>
-            ) : commission.status !== COMMISSION_STATUS.VOIDED ? (
+            ) : commission.status === COMMISSION_STATUS.PAYABLE ? (
               <Line label="Payable on">{commission.payableLabel}</Line>
             ) : null}
             <Line label="Sale">
@@ -353,19 +362,10 @@ export function CommissionSheet({
           </div>
 
           {commission.status === COMMISSION_STATUS.PAYABLE && (
-            <form
-              action={markPaidAction.bind(
-                null,
-                listHref,
-                product,
-                [{ id: commission.id, amount: commission.payTotal }],
-                renderedAt,
-              )}
-            >
-              <Button type="submit" size="sm" className="cursor-pointer">
-                Mark paid
-              </Button>
-            </form>
+            <p className="text-sm text-muted-foreground">
+              This commission is part of its Affiliate, Program, and currency
+              payout group. Record the group from the Payouts page.
+            </p>
           )}
 
           {commission.status === COMMISSION_STATUS.PENDING && (
@@ -423,9 +423,18 @@ export function CommissionSheet({
           )}
 
           {commission.status === COMMISSION_STATUS.PAID && (
-            <p className="text-sm text-muted-foreground">
-              {commission.stateLabel}
-            </p>
+            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+              <p>{commission.stateLabel}</p>
+              {commission.payoutRecord && (
+                <p>
+                  Included in payout {commission.payoutRecord.id} for{" "}
+                  {commission.payoutRecord.total}, recorded {commission.payoutRecord.paidLabel}
+                  {commission.payoutRecord.isException
+                    ? " as a below-minimum exception."
+                    : "."}
+                </p>
+              )}
+            </div>
           )}
 
           {commission.status !== COMMISSION_STATUS.FLAGGED &&

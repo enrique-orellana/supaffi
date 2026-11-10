@@ -42,6 +42,7 @@ export default async function AffiliateSignupPage({
         merchantName={merchant.name}
         terms={{
           rate: program.defaultCommissionRate,
+          minimumPayoutAmount: program.minimumPayoutAmount,
           durationType: program.commissionDurationType,
           durationMonths: program.commissionDurationMonths,
         }}

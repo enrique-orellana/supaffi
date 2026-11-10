@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -13,7 +13,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Field, FormCard } from "@/components/Field";
 import { Term } from "@/components/Term";
-import type { ProgramFormValues } from "@/lib/programValidation";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type {
+  ProgramActionState,
+  ProgramFormValues,
+} from "@/lib/programValidation";
 import { COMMISSION_DURATION_OPTIONS } from "@/lib/commissionDuration";
 import {
   DEFAULT_DISPLAY_CURRENCY,
@@ -21,9 +33,9 @@ import {
 } from "@/lib/displayCurrencyOptions";
 
 type Action = (
-  prev: { error: string },
+  prev: ProgramActionState,
   formData: FormData,
-) => Promise<{ error: string }>;
+) => Promise<ProgramActionState>;
 
 export const TERMS_DEFAULTS: ProgramFormValues = {
   name: "",
@@ -33,6 +45,7 @@ export const TERMS_DEFAULTS: ProgramFormValues = {
   attributionWindowDays: "60",
   holdingPeriodDays: "30",
   currency: DEFAULT_DISPLAY_CURRENCY,
+  minimumPayoutAmount: "0.00",
 };
 
 // Passed to the Select as `items` so the trigger shows the sentence rather
@@ -57,6 +70,7 @@ export function TermsForm({
   askName = true,
   signupOpen,
   submitLabel,
+  confirmEdits = false,
 }: {
   action: Action;
   initial?: ProgramFormValues;
@@ -65,22 +79,28 @@ export function TermsForm({
   /** Shown only where it is set: onboarding's first program is always open. */
   signupOpen?: boolean;
   submitLabel: string;
+  confirmEdits?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
-  const [duration, setDuration] = useState(initial.commissionDurationType);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [dismissedConfirmationState, setDismissedConfirmationState] =
+    useState<ProgramActionState | null>(null);
+  const confirmationOpen =
+    Boolean(state.editConfirmation) && dismissedConfirmationState !== state;
+  const values = { ...initial, ...state.values };
+  const [duration, setDuration] = useState(values.commissionDurationType);
   const [currency, setCurrency] = useState(
-    initial.currency ?? DEFAULT_DISPLAY_CURRENCY,
+    values.currency ?? DEFAULT_DISPLAY_CURRENCY,
   );
-
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form ref={formRef} action={formAction} className="flex flex-col gap-6">
       <FormCard>
         {askName && (
           <Field label="Program name" htmlFor="program-name">
             <Input
               id="program-name"
               name="name"
-              defaultValue={initial.name}
+              defaultValue={values.name}
               placeholder="Partners"
               required
             />
@@ -97,7 +117,7 @@ export function TermsForm({
                 min="1"
                 max="100"
                 step="1"
-                defaultValue={initial.defaultCommissionRate}
+                defaultValue={values.defaultCommissionRate}
                 required
                 className="w-24 pr-7 tabular-nums"
               />
@@ -163,6 +183,32 @@ export function TermsForm({
           </Select>
         </Field>
 
+        <Field
+          label={
+            <Term tip="This is checked separately in each transaction currency, with no conversion. For example, 50 means 50 EUR and 50 USD. Set 0 to make every otherwise-clear mature commission payable.">
+              Minimum balance before payout
+            </Term>
+          }
+          htmlFor="program-minimum-payout"
+        >
+          <div className="flex flex-col gap-1.5">
+            <Input
+              id="program-minimum-payout"
+              name="minimumPayoutAmount"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={values.minimumPayoutAmount ?? "0.00"}
+              required
+              className="w-32 tabular-nums"
+            />
+            <p className="text-xs text-muted-foreground">
+              Set 0 for no minimum. Applied independently to each transaction
+              currency.
+            </p>
+          </div>
+        </Field>
+
         {duration === "FIXED_MONTHS" && (
           <Field label="Months of renewals" htmlFor="program-months">
             <Input
@@ -171,7 +217,7 @@ export function TermsForm({
               type="number"
               min="1"
               step="1"
-              defaultValue={initial.commissionDurationMonths || "12"}
+              defaultValue={values.commissionDurationMonths || "12"}
               className={NUMBER}
             />
           </Field>
@@ -195,7 +241,7 @@ export function TermsForm({
                 type="number"
                 min="1"
                 step="1"
-                defaultValue={initial.attributionWindowDays}
+                defaultValue={values.attributionWindowDays}
                 required
                 className={NUMBER}
               />
@@ -218,7 +264,7 @@ export function TermsForm({
                 type="number"
                 min="1"
                 step="1"
-                defaultValue={initial.holdingPeriodDays}
+                defaultValue={values.holdingPeriodDays}
                 required
                 className={NUMBER}
               />
@@ -231,7 +277,7 @@ export function TermsForm({
           <label className="flex cursor-pointer items-center gap-2.5 text-sm">
             <Checkbox
               name="signupOpen"
-              defaultChecked={signupOpen}
+              defaultChecked={values.signupOpen ?? signupOpen}
               className="cursor-pointer"
             />
             <Term tip="Anyone with the signup link can join. Turn it off for a tier you move affiliates into yourself.">
@@ -241,6 +287,16 @@ export function TermsForm({
         )}
       </FormCard>
 
+      {state.minimumConfirmation && (
+        <input
+          type="hidden"
+          name="minimumConfirmationFingerprint"
+          value={state.minimumConfirmation.fingerprint}
+        />
+      )}
+      {confirmEdits && confirmationOpen && (
+        <input type="hidden" name="confirmProgramChanges" value="yes" />
+      )}
       {state.error && (
         <p role="alert" className="text-[13px] text-status-danger">
           {state.error}
@@ -256,6 +312,95 @@ export function TermsForm({
           {submitLabel}
         </Button>
       </div>
+
+      {confirmEdits && (
+        <Dialog
+          open={confirmationOpen}
+          onOpenChange={(open) => {
+            if (!open) setDismissedConfirmationState(state);
+          }}
+        >
+          <DialogContent
+            showCloseButton
+            className="max-h-[min(80vh,36rem)] max-w-md overflow-hidden"
+          >
+            <DialogHeader>
+              <DialogTitle>Save Program changes?</DialogTitle>
+              <DialogDescription>
+                {state.minimumConfirmation
+                  ? "Review the affected balances before saving the new payout minimum."
+                  : "New referrals will use the updated Program terms. The default affiliate display currency and payout eligibility may also change."}
+              </DialogDescription>
+            </DialogHeader>
+            {state.minimumConfirmation && (
+              <section className="min-h-0 max-h-[35vh] space-y-3 overflow-y-auto rounded-md border border-border bg-muted/30 p-3">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-medium">Payout impact</h3>
+                  <p className="text-xs text-muted-foreground">
+                    New minimum: {state.values?.minimumPayoutAmount ?? "0.00"}{" "}
+                    per transaction currency.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {state.minimumConfirmation.groupCount} balance
+                    {state.minimumConfirmation.groupCount === 1 ? "" : "s"}{" "}
+                    would move to pending. Currently payable:{" "}
+                    {state.minimumConfirmation.currentlyPayableByCurrency
+                      .map(
+                        ({ currency: code, total }) =>
+                          `${total} ${code.toUpperCase()}`,
+                      )
+                      .join(" · ")}
+                    .
+                  </p>
+                </div>
+                <ul className="divide-y divide-border text-sm">
+                  {state.minimumConfirmation.examples.map((group) => (
+                    <li
+                      key={`${group.affiliateId}:${group.currency}`}
+                      className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                    >
+                      <span className="min-w-0 truncate">
+                        {group.affiliateName ?? "Affiliate"}
+                      </span>
+                      <span className="shrink-0 text-right tabular-nums">
+                        {group.currentlyPayable} {group.currency.toUpperCase()}
+                        <span className="block text-xs text-muted-foreground">
+                          moving to pending; eligible {group.eligibleBalance}{" "}
+                          {group.currency.toUpperCase()}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                  {state.minimumConfirmation.groupCount >
+                    state.minimumConfirmation.examples.length && (
+                    <li className="pt-2 text-xs text-muted-foreground">
+                      and{" "}
+                      {state.minimumConfirmation.groupCount -
+                        state.minimumConfirmation.examples.length}{" "}
+                      more balances
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
+            <DialogFooter className="bg-popover">
+              <DialogClose
+                render={<Button type="button" variant="outline" />}
+                disabled={pending}
+              >
+                Cancel
+              </DialogClose>
+              <Button
+                type="button"
+                onClick={() => formRef.current?.requestSubmit()}
+                disabled={pending}
+              >
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </form>
   );
 }

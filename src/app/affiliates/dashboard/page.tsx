@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireAffiliate } from "@/lib/affiliateAuth";
+import { resolveCurrentCommissionTerms } from "@/lib/commissionTerms";
 import { getAffiliateDisplaySettings } from "@/lib/affiliateDisplaySettings";
 import {
   convertCurrencyChart,
@@ -86,14 +87,22 @@ export default async function AffiliateOverviewPage({
     db.affiliate.findUnique({
       where: { id: affiliateId },
       select: {
+        programId: true,
         customCommissionRate: true,
+        commissionDurationTypeOverride: true,
+        commissionDurationMonthsOverride: true,
+        attributionWindowDaysOverride: true,
+        holdingPeriodDaysOverride: true,
+        minimumPayoutAmountOverride: true,
         program: {
           select: {
+            id: true,
             defaultCommissionRate: true,
             commissionDurationType: true,
             commissionDurationMonths: true,
             attributionWindowDays: true,
             holdingPeriodDays: true,
+            minimumPayoutAmount: true,
           },
         },
       },
@@ -192,21 +201,24 @@ export default async function AffiliateOverviewPage({
   // The signup link: the one the merchant's own dashboard shows and the one in
   // every email they have had from this program.
   const primary = links.find((link) => link.isPrimary) ?? links[0] ?? null;
+  const currentTerms = program
+    ? resolveCurrentCommissionTerms(program.program, program)
+    : null;
 
   return (
     <OverviewScreen
       referralUrl={primary ? linkUrl(merchant.websiteUrl, primary) : null}
       terms={
-        program
+        currentTerms
           ? termsLine({
-              rate: Number(
-                program.customCommissionRate ??
-                  program.program.defaultCommissionRate,
-              ),
-              durationType: program.program.commissionDurationType,
-              durationMonths: program.program.commissionDurationMonths,
-              attributionWindowDays: program.program.attributionWindowDays,
-              holdingPeriodDays: program.program.holdingPeriodDays,
+              rate: currentTerms.commissionRate.toNumber(),
+              durationType:
+                currentTerms.commissionDuration.commissionDurationType,
+              durationMonths:
+                currentTerms.commissionDuration.commissionDurationMonths,
+              attributionWindowDays: currentTerms.attributionWindowDays,
+              holdingPeriodDays: currentTerms.holdingPeriodDays,
+              minimumPayoutAmount: currentTerms.minimumPayoutAmount.toFixed(2),
             })
           : ""
       }

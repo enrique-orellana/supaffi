@@ -3,25 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { alreadyPaidParams } from "@/lib/payoutNotices";
-import {
-  markCommissionsPaid,
-  type ShownCommission,
-  STALE_PAGE,
-} from "@/lib/commission";
-
-function refusalCode(error: string): string {
-  if (error.includes("Nothing selected")) return "empty";
-  if (error.includes("one currency")) return "mixed";
-  if (error === STALE_PAGE) return "stale";
-  return "refused";
-}
+import { markCommissionsPaid, type ShownCommission } from "@/lib/commission";
 
 /**
  * One payout: the commissions on the row as shown, at the amounts shown, and
  * when the page was drawn. The ledger records those amounts; see
- * `markCommissionsPaid`. Its refusal, or how many rows it skipped or found already paid, comes back
- * in the URL as a code.
+ * `markCommissionsPaid`. A refusal comes back in the URL as a fixed result
+ * code that the page maps to a user-facing message.
  */
 export async function markPayoutPaidAction(
   product: { id: string; slug: string },
@@ -33,21 +21,22 @@ export async function markPayoutPaidAction(
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
   const noteEntry = formData?.get("note");
   const note = typeof noteEntry === "string" ? noteEntry.trim() || null : null;
+  const exceptionEntry = formData?.get("exceptionReason");
+  const exceptionReason =
+    typeof exceptionEntry === "string" ? exceptionEntry : null;
   const result = await markCommissionsPaid(
     session.user.id,
     product.id,
     shown,
     renderedAt,
     note,
+    exceptionReason,
   );
 
   const params = new URLSearchParams();
-  if ("error" in result) params.set("error", refusalCode(result.error));
+  if ("error" in result) params.set("error", result.error);
   else {
-    if (result.skipped) params.set("skipped", String(result.skipped));
-    for (const [key, value] of Object.entries(alreadyPaidParams(result)))
-      params.set(key, value);
-    if (result.count > 0 || result.alreadyPaid) params.set("tab", "paid");
+    if (result.count > 0) params.set("tab", "paid");
   }
   const search = params.toString();
   revalidatePath("/dashboard", "layout");

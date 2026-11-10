@@ -1,26 +1,8 @@
 import { Prisma } from "@prisma/client";
-import type { Affiliate, AffiliateLink, Click, Program } from "@prisma/client";
+import type { Program } from "@prisma/client";
 import type Stripe from "stripe";
 import { minorUnitsToMajor } from "@/lib/stripe";
-
-export function commissionRateFor(
-  affiliate: Affiliate,
-  program: Program,
-  link?: Pick<AffiliateLink, "commissionRateOverride"> | null,
-  click?: Pick<Click, "commissionRateSnapshot"> | null,
-): number {
-  return Number(
-    click?.commissionRateSnapshot ??
-      link?.commissionRateOverride ??
-      affiliate.customCommissionRate ??
-      program.defaultCommissionRate,
-  );
-}
-
-export type CommissionDurationTerms = Pick<
-  Program,
-  "commissionDurationType" | "commissionDurationMonths"
->;
+import type { CommissionDurationTerms } from "@/lib/commissionTerms";
 
 // Decimal rather than float arithmetic: an exact half cent is often held as
 // a hair under it in binary floating point, so float rounding took it down
@@ -45,9 +27,8 @@ export function saleAmountFor(
 }
 
 export function computePayableAt(
-  program: Program,
+  holdingPeriodDays: number,
   from: Date = new Date(),
-  holdingPeriodDays: number = program.holdingPeriodDays,
 ): Date {
   return new Date(from.getTime() + holdingPeriodDays * 24 * 60 * 60 * 1000);
 }

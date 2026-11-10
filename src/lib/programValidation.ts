@@ -13,6 +13,31 @@ export type ProgramFormValues = {
   attributionWindowDays: string;
   holdingPeriodDays: string;
   currency?: string;
+  minimumPayoutAmount?: string;
+};
+
+export type ProgramMinimumImpactSummary = {
+  fingerprint: string;
+  groupCount: number;
+  examples: {
+    affiliateId: string;
+    affiliateName: string | null;
+    currency: string;
+    eligibleBalance: string;
+    currentlyPayable: string;
+  }[];
+  currentlyPayableByCurrency: { currency: string; total: string }[];
+};
+
+export type ProgramFormSnapshot = ProgramFormValues & {
+  signupOpen?: boolean;
+};
+
+export type ProgramActionState = {
+  error: string;
+  values?: ProgramFormSnapshot;
+  editConfirmation?: boolean;
+  minimumConfirmation?: ProgramMinimumImpactSummary;
 };
 
 export function validateProgramInput(
@@ -29,6 +54,15 @@ export function validateProgramInput(
   if (!currency) {
     return { error: "Choose a supported affiliate display currency" };
   }
+
+  const minimumPayoutAmount = input.minimumPayoutAmount?.trim() || "0";
+  if (!/^\d{1,16}(?:\.\d{1,2})?$/.test(minimumPayoutAmount)) {
+    return {
+      error: "Minimum balance must be zero or more with up to two decimal places",
+    };
+  }
+  const [minimumWhole, minimumFraction = ""] = minimumPayoutAmount.split(".");
+  const normalizedMinimumPayoutAmount = `${minimumWhole}.${minimumFraction.padEnd(2, "0")}`;
 
   const rate = Number(input.defaultCommissionRate);
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) {
@@ -81,6 +115,7 @@ export function validateProgramInput(
       attributionWindowDays,
       holdingPeriodDays,
       currency,
+      minimumPayoutAmount: normalizedMinimumPayoutAmount,
     },
   };
 }

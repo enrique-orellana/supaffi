@@ -1,8 +1,6 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
-import { Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -11,7 +9,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Section } from "@/components/dashboard/Page";
 import {
   PAYOUT_METHODS,
   composeCryptoPayoutDetails,
@@ -20,7 +17,7 @@ import {
   parsePayoutDetails,
   type PayoutMethod,
 } from "@/lib/payoutMethod";
-import { updatePayoutDetailsAction } from "./updatePayoutDetails";
+import { Section } from "@/components/dashboard/Page";
 
 const METHOD_LABELS = Object.fromEntries(
   Object.entries(PAYOUT_METHODS).map(([method, { label }]) => [method, label]),
@@ -30,36 +27,17 @@ const METHOD_LABELS = Object.fromEntries(
 // re-enablement, while only offering crypto in the picker for now.
 const VISIBLE_METHODS = ["crypto"] as const satisfies readonly PayoutMethod[];
 
-type FormState = { error?: string; saved?: boolean };
-
-async function submit(
-  _prevState: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const value = String(formData.get("payoutDetails") ?? "");
-  const result = await updatePayoutDetailsAction(value);
-  if (result.error) return { error: result.error };
-  return { saved: true };
-}
-
 /**
- * Where the merchant sends the money: a method from a short list and the
- * details it needs, stored as a single line the owner can copy. "Other" keeps
- * the free text for anything the list does not name.
- *
- * The save action sits in the card's band, the way every task card in the
- * flow carries the one action it owns. The button reaches the form by
- * `form=` rather than by nesting, since the band and the body are siblings.
+ * Payout destination fields, composed into the single value stored for the
+ * affiliate. The surrounding Settings form owns the shared Save action.
  */
-export function PayoutDetailsForm({
+export function PayoutDetailsFields({
   initial,
-  className,
+  onDetailsChange,
 }: {
   initial: string;
-  className?: string;
+  onDetailsChange: (value: string) => void;
 }) {
-  const [state, formAction, pending] = useActionState(submit, {});
-  const formId = useId();
   const parsedInitial = parsePayoutDetails(initial);
   const initialCrypto =
     parsedInitial.method === "crypto"
@@ -79,10 +57,20 @@ export function PayoutDetailsForm({
   const [cryptoWalletAddress, setCryptoWalletAddress] = useState(
     initialCrypto.walletAddress,
   );
+  const payoutDetails =
+    method === "crypto"
+      ? composeCryptoPayoutDetails({
+          coinAndNetwork: cryptoCoinAndNetwork,
+          walletAddress: cryptoWalletAddress,
+        })
+      : composePayoutDetails(method, value);
 
-  // From the prop alone: the action revalidates the layout, so `initial`
-  // arrives filled in after a save and the notice goes with it. Saving an
-  // empty field leaves it up next to "Saved", which is the truth.
+  useEffect(() => {
+    onDetailsChange(payoutDetails);
+  }, [onDetailsChange, payoutDetails]);
+
+  // Keep the missing-details notice visible until a refresh confirms the
+  // destination has been saved.
   const missing = initial.trim() === "";
   const methodSelect = (
     <Select
@@ -111,30 +99,8 @@ export function PayoutDetailsForm({
   );
 
   return (
-    <Section
-      title="Payout details"
-      className={className}
-      actions={
-        <div className="flex items-center gap-2.5">
-          {state.saved && (
-            <span className="flex items-center gap-1 text-xs font-medium text-status-success">
-              <Check className="size-3.5" />
-              Saved
-            </span>
-          )}
-          <Button
-            type="submit"
-            form={formId}
-            size="sm"
-            className="cursor-pointer"
-            disabled={pending}
-          >
-            {pending ? "Saving" : "Save"}
-          </Button>
-        </div>
-      }
-    >
-      <form id={formId} action={formAction} className="flex flex-col gap-2.5">
+    <Section title="Payout details">
+      <div className="flex flex-col gap-2.5">
         {/* The one consequence this screen has that nothing on it shows: an
             empty field means the merchant has nowhere to send the money. Said
             here, where it is fixed, and nowhere else. */}
@@ -147,14 +113,7 @@ export function PayoutDetailsForm({
         <input
           type="hidden"
           name="payoutDetails"
-          value={
-            method === "crypto"
-              ? composeCryptoPayoutDetails({
-                  coinAndNetwork: cryptoCoinAndNetwork,
-                  walletAddress: cryptoWalletAddress,
-                })
-              : composePayoutDetails(method, value)
-          }
+          value={payoutDetails}
         />
         {method === "crypto" ? (
           <div className="grid items-end gap-x-3 gap-y-2 sm:grid-cols-2">
@@ -200,12 +159,7 @@ export function PayoutDetailsForm({
             />
           </div>
         )}
-        {state.error && (
-          <p role="alert" className="shrink-0 text-[13px] text-status-danger">
-            {state.error}
-          </p>
-        )}
-      </form>
+      </div>
     </Section>
   );
 }

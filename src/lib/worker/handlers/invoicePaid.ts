@@ -2,8 +2,8 @@ import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
+import { resolveClickCommissionTerms } from "@/lib/commissionTerms";
 import {
-  commissionRateFor,
   computePayableAt,
   hasExclusionFlag,
   isExcluded,
@@ -32,10 +32,7 @@ import {
   idOf,
   subscriptionIdOf,
 } from "../referredSubscription";
-import {
-  commissionDurationForClick,
-  referralStillEarns,
-} from "../referralDuration";
+import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 import {
   commissionAfterProviderFee,
@@ -112,7 +109,9 @@ export async function handleInvoicePaid(
   // another plan with a new Checkout, carries on from the click's first
   // payment instead of starting the program over. Measured after the claim
   // above, so this subscription's own first payment is part of that history.
-  const program = click.affiliate.program;
+  const program = click.program;
+  const affiliate = click.affiliate;
+  const terms = resolveClickCommissionTerms(program, affiliate, click);
   if (
     !(await referralStillEarns(
       merchant.id,
@@ -121,7 +120,7 @@ export async function handleInvoicePaid(
       payment,
       [],
       db,
-      commissionDurationForClick(program, click),
+      terms.commissionDuration,
     ))
   )
     return;
@@ -192,8 +191,7 @@ export async function handleInvoicePaid(
   if (!earned) return;
   const baseMinor = earned.baseMinor;
 
-  const affiliate = click.affiliate;
-  const rate = commissionRateFor(affiliate, program, click.link, click);
+  const rate = terms.commissionRate.toNumber();
   // The same two checks as the first purchase. A renewal is where a customer
   // who is really the affiliate most easily swaps in their own card, so the
   // card is checked on every one, each flagged on its own.
@@ -258,11 +256,7 @@ export async function handleInvoicePaid(
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
         providerFeeAmount,
         providerFeeSource,
-        payableAt: computePayableAt(
-          program,
-          undefined,
-          click.holdingPeriodDaysSnapshot ?? undefined,
-        ),
+        payableAt: computePayableAt(terms.holdingPeriodDays),
         flagReason,
         referredChargeMinor: storableReferredShare(cappedReferredChargeMinor),
         // amount, grossAmount (the figure a later refund prorates against),

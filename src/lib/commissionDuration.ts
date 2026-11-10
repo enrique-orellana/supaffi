@@ -28,15 +28,20 @@ export function isCommissionDuration(
 }
 
 export function commissionDurationLabel(
-  type: CommissionDurationValue,
+  type: unknown,
   months: number | null,
 ): string {
+  if (!isCommissionDuration(type)) return "Commission terms unavailable";
+
   if (type === CommissionDuration.FIXED_MONTHS) {
     if (months === null) return "of every payment, for a fixed term";
     return `of every payment, for ${months} month${months === 1 ? "" : "s"}`;
   }
-  return COMMISSION_DURATION_OPTIONS.find((option) => option.value === type)!
-    .label;
+
+  return (
+    COMMISSION_DURATION_OPTIONS.find((option) => option.value === type)
+      ?.label ?? "Commission terms unavailable"
+  );
 }
 
 /** Parse an Owner's per-code override; null means the form value is invalid. */

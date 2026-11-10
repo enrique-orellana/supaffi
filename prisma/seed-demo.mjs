@@ -113,6 +113,7 @@ async function clearDemo(merchantId) {
   // commissions, which point at clicks, which point at links.
   await db.commission.deleteMany({ where: { affiliateId: { in: ids }, adjustsCommissionId: { not: null } } });
   await db.commission.deleteMany({ where: { affiliateId: { in: ids } } });
+  await db.payout.deleteMany({ where: { affiliateId: { in: ids } } });
   // Referred subscriptions point at clicks, so they go before them.
   await db.referredSubscription.deleteMany({ where: { click: { affiliateId: { in: ids } } } });
   await db.click.deleteMany({ where: { affiliateId: { in: ids } } });
@@ -318,6 +319,7 @@ async function main() {
         id: clickId,
         merchantId: merchant.id,
         affiliateId: affiliate.id,
+        programId: program.id,
         linkId: pick(affiliate.linkIds),
         referralToken: `demo_${randomUUID()}`,
         expiresAt: new Date(createdAt.getTime() + 60 * DAY),
@@ -380,6 +382,54 @@ async function main() {
   // Originals before adjustments, so every adjustment has its commission.
   await insertMany("commission", commissions.filter((c) => !c.adjustsCommissionId));
   await insertMany("commission", commissions.filter((c) => c.adjustsCommissionId));
+
+  // The Paid tab reads owner-confirmed Payout records, not inferred groups of
+  // PAID commissions. Keep the demo history internally consistent by making
+  // one batch per affiliate, Program, currency, and scheduled payout date.
+  const paidGroups = new Map();
+  for (const commission of commissions) {
+    if (commission.status !== "PAID" || !commission.paidAt) continue;
+    const key = [
+      commission.affiliateId,
+      program.id,
+      commission.currency,
+      commission.paidAt.toISOString(),
+    ].join("\u001f");
+    const group = paidGroups.get(key) ?? {
+      affiliateId: commission.affiliateId,
+      programId: program.id,
+      currency: commission.currency,
+      paidAt: commission.paidAt,
+      cents: 0n,
+      commissionIds: [],
+    };
+    const [whole, fraction = ""] = commission.amount.split(".");
+    group.cents += BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+    group.commissionIds.push(commission.id);
+    paidGroups.set(key, group);
+  }
+
+  for (const group of paidGroups.values()) {
+    const payoutId = randomUUID();
+    const total = `${group.cents / 100n}.${String(group.cents % 100n).padStart(2, "0")}`;
+    await db.payout.create({
+      data: {
+        id: payoutId,
+        merchantId: merchant.id,
+        affiliateId: group.affiliateId,
+        programId: group.programId,
+        currency: group.currency,
+        total,
+        paidAt: group.paidAt,
+      },
+    });
+    for (let i = 0; i < group.commissionIds.length; i += 2000) {
+      await db.commission.updateMany({
+        where: { id: { in: group.commissionIds.slice(i, i + 2000) } },
+        data: { payoutId },
+      });
+    }
+  }
 
   const by = (status) => commissions.filter((c) => c.status === status).length;
   console.log(

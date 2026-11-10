@@ -29,6 +29,18 @@ export type AffiliateCommissionDetailView = {
   /** Already sanitized for the affiliate audience by the server. */
   voidReason: string | null;
   paymentProvider: string | null;
+  reviewHeld: boolean;
+  payoutHold: {
+    eligibleBalance: string;
+    minimum: string;
+    remaining: string;
+  } | null;
+  payoutRecord: {
+    total: string;
+    paidLabel: string;
+    programName: string;
+    isException: boolean;
+  } | null;
 };
 
 function DetailRow({
@@ -96,7 +108,18 @@ export function AffiliateCommissionSheet({
               {commission.createdLabel}
             </DetailRow>
             {commission.status === COMMISSION_STATUS.PENDING &&
-              (commission.stateLabel === "Checking availability" ? (
+              (commission.reviewHeld ? (
+                <DetailRow label="Availability">
+                  The merchant is reviewing this sale; payout is paused.
+                </DetailRow>
+              ) : commission.payoutHold ? (
+                <DetailRow label="Payout minimum">
+                  Mature clear commissions in this Program and currency total{" "}
+                  {commission.payoutHold.eligibleBalance}. The minimum is{" "}
+                  {commission.payoutHold.minimum};{" "}
+                  {commission.payoutHold.remaining} more is needed.
+                </DetailRow>
+              ) : commission.stateLabel === "Checking availability" ? (
                 <DetailRow label="Availability">
                   {commission.stateLabel}
                 </DetailRow>
@@ -108,6 +131,16 @@ export function AffiliateCommissionSheet({
             {commission.status === COMMISSION_STATUS.PAID &&
               commission.paidLabel && (
                 <DetailRow label="Paid on">{commission.paidLabel}</DetailRow>
+              )}
+            {commission.status === COMMISSION_STATUS.PAID &&
+              commission.payoutRecord && (
+                <DetailRow label="Payout record">
+                  {commission.payoutRecord.total} from{" "}
+                  {commission.payoutRecord.programName}
+                  {commission.payoutRecord.isException
+                    ? " (below-minimum exception)"
+                    : ""}
+                </DetailRow>
               )}
             {isVoided && commission.voidedLabel && (
               <DetailRow label="Voided on">{commission.voidedLabel}</DetailRow>

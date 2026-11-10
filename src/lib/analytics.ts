@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { MAX_SHOWN } from "@/lib/commission";
+import { convertCurrencyTotals, type EcbReferenceRates } from "@/lib/currency";
 import {
   COMMISSION_STATUS,
   PENDING_OR_FLAGGED_COMMISSION_STATUSES,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/commissionStatus";
 import { DEFAULT_RANGE } from "@/lib/analyticsShared";
 import type { ChartRange } from "@/lib/analyticsShared";
+import { resolveMinimumPayoutAmount } from "@/lib/commissionTerms";
 
 export {
   CHART_RANGES,
@@ -625,6 +627,7 @@ export type TopAffiliate = {
 export async function getTopAffiliates(
   ownerId: string,
   merchantId: string,
+  ranking: { displayCurrency: string; rates: EcbReferenceRates },
   limit = 5,
   window?: Window,
 ): Promise<TopAffiliate[]> {
@@ -654,24 +657,41 @@ export async function getTopAffiliates(
 
   const byAffiliate = new Map<
     string,
-    { total: number; earned: CurrencyTotal[] }
+    { earned: CurrencyTotal[] }
   >();
   for (const row of earned) {
     const amount = row._sum.amount ?? new Prisma.Decimal(0);
     const existing = byAffiliate.get(row.affiliateId) ?? {
-      total: 0,
       earned: [],
     };
-    existing.total += amount.toNumber();
     existing.earned.push({ currency: row.currency, total: amount.toFixed(2) });
     byAffiliate.set(row.affiliateId, existing);
   }
 
   const ranked = [...byAffiliate.entries()]
-    .sort((a, b) => b[1].total - a[1].total)
+    .map(([id, totals], originalIndex) => {
+      const converted = convertCurrencyTotals(
+        totals.earned,
+        ranking.displayCurrency,
+        ranking.rates,
+      );
+      return {
+        id,
+        totals,
+        originalIndex,
+        sortAmount:
+          converted.total === null
+            ? Number.NEGATIVE_INFINITY
+            : Number(converted.total),
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.sortAmount - a.sortAmount || a.originalIndex - b.originalIndex,
+    )
     .slice(0, limit);
 
-  const rankedIds = ranked.map(([id]) => id);
+  const rankedIds = ranked.map(({ id }) => id);
   const [affiliates, clicks, sales] = await Promise.all([
     db.affiliate.findMany({
       where: { id: { in: rankedIds } },
@@ -702,7 +722,7 @@ export async function getTopAffiliates(
   const clicksById = new Map(clicks.map((c) => [c.affiliateId, c._count._all]));
   const salesById = new Map(sales.map((s) => [s.affiliateId, s._count._all]));
 
-  return ranked.map(([id, totals]) => {
+  return ranked.map(({ id, totals }) => {
     const affiliate = affiliateById.get(id)!;
     return {
       id,
@@ -721,13 +741,18 @@ export type PayableGroup = {
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
+  programId: string;
+  programName: string;
   /** Where the affiliate wants to be paid, as they wrote it. */
   payoutDetails: string | null;
   currency: string;
   total: string;
+  minimum: string;
+  remainingToMinimum: string;
+  belowMinimum: boolean;
   commissionIds: string[];
   /** Each commission behind `total` with its amount as rendered, two decimals. Mark paid binds these. */
-  commissions: { id: string; amount: string }[];
+  commissions: { id: string; amount: string; createdAt: Date }[];
 };
 
 /**
@@ -749,9 +774,10 @@ export type PayableGroup = {
  * the ones ahead of it are marked paid; `total` and `commissionIds` always
  * match the rows actually included, so Mark paid binds exactly what was shown.
  */
-export async function getPayableGroups(
+async function payoutGroupsForStatus(
   ownerId: string,
   merchantId: string,
+  status: typeof COMMISSION_STATUS.PAYABLE | typeof COMMISSION_STATUS.PENDING,
   capPerGroup: number = MAX_SHOWN,
   filters: {
     affiliateId?: string | null;
@@ -763,13 +789,16 @@ export async function getPayableGroups(
 
   const rows = await db.commission.findMany({
     where: {
-      status: COMMISSION_STATUS.PAYABLE,
+      status,
       adjustsCommissionId: null,
       amount: { gt: 0 },
-      // A disputed commission is never PAYABLE, so this matches nothing today.
-      // It stays as a guard: a payout button must never offer a held row.
+      // Every group is restricted to clear mature rows. Held rows are shown
+      // separately below the applicable payout minimum.
       disputeOpenedAt: null,
       checkoutConflictHeldAt: null,
+      flagReason: null,
+      payoutId: null,
+      payableAt: { lte: new Date() },
       ...(filters.currency ? { currency: filters.currency } : {}),
       affiliate: {
         merchantId,
@@ -787,56 +816,135 @@ export async function getPayableGroups(
     select: {
       id: true,
       amount: true,
+      createdAt: true,
       currency: true,
+      programId: true,
+      program: {
+        select: { id: true, name: true, minimumPayoutAmount: true },
+      },
       affiliate: {
-        select: { id: true, name: true, email: true, payoutDetails: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          payoutDetails: true,
+          programId: true,
+          minimumPayoutAmountOverride: true,
+        },
       },
     },
     orderBy: [{ payableAt: "asc" }, { id: "asc" }],
   });
 
-  const groups = new Map<string, PayableGroup & { sum: Prisma.Decimal }>();
+  const groups = new Map<
+    string,
+    PayableGroup & { sum: Prisma.Decimal; minimumDecimal: Prisma.Decimal }
+  >();
   for (const row of rows) {
-    const key = `${row.affiliate.id}:${row.currency}`;
+    if (!row.programId || !row.program) continue;
+    const key = `${row.affiliate.id}:${row.programId}:${row.currency}`;
     const existing = groups.get(key);
     // Past the cap for this affiliate and currency: left for a later payout,
     // never added to the total or the ids Mark paid would bind.
     if (existing && existing.commissionIds.length >= capPerGroup) continue;
-    const shown = { id: row.id, amount: row.amount.toFixed(2) };
+    const shown = {
+      id: row.id,
+      amount: row.amount.toFixed(2),
+      createdAt: row.createdAt,
+    };
     if (existing) {
       existing.sum = existing.sum.add(row.amount);
       existing.commissionIds.push(row.id);
       existing.commissions.push(shown);
     } else {
+      const minimum = resolveMinimumPayoutAmount(row.program, row.affiliate);
       groups.set(key, {
         affiliateId: row.affiliate.id,
         affiliateName: row.affiliate.name,
         affiliateEmail: row.affiliate.email,
+        programId: row.programId,
+        programName: row.program.name,
         payoutDetails: row.affiliate.payoutDetails,
         currency: row.currency,
         total: "0.00",
+        minimum: minimum.toFixed(2),
+        remainingToMinimum: "0.00",
+        belowMinimum: status === COMMISSION_STATUS.PENDING,
         commissionIds: [row.id],
         commissions: [shown],
         sum: row.amount,
+        minimumDecimal: minimum,
       });
     }
   }
 
   return [...groups.values()]
-    .map(({ sum, ...group }) => ({ ...group, total: sum.toFixed(2) }))
+    .map(({ sum, minimumDecimal, ...group }) => ({
+      ...group,
+      total: sum.toFixed(2),
+      remainingToMinimum: Prisma.Decimal.max(
+        minimumDecimal.sub(sum),
+        new Prisma.Decimal(0),
+      ).toFixed(2),
+    }))
+    .filter((group) =>
+      group.belowMinimum
+        ? new Prisma.Decimal(group.total).lt(group.minimum)
+        : true,
+    )
     .sort((a, b) => Number(b.total) - Number(a.total));
 }
 
-/** How many payouts are ready: one per affiliate and currency. For the sidebar badge. */
+export async function getPayableGroups(
+  ownerId: string,
+  merchantId: string,
+  capPerGroup: number = MAX_SHOWN,
+  filters: {
+    affiliateId?: string | null;
+    currency?: string | null;
+    query?: string | null;
+  } = {},
+): Promise<PayableGroup[]> {
+  return payoutGroupsForStatus(
+    ownerId,
+    merchantId,
+    COMMISSION_STATUS.PAYABLE,
+    capPerGroup,
+    filters,
+  );
+}
+
+export async function getBelowMinimumPayoutGroups(
+  ownerId: string,
+  merchantId: string,
+  filters: {
+    affiliateId?: string | null;
+    currency?: string | null;
+    query?: string | null;
+  } = {},
+): Promise<PayableGroup[]> {
+  return payoutGroupsForStatus(
+    ownerId,
+    merchantId,
+    COMMISSION_STATUS.PENDING,
+    MAX_SHOWN,
+    filters,
+  );
+}
+
+/** How many Program-scoped Affiliate/currency groups are ready for the sidebar. */
 export async function countPayouts(merchantId: string): Promise<number> {
   const groups = await db.commission.groupBy({
-    by: ["affiliateId", "currency"],
+    by: ["affiliateId", "programId", "currency"],
     where: {
       status: COMMISSION_STATUS.PAYABLE,
+      payableAt: { lte: new Date() },
+      payoutId: null,
       adjustsCommissionId: null,
       amount: { gt: 0 },
       disputeOpenedAt: null,
       checkoutConflictHeldAt: null,
+      flagReason: null,
       affiliate: { merchantId },
     },
   });
@@ -844,14 +952,19 @@ export async function countPayouts(merchantId: string): Promise<number> {
 }
 
 export type PayoutRow = {
+  id: string;
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
+  programId: string;
+  programName: string;
   currency: string;
   paidAt: Date;
   note: string | null;
   total: string;
   count: number;
+  isException: boolean;
+  exceptionReason: string | null;
 };
 
 export type PayoutFilters = {
@@ -861,9 +974,7 @@ export type PayoutFilters = {
 };
 
 /**
- * Payouts already made, newest first. A payout is what one Mark paid wrote:
- * one affiliate, one currency, one `paidAt`, which the ledger stamps once for
- * every commission it covers.
+ * Payout batches already recorded, newest first.
  */
 export async function listPayouts(
   ownerId: string,
@@ -884,54 +995,61 @@ export async function listPayouts(
 ): Promise<{ rows: PayoutRow[]; total: number }> {
   await assertOwns(ownerId, merchantId);
 
-  const groups = await db.commission.groupBy({
-    by: ["affiliateId", "currency", "paidAt", "paidNote"],
-    where: {
-      status: COMMISSION_STATUS.PAID,
-      paidAt: { not: null },
-      adjustsCommissionId: null,
-      ...(currency ? { currency } : {}),
-      affiliate: {
-        merchantId,
-        ...(affiliateId ? { id: affiliateId } : {}),
-        ...(query
-          ? {
-              OR: [
-                { name: { contains: query, mode: "insensitive" } },
-                { email: { contains: query, mode: "insensitive" } },
-              ],
-            }
-          : {}),
+  const where = {
+    merchantId,
+    ...(currency ? { currency } : {}),
+    ...(affiliateId ? { affiliateId } : {}),
+    ...(query
+      ? {
+          affiliate: {
+            OR: [
+              { name: { contains: query, mode: "insensitive" as const } },
+              { email: { contains: query, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
+  };
+  const [batches, total] = await Promise.all([
+    db.payout.findMany({
+      where,
+      orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        affiliateId: true,
+        programId: true,
+        currency: true,
+        paidAt: true,
+        note: true,
+        total: true,
+        isException: true,
+        exceptionReason: true,
+        affiliate: { select: { name: true, email: true } },
+        program: { select: { name: true } },
+        _count: { select: { commissions: true } },
       },
-    },
-    _sum: { amount: true },
-    _count: { _all: true },
-    orderBy: [
-      { paidAt: "desc" },
-      { affiliateId: "asc" },
-      { currency: "asc" },
-      { paidNote: { sort: "asc", nulls: "last" } },
-    ],
-  });
-
-  const pageGroups = groups.slice((page - 1) * pageSize, page * pageSize);
-  const affiliates = await db.affiliate.findMany({
-    where: { id: { in: [...new Set(pageGroups.map((g) => g.affiliateId))] } },
-    select: { id: true, name: true, email: true },
-  });
-  const byId = new Map(affiliates.map((a) => [a.id, a]));
+    }),
+    db.payout.count({ where }),
+  ]);
 
   return {
-    total: groups.length,
-    rows: pageGroups.map((g) => ({
-      affiliateId: g.affiliateId,
-      affiliateName: byId.get(g.affiliateId)?.name ?? null,
-      affiliateEmail: byId.get(g.affiliateId)?.email ?? "",
-      currency: g.currency,
-      paidAt: g.paidAt!,
-      note: g.paidNote,
-      total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
-      count: g._count._all,
+    total,
+    rows: batches.map((batch) => ({
+      id: batch.id,
+      affiliateId: batch.affiliateId,
+      affiliateName: batch.affiliate.name,
+      affiliateEmail: batch.affiliate.email,
+      programId: batch.programId,
+      programName: batch.program.name,
+      currency: batch.currency,
+      paidAt: batch.paidAt,
+      note: batch.note,
+      total: batch.total.toFixed(2),
+      count: batch._count.commissions,
+      isException: batch.isException,
+      exceptionReason: batch.exceptionReason,
     })),
   };
 }

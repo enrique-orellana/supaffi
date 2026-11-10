@@ -2,62 +2,69 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAffiliate } from "@/lib/affiliateAuth";
-import { updateAffiliateDisplayCurrency } from "@/lib/affiliateDisplaySettings";
+import { updateAffiliateSettings } from "@/lib/affiliate";
 import {
   normalizeDisplayCurrency,
   PROGRAM_DEFAULT_DISPLAY_CURRENCY_VALUE,
 } from "@/lib/displayCurrencyOptions";
 
-export type DisplayCurrencySettingsState = {
+export type AffiliateSettingsState = {
   error: string;
   saved: boolean;
-  savedPreference: string | null;
+  savedPayoutDetails: string | null;
+  savedDisplayCurrency: string | null;
 };
 
-export async function saveAffiliateDisplayCurrencyAction(
-  _previous: DisplayCurrencySettingsState,
+function failed(error: string): AffiliateSettingsState {
+  return {
+    error,
+    saved: false,
+    savedPayoutDetails: null,
+    savedDisplayCurrency: null,
+  };
+}
+
+export async function saveAffiliateSettingsAction(
+  _previous: AffiliateSettingsState,
   formData: FormData,
-): Promise<DisplayCurrencySettingsState> {
-  // The identity and Merchant scope always come from the authenticated
-  // session and current host, never from client-submitted ids.
+): Promise<AffiliateSettingsState> {
+  // Always take the affiliate and merchant scope from the authenticated
+  // session, never from form data.
   const { affiliateId, merchant } = await requireAffiliate();
-  const submitted = formData.get("displayCurrency");
-  if (typeof submitted !== "string") {
-    return {
-      error: "Choose a dashboard currency",
-      saved: false,
-      savedPreference: null,
-    };
+  const payoutDetails = formData.get("payoutDetails");
+  const submittedCurrency = formData.get("displayCurrency");
+
+  if (typeof payoutDetails !== "string") {
+    return failed("Could not save payout details");
+  }
+  if (typeof submittedCurrency !== "string") {
+    return failed("Choose a dashboard currency");
   }
 
   const displayCurrency =
-    submitted === PROGRAM_DEFAULT_DISPLAY_CURRENCY_VALUE
+    submittedCurrency === PROGRAM_DEFAULT_DISPLAY_CURRENCY_VALUE
       ? null
-      : normalizeDisplayCurrency(submitted);
+      : normalizeDisplayCurrency(submittedCurrency);
   if (
-    submitted !== PROGRAM_DEFAULT_DISPLAY_CURRENCY_VALUE &&
-    !displayCurrency
+    submittedCurrency !== PROGRAM_DEFAULT_DISPLAY_CURRENCY_VALUE &&
+    displayCurrency === null
   ) {
-    return {
-      error: "Choose a supported dashboard currency",
-      saved: false,
-      savedPreference: null,
-    };
+    return failed("Choose a supported dashboard currency");
   }
 
-  const updated = await updateAffiliateDisplayCurrency(
+  const updateError = await updateAffiliateSettings(
     affiliateId,
     merchant.id,
+    payoutDetails,
     displayCurrency,
   );
-  if (!updated) {
-    return {
-      error: "Your affiliate profile could not be updated",
-      saved: false,
-      savedPreference: null,
-    };
-  }
+  if (updateError) return failed(updateError.error);
 
   revalidatePath("/affiliates/dashboard", "layout");
-  return { error: "", saved: true, savedPreference: displayCurrency };
+  return {
+    error: "",
+    saved: true,
+    savedPayoutDetails: payoutDetails,
+    savedDisplayCurrency: submittedCurrency,
+  };
 }

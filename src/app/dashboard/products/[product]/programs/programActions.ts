@@ -3,8 +3,19 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
+import type { ProgramInput } from "@/lib/program";
 import { createProgram, updateProgram } from "@/lib/program";
-import { validateProgramInput } from "@/lib/programValidation";
+import {
+  validateProgramInput,
+  type ProgramActionState,
+  type ProgramFormSnapshot,
+} from "@/lib/programValidation";
+import {
+  getProgramMinimumImpact,
+  summarizeProgramMinimumImpact,
+} from "@/lib/payoutEligibility";
 
 /**
  * Creating and editing a program, from the sheet on the list. Both end on the
@@ -12,8 +23,10 @@ import { validateProgramInput } from "@/lib/programValidation";
  * what opened the panel, so the URL is what has to close it.
  */
 
-function read(formData: FormData) {
-  const result = validateProgramInput({
+function read(formData: FormData):
+  | { error: string; parsed?: undefined; values: ProgramFormSnapshot }
+  | { error: null; parsed: ProgramInput; values: ProgramFormSnapshot } {
+  const values: ProgramFormSnapshot = {
     name: String(formData.get("name") ?? ""),
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
     commissionDurationType: String(
@@ -25,14 +38,18 @@ function read(formData: FormData) {
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
     currency: String(formData.get("currency") ?? ""),
-  });
-  if (result.error !== null) return result;
+    minimumPayoutAmount: String(formData.get("minimumPayoutAmount") ?? "0"),
+    signupOpen: formData.get("signupOpen") === "on",
+  };
+  const result = validateProgramInput(values);
+  if (result.error !== null) return { ...result, values };
   return {
     error: null,
     parsed: {
       ...result.parsed,
-      signupOpen: formData.get("signupOpen") === "on",
+      signupOpen: values.signupOpen,
     },
+    values,
   };
 }
 
@@ -44,12 +61,12 @@ async function owner(): Promise<string> {
 
 export async function createProgramAction(
   product: { id: string; slug: string },
-  _prev: { error: string },
+  _prev: ProgramActionState,
   formData: FormData,
-): Promise<{ error: string }> {
+): Promise<ProgramActionState> {
   const ownerId = await owner();
   const result = read(formData);
-  if (result.error !== null) return { error: result.error };
+  if (result.error !== null) return { error: result.error, values: result.values };
   await createProgram(ownerId, product.id, result.parsed);
   // The sidebar counts programs and is rendered by the dashboard layout, which
   // a soft navigation reuses from cache.
@@ -60,13 +77,57 @@ export async function createProgramAction(
 export async function updateProgramAction(
   product: { id: string; slug: string },
   programId: string,
-  _prev: { error: string },
+  _prev: ProgramActionState,
   formData: FormData,
-): Promise<{ error: string }> {
+): Promise<ProgramActionState> {
   const ownerId = await owner();
   const result = read(formData);
-  if (result.error !== null) return { error: result.error };
-  await updateProgram(ownerId, product.id, programId, result.parsed);
+  if (result.error !== null) return { error: result.error, values: result.values };
+  const confirmed = formData.get("confirmProgramChanges") === "yes";
+  if (!confirmed) {
+    const merchant = await getMerchantForOwnerBySlug(ownerId, product.slug);
+    if (!merchant || merchant.id !== product.id) {
+      return { error: "Program not found.", values: result.values };
+    }
+    const existing = await db.program.findFirst({
+      where: { id: programId, merchantId: merchant.id },
+      select: { id: true },
+    });
+    if (!existing) return { error: "Program not found.", values: result.values };
+
+    const impact = await getProgramMinimumImpact(
+      merchant.id,
+      programId,
+      result.parsed.minimumPayoutAmount ?? "0",
+    );
+    return {
+      error: "",
+      values: result.values,
+      editConfirmation: true,
+      ...(impact.length > 0
+        ? { minimumConfirmation: summarizeProgramMinimumImpact(impact) }
+        : {}),
+    };
+  }
+
+  const fingerprint = String(
+    formData.get("minimumConfirmationFingerprint") ?? "",
+  );
+  const impact = await updateProgram(
+    ownerId,
+    product.id,
+    programId,
+    result.parsed,
+    fingerprint,
+  );
+  if (impact) {
+    return {
+      error: "",
+      values: result.values,
+      editConfirmation: true,
+      minimumConfirmation: summarizeProgramMinimumImpact(impact),
+    };
+  }
   revalidatePath("/dashboard", "layout");
   redirect(`/dashboard/products/${product.slug}/programs`);
 }

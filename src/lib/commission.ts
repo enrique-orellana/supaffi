@@ -8,6 +8,15 @@ import {
   UNPAID_COMMISSION_STATUSES,
 } from "@/lib/commissionStatus";
 import type { CommissionStatus } from "@/lib/commissionStatus";
+import {
+  getPayoutEligibility,
+  listPayoutSnapshotCommissions,
+  lockCommissionPayoutEligibilityGroup,
+  lockPayoutEligibilityGroup,
+  lockPayoutEligibilityProgram,
+  recalculatePayoutEligibility,
+  type PayoutEligibilityGroup,
+} from "@/lib/payoutEligibility";
 
 export { COMMISSION_STATUS, COMMISSION_STATUSES } from "@/lib/commissionStatus";
 export type { CommissionStatus } from "@/lib/commissionStatus";
@@ -32,6 +41,12 @@ export type CommissionFilters = {
   currency: string | null;
   /** Matches a Stripe payment reference, or an affiliate's name or email. */
   query: string | null;
+  /** Narrows a payout group to the Program it belongs to. */
+  programId?: string | null;
+  /** Narrows paid history to one recorded payout. */
+  payoutId?: string | null;
+  /** Keeps only mature, clear, unadjusted commissions eligible for payout. */
+  payoutGroup?: boolean;
 };
 
 export type CommissionRow = {
@@ -70,6 +85,18 @@ export type CommissionRow = {
   isAdjustment: boolean;
   /** Unpaid and held back from payment by an open dispute. */
   disputed: boolean;
+  payoutHold: {
+    eligibleBalance: string;
+    minimum: string;
+    remaining: string;
+  } | null;
+  payoutRecord: {
+    id: string;
+    total: string;
+    currency: string;
+    paidAt: Date;
+    isException: boolean;
+  } | null;
   /**
    * The click this sale was attributed to, the link it arrived through, and
    * whether the Owner already confirmed that referral as a self referral.
@@ -97,6 +124,19 @@ function whereFor(merchantId: string, filters: CommissionFilters) {
       ? { checkoutConflictHeldAt: null }
       : {}),
     ...(filters.currency ? { currency: filters.currency } : {}),
+    ...(filters.programId ? { programId: filters.programId } : {}),
+    ...(filters.payoutId ? { payoutId: filters.payoutId } : {}),
+    ...(filters.payoutGroup && !filters.payoutId
+      ? {
+          adjustsCommissionId: null,
+          amount: { gt: 0 },
+          disputeOpenedAt: null,
+          checkoutConflictHeldAt: null,
+          flagReason: null,
+          payoutId: null,
+          payableAt: { lte: new Date() },
+        }
+      : {}),
     ...(query
       ? {
           OR: [
@@ -176,6 +216,18 @@ export async function listCommissions(
         },
         adjustsCommissionId: true,
         disputeOpenedAt: true,
+        checkoutConflictHeldAt: true,
+        payoutId: true,
+        programId: true,
+        payout: {
+          select: {
+            id: true,
+            total: true,
+            currency: true,
+            paidAt: true,
+            isException: true,
+          },
+        },
         affiliate: { select: { id: true, name: true, email: true } },
         click: {
           select: {
@@ -202,6 +254,41 @@ export async function listCommissions(
       take: pageSize,
     }),
   ]);
+
+  const now = new Date();
+  const payoutGroups = new Map<string, PayoutEligibilityGroup>();
+  for (const commission of rows) {
+    if (
+      commission.status !== COMMISSION_STATUS.PENDING ||
+      commission.payableAt > now ||
+      commission.adjustsCommissionId !== null ||
+      commission.amount.lte(0) ||
+      commission.flagReason !== null ||
+      commission.disputeOpenedAt !== null ||
+      commission.checkoutConflictHeldAt !== null ||
+      commission.payoutId !== null ||
+      !commission.programId
+    ) {
+      continue;
+    }
+    const group: PayoutEligibilityGroup = {
+      merchantId,
+      affiliateId: commission.affiliate.id,
+      programId: commission.programId,
+      currency: commission.currency,
+    };
+    payoutGroups.set(
+      `${group.affiliateId}:${group.programId}:${group.currency}`,
+      group,
+    );
+  }
+  const eligibilityEntries = await Promise.all(
+    [...payoutGroups].map(
+      async ([key, group]) =>
+        [key, await getPayoutEligibility(db, group, now)] as const,
+    ),
+  );
+  const eligibilityByGroup = new Map(eligibilityEntries);
 
   return {
     total,
@@ -244,6 +331,30 @@ export async function listCommissions(
       disputed:
         c.disputeOpenedAt !== null &&
         UNPAID_COMMISSION_STATUSES.includes(c.status),
+      payoutHold: (() => {
+        const eligibility = eligibilityByGroup.get(
+          `${c.affiliate.id}:${c.programId}:${c.currency}`,
+        );
+        return eligibility && !eligibility.payable
+          ? {
+              eligibleBalance: eligibility.eligibleBalance.toFixed(2),
+              minimum: eligibility.minimum.toFixed(2),
+              remaining: Prisma.Decimal.max(
+                eligibility.minimum.sub(eligibility.eligibleBalance),
+                new Prisma.Decimal(0),
+              ).toFixed(2),
+            }
+          : null;
+      })(),
+      payoutRecord: c.payout
+        ? {
+            id: c.payout.id,
+            total: c.payout.total.toFixed(2),
+            currency: c.payout.currency,
+            paidAt: c.payout.paidAt,
+            isException: c.payout.isException,
+          }
+        : null,
       click: {
         at: c.click.createdAt,
         linkCode: c.click.link?.code ?? null,
@@ -324,27 +435,27 @@ export async function getCommissionFilterOptions(
 /** One commission as a page showed it: its id and its amount as rendered, two decimals. */
 export type ShownCommission = { id: string; amount: string };
 
-/**
- * `alreadyPaid` is present only when some shown rows were already PAID, with
- * the latest time one of them was marked. Those are neither recorded again nor
- * counted as skipped, so without it a press from an older tab says nothing.
- */
 export type MarkPaidResult =
-  | {
-      count: number;
-      skipped: number;
-      alreadyPaid?: { count: number; paidAt: Date | null };
-    }
-  | { error: string };
+  { count: number; payoutId: string } | { error: PayoutErrorCode };
 
-/** The refusal for bound input no page could have produced. */
-const REFUSED = "The ledger refused that payout.";
+export const PAYOUT_ERROR = {
+  EMPTY: "empty",
+  INVALID: "invalid",
+  MIXED_GROUP: "mixed",
+  STALE_PAGE: "stale",
+  INELIGIBLE: "ineligible",
+  BELOW_MINIMUM: "below_minimum",
+  CLOSEOUT: "closeout",
+  CLOSEOUT_REASON: "closeout_reason",
+} as const;
+
+export type PayoutErrorCode = (typeof PAYOUT_ERROR)[keyof typeof PAYOUT_ERROR];
 
 /** Every amount a page renders is `Decimal.toFixed(2)` of a positive commission. */
 const TWO_DECIMALS = /^\d+\.\d{2}$/;
 
-/** No page renders anywhere near this many rows in one payout. */
-export const MAX_SHOWN = 5000;
+/** Bound a payout's server-action payload while covering large earned groups. */
+export const MAX_SHOWN = 10_000;
 
 /**
  * How old a page may be when it records a payout. Long enough to send the
@@ -356,143 +467,36 @@ const MAX_PAGE_AGE_MS = 60 * 60 * 1000;
 export const STALE_PAGE =
   "That payout was not recorded because the page was over an hour old. Check the amounts and pay again.";
 
-/** The voids a refund or a lost chargeback writes, as opposed to the Owner's own. */
-const REFUND_VOID_REASONS: readonly string[] = ["refund", "chargeback"];
+class PayoutWriteConflict extends Error {}
 
-type PayoutRow = {
-  status: CommissionStatus;
-  amount: Prisma.Decimal;
-  grossAmount: Prisma.Decimal | null;
-  payableAt: Date;
-  voidedAt: Date | null;
-  voidReason: string | null;
-  adjustsCommissionId: string | null;
-  disputeOpenedAt: Date | null;
-  checkoutConflictHeldAt: Date | null;
-  paidAt: Date | null;
-};
-
-type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
-
-/**
- * What one shown commission becomes when Mark paid is pressed.
- *
- * The Owner pays outside Supaffi and then presses the button, so the figure
- * on screen is the figure that left their account, and a paid commission is
- * final. A refund that reached a shown row in the seconds between loading and
- * clicking therefore does not stop it being recorded at the amount shown.
- *
- * A partial refund leaves the row PAYABLE at an amount below the one shown. A
- * page only ever shows a figure above the stored one when the refund came
- * after rendering, because a reduction before rendering is what it would have
- * shown. A full refund or a lost chargeback voids the row with a `voidedAt`
- * later than the moment the page was rendered.
- *
- * Neither is ever recorded above what the commission was worth before any
- * refund, `grossAmount`, or `amount` on rows older than that column, so a
- * posted figure can never raise what a sale earned.
- *
- * A row the Owner voided, or a confirmed self referral voided, is skipped:
- * nobody paid it by mistake, the Owner chose not to. So is anything else that
- * is not payable, and any leftover adjustment row, since a refund after payout
- * is no longer recovered.
- *
- * A row already disputed when the page was rendered is skipped outright: it
- * was never offered for payment, so there is nothing for the Owner to have
- * already sent. A row a dispute reaches after the page was rendered is still
- * paid at the amount shown, because by then the Owner has already sent that
- * money outside Supaffi. That covers a row that was payable and is now held
- * pending by the dispute, so long as its Holding Period had already passed
- * when the page was rendered, and a row a refund or a lost chargeback voided
- * after the dispute opened, on the existing rule above. A row still pending
- * whose Holding Period had not yet passed when the page was rendered was never
- * payable, dispute or not, so it is skipped.
- */
-function payoutFor(
-  row: PayoutRow,
-  shown: Prisma.Decimal,
-  renderedAt: Date,
-): Payout {
-  if (row.status === COMMISSION_STATUS.PAID) return "already paid";
-  if (row.checkoutConflictHeldAt !== null) return "skip";
-  if (row.adjustsCommissionId !== null) return "skip";
-  if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
-
-  if (
-    row.disputeOpenedAt !== null &&
-    row.disputeOpenedAt.getTime() < renderedAt.getTime()
-  ) {
-    return "skip";
-  }
-
-  if (row.status === COMMISSION_STATUS.PAYABLE) {
-    if (shown.eq(row.amount)) return "as stored";
-    if (shown.gt(row.amount) && row.voidReason === "partial refund")
-      return "at shown amount";
-    return "skip";
-  }
-
-  if (
-    row.status === COMMISSION_STATUS.VOIDED &&
-    row.voidReason !== null &&
-    REFUND_VOID_REASONS.includes(row.voidReason) &&
-    row.voidedAt !== null &&
-    row.voidedAt.getTime() >= renderedAt.getTime()
-  ) {
-    return "at shown amount";
-  }
-
-  if (
-    row.disputeOpenedAt !== null &&
-    row.status === COMMISSION_STATUS.PENDING &&
-    row.payableAt.getTime() <= renderedAt.getTime() &&
-    shown.gte(row.amount)
-  ) {
-    return "at shown amount";
-  }
-
-  return "skip";
-}
-
-/**
- * Mark exactly the commissions the Owner saw paid, at the amounts they saw.
- *
- * Bound to the rows a page rendered, never to a re-query at write time: a
- * commission crossing its Holding Period between render and click would
- * otherwise be swept into a payout nobody decided to make. New sales that land
- * meanwhile stay unpaid.
- *
- * Refuses only what is not a payout: nothing selected, rows spanning more than
- * one affiliate or currency, and bound input no page could have produced. Rows
- * that are no longer payable for a reason the Owner chose are skipped and
- * counted, so the page can say so, and so is a row an open dispute already
- * held before the page was rendered; see `payoutFor`.
- */
+/** Record exactly one completed external payout for one Affiliate/Program/currency group. */
 export async function markCommissionsPaid(
   ownerId: string,
   merchantId: string,
   shown: ShownCommission[],
   renderedAt: string,
   note: string | null = null,
+  exceptionReason: string | null = null,
 ): Promise<MarkPaidResult> {
   await assertMerchantOwnership(ownerId, merchantId);
 
   if (!Array.isArray(shown) || shown.length === 0) {
-    return { error: "Nothing selected" };
+    return { error: PAYOUT_ERROR.EMPTY };
   }
-  // No page renders anywhere near this many rows in one payout; a request
-  // this large is not a payout a page produced.
-  if (shown.length > MAX_SHOWN) {
-    return { error: REFUSED };
-  }
+  if (shown.length > MAX_SHOWN) return { error: PAYOUT_ERROR.INVALID };
   if (note !== null && (typeof note !== "string" || note.length > 200)) {
-    return { error: REFUSED };
+    return { error: PAYOUT_ERROR.INVALID };
+  }
+  if (
+    exceptionReason !== null &&
+    (typeof exceptionReason !== "string" ||
+      exceptionReason.trim().length === 0 ||
+      exceptionReason.length > 500)
+  ) {
+    return { error: PAYOUT_ERROR.CLOSEOUT_REASON };
   }
   const payoutNote = note?.trim() || null;
-
-  // Bound arguments are values the browser posts, so their shape is checked
-  // rather than trusted: a page names every id once, at a positive two-decimal
-  // amount, and was rendered no later than now.
+  const closeoutReason = exceptionReason?.trim() || null;
   const amounts = new Map<string, Prisma.Decimal>();
   for (const entry of shown) {
     if (
@@ -504,140 +508,222 @@ export async function markCommissionsPaid(
       !TWO_DECIMALS.test(entry.amount) ||
       amounts.has(entry.id)
     ) {
-      return { error: REFUSED };
+      return { error: PAYOUT_ERROR.INVALID };
     }
     const amount = new Prisma.Decimal(entry.amount);
-    if (amount.lte(0)) return { error: REFUSED };
+    if (amount.lte(0)) return { error: PAYOUT_ERROR.INVALID };
     amounts.set(entry.id, amount);
   }
+
+  const now = new Date();
   const loadedAt =
     typeof renderedAt === "string" ? new Date(renderedAt) : new Date(NaN);
-  if (Number.isNaN(loadedAt.getTime()) || loadedAt.getTime() > Date.now()) {
-    return { error: REFUSED };
+  if (Number.isNaN(loadedAt.getTime()) || loadedAt.getTime() > now.getTime()) {
+    return { error: PAYOUT_ERROR.INVALID };
   }
-  if (Date.now() - loadedAt.getTime() > MAX_PAGE_AGE_MS) {
-    return { error: STALE_PAGE };
+  if (now.getTime() - loadedAt.getTime() > MAX_PAGE_AGE_MS) {
+    return { error: PAYOUT_ERROR.STALE_PAGE };
   }
 
   const ids = [...amounts.keys()];
-  const paidAt = new Date();
+  try {
+    return await db.$transaction(async (tx): Promise<MarkPaidResult> => {
+      const initialRows = await tx.commission.findMany({
+        where: { id: { in: ids }, merchantId, affiliate: { merchantId } },
+        select: {
+          id: true,
+          merchantId: true,
+          affiliateId: true,
+          programId: true,
+          currency: true,
+        },
+      });
+      if (initialRows.length !== ids.length)
+        return { error: PAYOUT_ERROR.INVALID };
 
-  return db.$transaction(async (tx): Promise<MarkPaidResult> => {
-    // Locks the shown rows for the length of the payout, in id order so two
-    // overlapping presses cannot deadlock. A refund, a void or a self referral
-    // confirmation on one of them waits for this to commit, then finds the row
-    // PAID and leaves it alone, so what is decided below is what stays written.
-    // Scoped to this merchant's affiliates, so a foreign id never locks
-    // another merchant's row before the ownership check below refuses it.
-    await tx.$queryRaw(Prisma.sql`
-      SELECT ${SqlSchema.tables.Commission.id}
-      FROM ${SqlSchema.tables.Commission.name}
-      WHERE ${SqlSchema.tables.Commission.id} IN (${Prisma.join(ids)})
-        AND ${SqlSchema.tables.Commission.affiliateId} IN (
-          SELECT ${SqlSchema.tables.Affiliate.id}
-          FROM ${SqlSchema.tables.Affiliate.name}
-          WHERE ${SqlSchema.tables.Affiliate.merchantId} = ${merchantId}
-        )
-      ORDER BY ${SqlSchema.tables.Commission.id}
-      FOR UPDATE
-    `);
-
-    const rows = await tx.commission.findMany({
-      where: { id: { in: ids }, affiliate: { merchantId } },
-      select: {
-        id: true,
-        affiliateId: true,
-        currency: true,
-        status: true,
-        amount: true,
-        grossAmount: true,
-        payableAt: true,
-        voidedAt: true,
-        voidReason: true,
-        adjustsCommissionId: true,
-        disputeOpenedAt: true,
-        checkoutConflictHeldAt: true,
-        paidAt: true,
-      },
-    });
-    // An id this product does not have was not on its page.
-    if (rows.length !== ids.length) return { error: REFUSED };
-
-    if (
-      new Set(rows.map((row) => row.affiliateId)).size > 1 ||
-      new Set(rows.map((row) => row.currency)).size > 1
-    ) {
-      return {
-        error: "A payout covers one affiliate and one currency at a time",
+      const first = initialRows[0];
+      if (!first.programId || !first.merchantId)
+        return { error: PAYOUT_ERROR.INVALID };
+      const group: PayoutEligibilityGroup = {
+        merchantId: first.merchantId,
+        affiliateId: first.affiliateId,
+        programId: first.programId,
+        currency: first.currency,
       };
-    }
-
-    const asStored: string[] = [];
-    const atShownAmount: {
-      id: string;
-      amount: Prisma.Decimal;
-      ceiling: Prisma.Decimal;
-    }[] = [];
-    let skipped = 0;
-    let alreadyPaid = 0;
-    let alreadyPaidAt: Date | null = null;
-    for (const row of rows) {
-      const amount = amounts.get(row.id)!;
-      const payout = payoutFor(row, amount, loadedAt);
-      if (payout === "as stored") asStored.push(row.id);
-      else if (payout === "at shown amount")
-        atShownAmount.push({
-          id: row.id,
-          amount,
-          ceiling: row.grossAmount ?? row.amount,
-        });
-      else if (payout === "skip") skipped += 1;
-      else if (payout === "already paid") {
-        alreadyPaid += 1;
-        if (row.paidAt && (!alreadyPaidAt || row.paidAt > alreadyPaidAt))
-          alreadyPaidAt = row.paidAt;
+      if (
+        initialRows.some(
+          (row) =>
+            row.affiliateId !== group.affiliateId ||
+            row.programId !== group.programId ||
+            row.currency !== group.currency,
+        )
+      ) {
+        return {
+          error: PAYOUT_ERROR.MIXED_GROUP,
+        };
       }
-    }
 
-    // One write for the usual case, so a payout of many rows stays well inside
-    // the transaction's time limit.
-    if (asStored.length > 0) {
-      await tx.commission.updateMany({
-        where: { id: { in: asStored } },
+      if (
+        !(await lockPayoutEligibilityProgram(tx, merchantId, group.programId))
+      ) {
+        return { error: PAYOUT_ERROR.INVALID };
+      }
+      await lockPayoutEligibilityGroup(tx, group);
+      await tx.$queryRaw(Prisma.sql`
+        SELECT ${SqlSchema.tables.Commission.id}
+        FROM ${SqlSchema.tables.Commission.name}
+        WHERE ${SqlSchema.tables.Commission.id} IN (${Prisma.join(ids)})
+          AND ${SqlSchema.tables.Commission.merchantId} = ${merchantId}
+        ORDER BY ${SqlSchema.tables.Commission.id}
+        FOR UPDATE
+      `);
+
+      const rows = await tx.commission.findMany({
+        where: { id: { in: ids }, merchantId, affiliateId: group.affiliateId },
+        select: {
+          id: true,
+          programId: true,
+          currency: true,
+          status: true,
+          amount: true,
+          payableAt: true,
+          adjustsCommissionId: true,
+          payoutId: true,
+          flagReason: true,
+          disputeOpenedAt: true,
+          checkoutConflictHeldAt: true,
+        },
+      });
+      if (rows.length !== ids.length) return { error: PAYOUT_ERROR.INVALID };
+
+      const selectedTotal = rows.reduce(
+        (sum, row) => sum.add(row.amount),
+        new Prisma.Decimal(0),
+      );
+      const eligibility = await getPayoutEligibility(tx, group, now);
+      if (!eligibility) return { error: PAYOUT_ERROR.INVALID };
+
+      const payoutStatus =
+        closeoutReason === null
+          ? COMMISSION_STATUS.PAYABLE
+          : COMMISSION_STATUS.PENDING;
+      const expectedRows = await listPayoutSnapshotCommissions(
+        tx,
+        group,
+        payoutStatus,
+        MAX_SHOWN,
+        now,
+      );
+      if (
+        expectedRows.length !== rows.length ||
+        expectedRows.some((row) => {
+          const shownAmount = amounts.get(row.id);
+          return shownAmount === undefined || !row.amount.eq(shownAmount);
+        })
+      ) {
+        return { error: PAYOUT_ERROR.INELIGIBLE };
+      }
+
+      for (const row of rows) {
+        const expectedAmount = amounts.get(row.id);
+        if (
+          row.programId !== group.programId ||
+          row.currency !== group.currency ||
+          expectedAmount === undefined ||
+          !row.amount.eq(expectedAmount) ||
+          row.amount.lte(0) ||
+          row.adjustsCommissionId !== null ||
+          row.payoutId !== null ||
+          row.flagReason !== null ||
+          row.disputeOpenedAt !== null ||
+          row.checkoutConflictHeldAt !== null ||
+          row.payableAt.getTime() > now.getTime()
+        ) {
+          return { error: PAYOUT_ERROR.INELIGIBLE };
+        }
+        if (
+          closeoutReason === null &&
+          row.status !== COMMISSION_STATUS.PAYABLE
+        ) {
+          return { error: PAYOUT_ERROR.INELIGIBLE };
+        }
+        if (
+          closeoutReason !== null &&
+          row.status !== COMMISSION_STATUS.PENDING
+        ) {
+          return { error: PAYOUT_ERROR.CLOSEOUT };
+        }
+      }
+
+      if (closeoutReason === null) {
+        if (!eligibility.payable || selectedTotal.lt(eligibility.minimum)) {
+          return {
+            error: PAYOUT_ERROR.BELOW_MINIMUM,
+          };
+        }
+      } else if (
+        eligibility.payable ||
+        eligibility.eligibleBalance.gte(eligibility.minimum)
+      ) {
+        return { error: PAYOUT_ERROR.CLOSEOUT };
+      }
+
+      const paidAt = new Date();
+      const payout = await tx.payout.create({
+        data: {
+          merchantId,
+          affiliateId: group.affiliateId,
+          programId: group.programId,
+          currency: group.currency,
+          total: selectedTotal,
+          paidAt,
+          note: payoutNote,
+          isException: closeoutReason !== null,
+          exceptionReason: closeoutReason,
+        },
+        select: { id: true },
+      });
+      const updated = await tx.commission.updateMany({
+        where: {
+          id: { in: ids },
+          merchantId,
+          affiliateId: group.affiliateId,
+          programId: group.programId,
+          currency: group.currency,
+          status:
+            closeoutReason === null
+              ? COMMISSION_STATUS.PAYABLE
+              : COMMISSION_STATUS.PENDING,
+          payoutId: null,
+          adjustsCommissionId: null,
+          flagReason: null,
+          disputeOpenedAt: null,
+          checkoutConflictHeldAt: null,
+          payableAt: { lte: now },
+        },
         data: {
           status: COMMISSION_STATUS.PAID,
           paidAt,
           paidNote: payoutNote,
+          payoutId: payout.id,
         },
       });
-    }
-    // The few a refund reached in between are written one by one, each at its
-    // shown amount. The row is paid, so it no longer reads as voided, and it
-    // says it was reduced only if what was paid is still below the gross.
-    for (const row of atShownAmount) {
-      await tx.commission.update({
-        where: { id: row.id },
-        data: {
-          status: COMMISSION_STATUS.PAID,
-          paidAt,
-          paidNote: payoutNote,
-          amount: row.amount,
-          voidedAt: null,
-          voidReason: row.amount.lt(row.ceiling) ? "partial refund" : null,
-        },
-      });
-    }
+      if (updated.count !== rows.length) {
+        throw new PayoutWriteConflict(
+          "Commission changed during payout recording",
+        );
+      }
 
-    return {
-      count: asStored.length + atShownAmount.length,
-      skipped,
-      ...(alreadyPaid > 0 && {
-        alreadyPaid: { count: alreadyPaid, paidAt: alreadyPaidAt },
-      }),
-    };
-  });
+      await recalculatePayoutEligibility(tx, group, paidAt);
+      return { count: rows.length, payoutId: payout.id };
+    });
+  } catch (error) {
+    if (error instanceof PayoutWriteConflict) {
+      return { error: PAYOUT_ERROR.INELIGIBLE };
+    }
+    throw error;
+  }
 }
-
 /**
  * Confirm that a referral was the affiliate referring themselves, from any of
  * its commissions.
@@ -692,9 +778,51 @@ export async function confirmCommissionFraud(
       FOR UPDATE
     `);
 
-    // Locked in id order next, matching Mark paid, so the two can never wait
-    // on each other's rows in opposite order: a renewal of this click held by
-    // a payout in another tab is waited for here rather than deadlocked.
+    const impactedGroups = await tx.commission.findMany({
+      where: {
+        clickId: existing.clickId,
+        adjustsCommissionId: null,
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
+        merchantId,
+        programId: { not: null },
+      },
+      distinct: ["affiliateId", "programId", "currency"],
+      select: {
+        merchantId: true,
+        affiliateId: true,
+        programId: true,
+        currency: true,
+      },
+    });
+    const groups = impactedGroups
+      .filter((group) => group.merchantId && group.programId)
+      .map((group) => ({
+        merchantId: group.merchantId!,
+        affiliateId: group.affiliateId,
+        programId: group.programId!,
+        currency: group.currency,
+      }))
+      .sort((a, b) =>
+        `${a.merchantId}:${a.programId}:${a.affiliateId}:${a.currency}`.localeCompare(
+          `${b.merchantId}:${b.programId}:${b.affiliateId}:${b.currency}`,
+        ),
+      );
+    for (const group of groups) {
+      if (
+        !(await lockPayoutEligibilityProgram(
+          tx,
+          group.merchantId,
+          group.programId,
+        ))
+      ) {
+        continue;
+      }
+      await lockPayoutEligibilityGroup(tx, group);
+    }
+
+    // Bucket locks come before commission row locks, matching Mark paid.
+    // Within the click, rows use id order so simultaneous referrals remain
+    // deterministic as well.
     await tx.$queryRaw(Prisma.sql`
       SELECT ${SqlSchema.tables.Commission.id}
       FROM ${SqlSchema.tables.Commission.name}
@@ -723,6 +851,10 @@ export async function confirmCommissionFraud(
       data: confirmed,
     });
 
+    for (const group of groups) {
+      await recalculatePayoutEligibility(tx, group, now);
+    }
+
     // Voiding rows alone left the referral earning: the next renewal created
     // a fresh commission. Marking the click stops every later payment it
     // brings. The first confirmation's date is kept.
@@ -736,7 +868,7 @@ export async function confirmCommissionFraud(
 // The reasons the worker and `confirmCommissionFraud` write verbatim, never
 // typed by an Owner. Compared case-insensitively: an Owner typing the same
 // words is still the Owner's own decision, not the automatic void those
-// literals otherwise mean to `payoutFor` and `voidReasonText`.
+// literals otherwise mean to payout history and `voidReasonText`.
 const SYSTEM_VOID_REASONS: readonly string[] = [
   "refund",
   "chargeback",
@@ -757,7 +889,7 @@ const SYSTEM_VOID_REASONS: readonly string[] = [
  * few an older version left unpaid are voided by a migration.
  *
  * A typed reason that happens to match one of the worker's own words is
- * suffixed before it is stored. Without that, `payoutFor` reads an Owner's
+ * suffixed before it is stored. Without that, the payout ledger could read an Owner's
  * void of "refund" as the refund void a stale Mark paid is allowed to record
  * over, which would silently overturn the Owner's decision.
  */
@@ -791,16 +923,27 @@ export async function voidCommission(
   // Conditional on the same statuses as the read, so a commission paid out
   // in the moment between the two is refused rather than voided after the
   // money left.
-  const { count } = await db.commission.updateMany({
-    where: {
-      id: commissionId,
-      status: { in: [...UNPAID_COMMISSION_STATUSES] },
-    },
-    data: {
-      status: COMMISSION_STATUS.VOIDED,
-      voidedAt: new Date(),
-      voidReason: stored,
-    },
+  const { count } = await db.$transaction(async (tx) => {
+    const group = await lockCommissionPayoutEligibilityGroup(
+      tx,
+      commissionId,
+      merchantId,
+    );
+    if (!group) return { count: 0 };
+    const result = await tx.commission.updateMany({
+      where: {
+        id: commissionId,
+        merchantId,
+        status: { in: [...UNPAID_COMMISSION_STATUSES] },
+      },
+      data: {
+        status: COMMISSION_STATUS.VOIDED,
+        voidedAt: new Date(),
+        voidReason: stored,
+      },
+    });
+    if (result.count > 0) await recalculatePayoutEligibility(tx, group);
+    return result;
   });
   if (count === 0) {
     throw new Error(
@@ -833,21 +976,23 @@ export async function dismissCommissionFlag(
   // read before it, so a dispute that opens in between leaves the row PENDING.
   // Still FLAGGED at write time in both writes, so a commission a refund voided
   // in between is not brought back to life.
-  const payable = await db.commission.updateMany({
-    where: {
-      id: commissionId,
-      status: COMMISSION_STATUS.FLAGGED,
-      disputeOpenedAt: null,
-      checkoutConflictHeldAt: null,
-      payableAt: { lte: new Date() },
-    },
-    data: { status: COMMISSION_STATUS.PAYABLE, flagReason: null },
-  });
-  if (payable.count > 0) return;
-
-  const { count } = await db.commission.updateMany({
-    where: { id: commissionId, status: COMMISSION_STATUS.FLAGGED },
-    data: { status: COMMISSION_STATUS.PENDING, flagReason: null },
+  const { count } = await db.$transaction(async (tx) => {
+    const group = await lockCommissionPayoutEligibilityGroup(
+      tx,
+      commissionId,
+      merchantId,
+    );
+    if (!group) return { count: 0 };
+    const result = await tx.commission.updateMany({
+      where: {
+        id: commissionId,
+        merchantId,
+        status: COMMISSION_STATUS.FLAGGED,
+      },
+      data: { status: COMMISSION_STATUS.PENDING, flagReason: null },
+    });
+    if (result.count > 0) await recalculatePayoutEligibility(tx, group);
+    return result;
   });
   if (count === 0) {
     throw new Error("Flagged commission not found");

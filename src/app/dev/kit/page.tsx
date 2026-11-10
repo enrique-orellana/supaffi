@@ -769,7 +769,6 @@ function DCommissionSheetDemo({ which }: { which: keyof typeof D_SHEETS }) {
         commission={D_SHEETS[which]}
         product={{ id: "m1", slug: "instantgradient" }}
         listHref="#"
-        renderedAt="2026-09-14T12:00:00.000Z"
       />
     </>
   );
@@ -879,6 +878,7 @@ function CSignupScreen() {
           rate: 20,
           durationType: "FOREVER",
           durationMonths: null,
+          minimumPayoutAmount: "0.00",
         }}
         linkHost="dev.mokkit.co"
         action={cSignupAction}
@@ -997,6 +997,8 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: null,
     voidedAt: null,
+    reviewHeld: false,
+    payoutHold: null,
     convertedAmount: null,
     conversionUnavailable: false,
   },
@@ -1014,6 +1016,8 @@ const E_RECENT = [
     grossAmount: "20.00",
     voidReason: "partial refund",
     voidedAt: null,
+    reviewHeld: false,
+    payoutHold: null,
     convertedAmount: null,
     conversionUnavailable: false,
   },
@@ -1031,6 +1035,8 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: null,
     voidedAt: null,
+    reviewHeld: false,
+    payoutHold: null,
     convertedAmount: "≈ $26.16",
     conversionUnavailable: false,
   },
@@ -1048,6 +1054,8 @@ const E_RECENT = [
     grossAmount: null,
     voidReason: "refund",
     voidedAt: day("2026-08-19"),
+    reviewHeld: false,
+    payoutHold: null,
     convertedAmount: null,
     conversionUnavailable: false,
   },
@@ -1111,16 +1119,15 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
   return (
     <PayoutsScreen
       merchantName="InstantGradient"
-      payoutDetails={
-        empty
-          ? null
-          : "PayPal: sarah@northwind.example\nIBAN: GB29 NWBK 6016 1331 9268 19"
-      }
+      payoutDetailsMissing={empty}
       payments={
         empty
           ? []
           : [
               {
+                id: "demo-payout-1",
+                programName: "Creator program",
+                isException: false,
                 paidAt: new Date("2026-08-28T14:35:00.000Z"),
                 count: 6,
                 estimate: "≈ $485.40",
@@ -1128,6 +1135,9 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
                 unconverted: ["0.001 BTC"],
               },
               {
+                id: "demo-payout-2",
+                programName: "One time",
+                isException: false,
                 paidAt: new Date("2026-07-30T09:10:00.000Z"),
                 count: 3,
                 estimate: null,
@@ -1136,6 +1146,17 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
               },
             ]
       }
+      hasPaymentHistory={!empty}
+      invalidDateRange={false}
+      programOptions={
+        empty
+          ? []
+          : [
+              { id: "demo-program-creator", name: "Creator program" },
+              { id: "demo-program-onetime", name: "One time" },
+            ]
+      }
+      filters={{ dateFrom: "", dateTo: "", program: "" }}
       pending={{
         value: "≈ $72.00",
         hint: "Not converted: 0.0004 BTC",
@@ -1345,6 +1366,7 @@ function BProgramWarning() {
           rate="20"
           dashboardCurrency="eur"
           duration="forever"
+          minimumPayoutAmount="0.00"
           attributionDays={60}
           holdingDays={30}
           affiliateCount={12}
@@ -1356,6 +1378,7 @@ function BProgramWarning() {
           rate="35"
           dashboardCurrency="usd"
           duration="for 12 months"
+          minimumPayoutAmount="0.00"
           attributionDays={30}
           holdingDays={14}
           affiliateCount={1}

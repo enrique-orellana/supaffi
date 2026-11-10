@@ -17,6 +17,7 @@ import { SignupForm, type SignupFormAction } from "./SignupForm";
 export type SignupTerms = {
   /** Percentage, e.g. 20 for 20%. */
   rate: number;
+  minimumPayoutAmount: string;
   durationType: "ONE_TIME" | "FIXED_MONTHS" | "FOREVER";
   durationMonths: number | null;
 };
@@ -107,13 +108,22 @@ export function SignupScreen({
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-card sm:max-w-[660px] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <Tile
             label="You earn"
             value={formatRate(terms.rate)}
             hint="of every sale"
           />
           <Tile label="Earn on" value={duration.value} hint={duration.hint} />
+          <Tile
+            label="Minimum before payout"
+            value={terms.minimumPayoutAmount}
+            hint={
+              Number(terms.minimumPayoutAmount) === 0
+                ? "No minimum balance"
+                : "per transaction currency, with no conversion"
+            }
+          />
         </div>
       </div>
 

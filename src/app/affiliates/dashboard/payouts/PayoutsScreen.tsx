@@ -1,33 +1,36 @@
-import { Wallet } from "lucide-react";
-import { formatDate } from "@/lib/format";
-import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
+"use client";
+
+import { useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Wallet,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { Page, PageTitle, Section, Tiles } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
-import { PayoutDetailsForm } from "../PayoutDetailsForm";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { PayoutHistoryTable, type PaymentDisplay } from "./PayoutHistoryTable";
 
 /**
- * What being paid looks like when Supaffi never touches the money: the three
- * totals, the details the merchant pays against, and a history that is derived
- * rather than a ledger of transfers, because no transfer runs through this
- * product.
+ * The payout summary and payment details an Affiliate uses to reconcile the
+ * transfers they receive directly from the Merchant. Supaffi records the
+ * payouts but never moves the money.
  *
  * Presentational: the page reads the database and hands the result over, so the
  * screen can be rendered in the dev kit with fixtures.
  */
-
-/**
- * One row per payout, at the moment it was made. Two payouts made the same
- * day are two rows, each with its own time, because they were two transfers.
- * A row can carry more than one source currency. Its estimated dashboard-
- * currency total is shown separately from the original amounts and currencies.
- */
-type PaymentDisplay = {
-  paidAt: Date;
-  count: number;
-  estimate: string | null;
-  sourceAmounts: string[];
-  unconverted: string[];
-};
 
 type MoneyDisplay = {
   value: string;
@@ -35,56 +38,14 @@ type MoneyDisplay = {
   hasAmount: boolean;
 };
 
-function PaymentRows({ payments }: { payments: PaymentDisplay[] }) {
-  return (
-    <ul className="flex flex-col">
-      {payments.map((payment) => {
-        return (
-          <li
-            key={payment.paidAt.toISOString()}
-            className="flex items-center gap-3 border-b border-neutral-200 py-3 last:border-0"
-          >
-            <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">
-              {formatDate(payment.paidAt)}
-            </span>
-            {/* Dropped on a phone rather than truncated to nothing: it is the
-                least of the three things in the row. */}
-            <span className="hidden min-w-0 flex-1 truncate text-[13px] text-muted-foreground tabular-nums sm:block">
-              {payment.count} commission{payment.count === 1 ? "" : "s"}
-            </span>
-            <span className="flex-1 sm:hidden" />
-            <span className="flex shrink-0 flex-col items-end">
-              {payment.estimate ? (
-                <span className="text-[15px] font-medium text-neutral-900 tabular-nums">
-                  {payment.estimate}
-                </span>
-              ) : null}
-              <span
-                className={
-                  payment.estimate
-                    ? "text-right text-[11px] text-muted-foreground tabular-nums"
-                    : "text-[15px] font-medium text-neutral-900 tabular-nums"
-                }
-              >
-                Paid in {payment.sourceAmounts.join(" · ")}
-              </span>
-              {payment.unconverted.length > 0 && (
-                <span className="text-right text-[11px] text-muted-foreground tabular-nums">
-                  Not converted: {payment.unconverted.join(" · ")}
-                </span>
-              )}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 export type PayoutsView = {
   merchantName: string;
-  payoutDetails: string | null;
+  payoutDetailsMissing: boolean;
   payments: PaymentDisplay[];
+  hasPaymentHistory: boolean;
+  invalidDateRange: boolean;
+  programOptions: { id: string; name: string }[];
+  filters: { dateFrom: string; dateTo: string; program: string };
   pending: MoneyDisplay;
   payable: MoneyDisplay;
   paid: MoneyDisplay;
@@ -93,13 +54,25 @@ export type PayoutsView = {
 
 export function PayoutsScreen({
   merchantName,
-  payoutDetails,
+  payoutDetailsMissing,
   payments,
+  hasPaymentHistory,
+  invalidDateRange,
+  programOptions,
+  filters,
   pending,
   payable,
   paid,
   rateNote,
 }: PayoutsView) {
+  const [selectedProgram, setSelectedProgram] = useState(filters.program);
+  const anyFilterActive = Boolean(
+    filters.dateFrom || filters.dateTo || selectedProgram,
+  );
+  const selectedProgramName = programOptions.find(
+    (program) => program.id === selectedProgram,
+  )?.name;
+
   return (
     <Page>
       <PageTitle title="Payouts" subtitle={rateNote} />
@@ -126,39 +99,177 @@ export function PayoutsScreen({
         />
       </Tiles>
 
-      {/* Content sized, not stretched to the viewport: two cards holding a
-          textarea and a handful of dates have nothing to fill 500px with, and
-          air under a page reads better than air inside a card. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
-        <PayoutDetailsForm initial={payoutDetails ?? ""} />
-
-        <Section
-          title="Payment history"
-          // The one fact this screen has to carry: the money comes from the
-          // merchant, not from here, so nobody waits on a transfer that is
-          // never coming.
-          actions={
-            // Dropped on a phone: beside a title that has already wrapped it
-            // reads as a cramped third column, and the empty state carries the
-            // same fact where it is needed most.
-            <span className="hidden text-right text-[13px] text-balance text-muted-foreground sm:block">
-              Paid by {merchantName} directly
-            </span>
-          }
-          scroll
-          className="max-h-[26rem]"
+      {payoutDetailsMissing && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg p-4 sm:flex-row sm:items-center sm:justify-between"
         >
-          {payments.length === 0 ? (
+          <div className="flex min-w-0 items-start gap-3">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-status-warning" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-status-warning">
+                Payout details needed
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Add a payout destination so {merchantName} can send your money.
+                Your commissions are still tracked.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/affiliates/dashboard/settings"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-md border border-status-warning/40 px-3 text-sm font-medium text-status-warning transition-colors hover:bg-status-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Add payout details
+            <ChevronRight aria-hidden="true" className="size-4" />
+          </Link>
+        </div>
+      )}
+
+      <Section flush>
+        <form
+          method="get"
+          action="/affiliates/dashboard/payouts"
+          aria-label="Filter payment history"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 px-5 py-3"
+        >
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>From</span>
+            <Input
+              key={`from:${filters.dateFrom}`}
+              type="date"
+              name="dateFrom"
+              aria-label="From date"
+              defaultValue={filters.dateFrom}
+              max={filters.dateTo || undefined}
+              className="h-8 w-40 text-sm"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>To</span>
+            <Input
+              key={`to:${filters.dateTo}`}
+              type="date"
+              name="dateTo"
+              aria-label="To date"
+              defaultValue={filters.dateTo}
+              min={filters.dateFrom || undefined}
+              className="h-8 w-40 text-sm"
+            />
+          </label>
+          {programOptions.length >= 2 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Program</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label="Program"
+                      className="cursor-pointer justify-between gap-1.5"
+                    />
+                  }
+                >
+                  <span
+                    className={
+                      selectedProgramName
+                        ? "font-medium"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {selectedProgramName ?? "All programs"}
+                  </span>
+                  <ChevronDown className="opacity-60" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    render={
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProgram("")}
+                        className="w-full"
+                      />
+                    }
+                  >
+                    <Check
+                      className={selectedProgram ? "opacity-0" : "opacity-100"}
+                    />
+                    <span>All programs</span>
+                  </DropdownMenuItem>
+                  {programOptions.map((program) => (
+                    <DropdownMenuItem
+                      key={program.id}
+                      className="cursor-pointer"
+                      render={
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProgram(program.id)}
+                          className="w-full"
+                        />
+                      }
+                    >
+                      <Check
+                        className={
+                          selectedProgram === program.id
+                            ? "opacity-100"
+                            : "opacity-0"
+                        }
+                      />
+                      <span>{program.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+          <input type="hidden" name="program" value={selectedProgram} />
+          <Button type="submit" variant="outline">
+            Apply
+          </Button>
+          {anyFilterActive && (
+            <Button
+              variant="ghost"
+              className="cursor-pointer text-muted-foreground"
+              nativeButton={false}
+              render={<Link href="/affiliates/dashboard/payouts" />}
+            >
+              <X />
+              Clear
+            </Button>
+          )}
+          <h2 className="ml-auto shrink-0 whitespace-nowrap text-sm font-medium">
+            Payment history
+          </h2>
+        </form>
+        {invalidDateRange ? (
+          <p role="alert" className="px-5 py-3 text-[13px] text-status-warning">
+            From date must be on or before To date. Adjust the dates and apply
+            again.
+          </p>
+        ) : payments.length === 0 ? (
+          <div className="p-5">
             <EmptyState
               icon={<Wallet />}
-              title="No payments yet"
-              body={`A payment appears here once ${merchantName} marks your commissions paid.`}
+              title={
+                hasPaymentHistory &&
+                (filters.dateFrom || filters.dateTo || filters.program)
+                  ? "No payments match these filters"
+                  : "No payments yet"
+              }
+              body={
+                hasPaymentHistory &&
+                (filters.dateFrom || filters.dateTo || filters.program)
+                  ? "Try a different date range or program, or clear the filters."
+                  : `Once ${merchantName} marks your commissions as paid, they send the payout to you directly.`
+              }
             />
-          ) : (
-            <PaymentRows payments={payments} />
-          )}
-        </Section>
-      </div>
+          </div>
+        ) : (
+          <PayoutHistoryTable payments={payments} />
+        )}
+      </Section>
     </Page>
   );
 }

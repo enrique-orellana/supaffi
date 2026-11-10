@@ -117,6 +117,7 @@ export function termsLine(terms: {
   durationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  minimumPayoutAmount: string;
 }): string {
   const rate = `${Number(terms.rate.toFixed(2))}%`;
   const earning =
@@ -129,5 +130,8 @@ export function termsLine(terms: {
     earning,
     `${terms.attributionWindowDays}-day cookie`,
     `${terms.holdingPeriodDays}-day hold`,
+    Number(terms.minimumPayoutAmount) > 0
+      ? `${terms.minimumPayoutAmount} minimum per currency`
+      : "No payout minimum",
   ].join(" · ");
 }

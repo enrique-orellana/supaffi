@@ -26,7 +26,12 @@ import {
   updateProgram,
   listProgramsForMerchant,
 } from "@/lib/program";
-import { validateProgramInput } from "@/lib/programValidation";
+import {
+  validateProgramInput,
+  type ProgramActionState,
+  type ProgramFormSnapshot,
+} from "@/lib/programValidation";
+import { summarizeProgramMinimumImpact } from "@/lib/payoutEligibility";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
 import { getProductSetup } from "@/lib/productSetup";
@@ -160,16 +165,16 @@ export async function updateProductWebsiteAction(
 
 export async function saveTermsAction(
   product: { id: string; slug: string },
-  _prev: { error: string },
+  _prev: ProgramActionState,
   formData: FormData,
-): Promise<{ error: string }> {
+): Promise<ProgramActionState> {
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
   // The step asks no name: the first program is named after the product,
   // and going back keeps whatever name it has since been given.
   const existing = await listProgramsForMerchant(ownerId, product.id);
-  const result = validateProgramInput({
+  const values: ProgramFormSnapshot = {
     name: existing[0]?.name ?? merchant.name,
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
     commissionDurationType: String(
@@ -181,14 +186,33 @@ export async function saveTermsAction(
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
     currency: String(formData.get("currency") ?? ""),
-  });
-  if (result.error !== null) return { error: result.error };
+    minimumPayoutAmount: String(formData.get("minimumPayoutAmount") ?? "0"),
+  };
+  const result = validateProgramInput(values);
+  if (result.error !== null) return { error: result.error, values };
 
   // The onboarding step edits the first program if one exists rather than
   // adding a second, so going back and changing a number does not leave a
   // trail of near identical programs.
   if (existing.length > 0) {
-    await updateProgram(ownerId, product.id, existing[0].id, result.parsed);
+    const confirmed = formData.get("confirmMinimumChange") === "yes";
+    const fingerprint = confirmed
+      ? String(formData.get("minimumConfirmationFingerprint") ?? "")
+      : null;
+    const impact = await updateProgram(
+      ownerId,
+      product.id,
+      existing[0].id,
+      result.parsed,
+      fingerprint,
+    );
+    if (impact) {
+      return {
+        error: "",
+        values,
+        minimumConfirmation: summarizeProgramMinimumImpact(impact),
+      };
+    }
   } else {
     await createProgram(ownerId, product.id, result.parsed);
   }

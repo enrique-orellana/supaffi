@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
+import { resolveCurrentCommissionTerms } from "@/lib/commissionTerms";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isLinkCodeTaken, lockLinkCodes } from "@/lib/affiliateLink";
-import { Prisma } from "@prisma/client";
+import { Prisma, type CommissionDurationType } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import {
   AFFILIATE_COMMISSION_STATUSES,
@@ -14,6 +15,8 @@ import type {
 } from "@/lib/commissionStatus";
 import { voidReasonText } from "@/lib/commissionReason";
 import { PaymentProvider } from "@/lib/payments/types";
+import { getPayoutEligibility } from "@/lib/payoutEligibility";
+import type { SupportedDisplayCurrency } from "@/lib/displayCurrencyOptions";
 
 export type { AffiliateCommissionStatus } from "@/lib/commissionStatus";
 
@@ -171,6 +174,12 @@ export type AffiliateCommissionRow = {
   /** Sanitized affiliate-facing explanation; never an owner's raw note. */
   voidReason: string | null;
   voidedAt: Date | null;
+  reviewHeld: boolean;
+  payoutHold: {
+    eligibleBalance: string;
+    minimum: string;
+    remaining: string;
+  } | null;
 };
 
 /**
@@ -195,19 +204,80 @@ function affiliateStatusWhere(
     : { status: status as CommissionStatus };
 }
 
+/** Filters an Affiliate can apply to their own commission history. */
+export type AffiliateCommissionFilters = {
+  /** Inclusive lower bound for the commission's created date. */
+  createdAtGte?: Date | null;
+  /** Exclusive upper bound for the commission's created date. */
+  createdAtLt?: Date | null;
+  /** Referral link ID; the affiliateId scope always remains authoritative. */
+  linkId?: string | null;
+};
+
+/**
+ * One shared, affiliate-owned where clause for commission lists and counts.
+ * Link IDs are only an additional filter; they can never widen the identity
+ * scope supplied by the authenticated Affiliate.
+ */
+function affiliateCommissionWhere(
+  affiliateId: string,
+  filters: AffiliateCommissionFilters = {},
+  status?: AffiliateCommissionStatus | null,
+  payoutId?: string | null,
+): Prisma.CommissionWhereInput {
+  const createdAt = {
+    ...(filters.createdAtGte ? { gte: filters.createdAtGte } : {}),
+    ...(filters.createdAtLt ? { lt: filters.createdAtLt } : {}),
+  };
+  return {
+    affiliateId,
+    ...(Object.keys(createdAt).length > 0 ? { createdAt } : {}),
+    ...(filters.linkId ? { click: { linkId: filters.linkId } } : {}),
+    ...affiliateStatusWhere(status),
+    ...(payoutId ? { payoutId } : {}),
+  };
+}
+
+/** Referral links with at least one commission in this Affiliate's history. */
+export async function listAffiliateCommissionFilterOptions(
+  affiliateId: string,
+): Promise<{ id: string; code: string }[]> {
+  return db.affiliateLink.findMany({
+    where: {
+      affiliateId,
+      clicks: {
+        some: {
+          commissions: { some: { affiliateId } },
+        },
+      },
+    },
+    select: { id: true, code: true },
+    orderBy: { code: "asc" },
+  });
+}
+
 export async function listAffiliateCommissions(
   affiliateId: string,
   {
     page,
     pageSize,
     status,
+    payoutId,
+    filters,
   }: {
     page: number;
     pageSize: number;
     status?: AffiliateCommissionStatus | null;
+    payoutId?: string | null;
+    filters?: AffiliateCommissionFilters;
   },
 ): Promise<{ rows: AffiliateCommissionRow[]; total: number }> {
-  const where = { affiliateId, ...affiliateStatusWhere(status) };
+  const where = affiliateCommissionWhere(
+    affiliateId,
+    filters,
+    status,
+    payoutId,
+  );
   const [rows, total] = await Promise.all([
     db.commission.findMany({
       where,
@@ -224,6 +294,12 @@ export async function listAffiliateCommissions(
         voidReason: true,
         voidedAt: true,
         adjustsCommissionId: true,
+        merchantId: true,
+        programId: true,
+        flagReason: true,
+        disputeOpenedAt: true,
+        checkoutConflictHeldAt: true,
+        payoutId: true,
         click: { select: { link: { select: { code: true } } } },
       },
       // Sales before the refund adjustments against them on the payable tab,
@@ -240,6 +316,47 @@ export async function listAffiliateCommissions(
     }),
     db.commission.count({ where }),
   ]);
+
+  const now = new Date();
+  const payoutGroups = new Map<
+    string,
+    {
+      merchantId: string;
+      affiliateId: string;
+      programId: string;
+      currency: string;
+    }
+  >();
+  for (const commission of rows) {
+    if (
+      commission.status !== COMMISSION_STATUS.PENDING ||
+      commission.payableAt > now ||
+      commission.adjustsCommissionId !== null ||
+      commission.amount.lte(0) ||
+      commission.flagReason !== null ||
+      commission.disputeOpenedAt !== null ||
+      commission.checkoutConflictHeldAt !== null ||
+      commission.payoutId !== null ||
+      !commission.merchantId ||
+      !commission.programId
+    ) {
+      continue;
+    }
+    const key = `${commission.programId}:${commission.currency}`;
+    payoutGroups.set(key, {
+      merchantId: commission.merchantId,
+      affiliateId,
+      programId: commission.programId,
+      currency: commission.currency,
+    });
+  }
+  const eligibilityEntries = await Promise.all(
+    [...payoutGroups].map(
+      async ([key, group]) =>
+        [key, await getPayoutEligibility(db, group, now)] as const,
+    ),
+  );
+  const eligibilityByGroup = new Map(eligibilityEntries);
 
   return {
     total,
@@ -262,6 +379,25 @@ export async function listAffiliateCommissions(
         status: toDisplayStatus(r.status),
         linkCode: r.click.link?.code ?? null,
         isAdjustment: r.adjustsCommissionId !== null,
+        reviewHeld:
+          r.flagReason !== null ||
+          r.disputeOpenedAt !== null ||
+          r.checkoutConflictHeldAt !== null,
+        payoutHold: (() => {
+          const eligibility = eligibilityByGroup.get(
+            `${r.programId}:${r.currency}`,
+          );
+          return eligibility && !eligibility.payable
+            ? {
+                eligibleBalance: eligibility.eligibleBalance.toFixed(2),
+                minimum: eligibility.minimum.toFixed(2),
+                remaining: Prisma.Decimal.max(
+                  eligibility.minimum.sub(eligibility.eligibleBalance),
+                  new Prisma.Decimal(0),
+                ).toFixed(2),
+              }
+            : null;
+        })(),
       };
     }),
   };
@@ -289,17 +425,32 @@ export type AffiliateCommissionDetail = {
   grossAmount: string | null;
   voidReason: string | null;
   paymentProvider: string | null;
+  reviewHeld: boolean;
+  payoutHold: {
+    eligibleBalance: string;
+    minimum: string;
+    remaining: string;
+  } | null;
+  payoutRecord: {
+    total: string;
+    currency: string;
+    paidAt: Date;
+    programName: string;
+    isException: boolean;
+  } | null;
 };
 
 export async function getAffiliateCommissionDetail(
   affiliateId: string,
   merchantId: string,
   commissionId: string,
+  payoutId?: string | null,
 ): Promise<AffiliateCommissionDetail | null> {
   const commission = await db.commission.findFirst({
     where: {
       id: commissionId,
       affiliateId,
+      ...(payoutId ? { payoutId } : {}),
       affiliate: { merchantId },
     },
     select: {
@@ -314,6 +465,21 @@ export async function getAffiliateCommissionDetail(
       voidReason: true,
       grossAmount: true,
       adjustsCommissionId: true,
+      merchantId: true,
+      programId: true,
+      flagReason: true,
+      disputeOpenedAt: true,
+      checkoutConflictHeldAt: true,
+      payoutId: true,
+      payout: {
+        select: {
+          total: true,
+          currency: true,
+          paidAt: true,
+          isException: true,
+          program: { select: { name: true } },
+        },
+      },
       click: { select: { link: { select: { code: true } } } },
       paymentRecord: {
         select: {
@@ -329,6 +495,36 @@ export async function getAffiliateCommissionDetail(
   );
   const amount = commission.amount.toFixed(2);
   const grossAmount = commission.grossAmount?.toFixed(2) ?? null;
+  let payoutHold: AffiliateCommissionDetail["payoutHold"] = null;
+  if (
+    commission.status === COMMISSION_STATUS.PENDING &&
+    commission.payableAt <= new Date() &&
+    commission.adjustsCommissionId === null &&
+    commission.amount.gt(0) &&
+    commission.flagReason === null &&
+    commission.disputeOpenedAt === null &&
+    commission.checkoutConflictHeldAt === null &&
+    commission.payoutId === null &&
+    commission.merchantId &&
+    commission.programId
+  ) {
+    const eligibility = await getPayoutEligibility(db, {
+      merchantId: commission.merchantId,
+      affiliateId,
+      programId: commission.programId,
+      currency: commission.currency,
+    });
+    if (eligibility && !eligibility.payable) {
+      payoutHold = {
+        eligibleBalance: eligibility.eligibleBalance.toFixed(2),
+        minimum: eligibility.minimum.toFixed(2),
+        remaining: Prisma.Decimal.max(
+          eligibility.minimum.sub(eligibility.eligibleBalance),
+          new Prisma.Decimal(0),
+        ).toFixed(2),
+      };
+    }
+  }
 
   return {
     amount,
@@ -344,6 +540,20 @@ export async function getAffiliateCommissionDetail(
     grossAmount: grossAmount !== amount ? grossAmount : null,
     voidReason: voidReasonText(commission.voidReason, "affiliate"),
     paymentProvider: provider?.label ?? null,
+    reviewHeld:
+      commission.flagReason !== null ||
+      commission.disputeOpenedAt !== null ||
+      commission.checkoutConflictHeldAt !== null,
+    payoutHold,
+    payoutRecord: commission.payout
+      ? {
+          total: commission.payout.total.toFixed(2),
+          currency: commission.payout.currency,
+          paidAt: commission.payout.paidAt,
+          programName: commission.payout.program.name,
+          isException: commission.payout.isException,
+        }
+      : null,
   };
 }
 
@@ -357,10 +567,11 @@ export async function getAffiliateCommissionDetail(
  */
 export async function getAffiliateCommissionTotals(
   affiliateId: string,
+  filters: AffiliateCommissionFilters = {},
 ): Promise<{ status: AffiliateCommissionStatus; count: number }[]> {
   const grouped = await db.commission.groupBy({
     by: ["status"],
-    where: { affiliateId },
+    where: affiliateCommissionWhere(affiliateId, filters),
     _count: { _all: true },
   });
 
@@ -381,19 +592,49 @@ export async function getAffiliateCommissionTotals(
 // to put megabytes into the database and into the Owner's affiliate list.
 export const MAX_PAYOUT_DETAILS_LENGTH = 1000;
 
+type NormalizedPayoutDetails = { value: string | null } | { error: string };
+
+function normalizePayoutDetails(value: string): NormalizedPayoutDetails {
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_PAYOUT_DETAILS_LENGTH) {
+    return { error: "Keep this under 1,000 characters" };
+  }
+  return { value: trimmed || null };
+}
+
 export async function updateAffiliatePayoutDetails(
   affiliateId: string,
   payoutDetails: string,
 ): Promise<{ error: string } | null> {
-  const trimmed = payoutDetails.trim();
-  if (trimmed.length > MAX_PAYOUT_DETAILS_LENGTH) {
-    return { error: "Keep this under 1,000 characters" };
-  }
+  const normalized = normalizePayoutDetails(payoutDetails);
+  if ("error" in normalized) return normalized;
   await db.affiliate.update({
     where: { id: affiliateId },
-    data: { payoutDetails: trimmed || null },
+    data: { payoutDetails: normalized.value },
   });
   return null;
+}
+
+/** Save an Affiliate's payout destination and display preference in one write. */
+export async function updateAffiliateSettings(
+  affiliateId: string,
+  merchantId: string,
+  payoutDetails: string,
+  displayCurrency: SupportedDisplayCurrency | null,
+): Promise<{ error: string } | null> {
+  const normalized = normalizePayoutDetails(payoutDetails);
+  if ("error" in normalized) return normalized;
+
+  const result = await db.affiliate.updateMany({
+    where: { id: affiliateId, merchantId },
+    data: {
+      payoutDetails: normalized.value,
+      displayCurrency,
+    },
+  });
+  return result.count === 1
+    ? null
+    : { error: "Your affiliate profile could not be updated" };
 }
 
 export async function getAffiliatePayoutDetails(
@@ -407,8 +648,7 @@ export async function getAffiliatePayoutDetails(
 }
 
 /**
- * Moves an affiliate between this product's programs, or overrides their
- * rate. Both optional so one call can do either. A program from another
+ * Moves an affiliate between this product's programs. A program from another
  * product is refused: identity is scoped to the product, and a cross-product
  * move would let one product's affiliate earn under another's terms.
  */
@@ -416,7 +656,7 @@ export async function updateAffiliate(
   ownerId: string,
   merchantId: string,
   affiliateId: string,
-  input: { programId?: string; customCommissionRate?: number | null },
+  input: { programId?: string },
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
@@ -434,74 +674,96 @@ export async function updateAffiliate(
     where: { id: affiliateId, merchantId },
     data: {
       ...(input.programId !== undefined ? { programId: input.programId } : {}),
-      ...(input.customCommissionRate !== undefined
-        ? { customCommissionRate: input.customCommissionRate }
-        : {}),
     },
   });
   if (result.count === 0) throw new Error("Affiliate not found");
 }
 
 export type AffiliatePaymentGroup = {
-  /** The moment the Owner pressed Mark paid. Every commission in one payout carries the same one. */
+  id: string;
+  programId: string;
+  programName: string;
+  isException: boolean;
+  /** The moment the Owner recorded this one-currency payout batch. */
   paidAt: Date;
   totals: CurrencyTotal[];
   count: number;
 };
 
+export type AffiliatePayoutRecord = {
+  id: string;
+  programName: string;
+  currency: string;
+  total: string;
+  paidAt: Date;
+  isException: boolean;
+  commissionCount: number;
+};
+
 /**
- * Payment history, derived rather than read from a table: Supaffi has no
- * payment rail, so a "payment" is the set of commissions one press of Mark
- * paid covered.
- *
- * Grouped by the exact `paidAt`, not by day. `markCommissionsPaid` stamps
- * every row of a payout with one moment in a single write, so that moment is
- * the payout's identity. Grouping by day merged two separate payouts made the
- * same day into one figure that matched neither transfer. Currencies stay
- * separate within a group (CONTEXT.md: never convert); a real payout only ever
- * has one, but seeded demo rows can share a moment across currencies.
+ * A payout's affiliate-visible summary. Owner notes, payment references and
+ * payout destination details stay private.
+ */
+export async function getAffiliatePayoutRecord(
+  affiliateId: string,
+  payoutId: string,
+): Promise<AffiliatePayoutRecord | null> {
+  const payout = await db.payout.findFirst({
+    where: { id: payoutId, affiliateId },
+    select: {
+      id: true,
+      currency: true,
+      total: true,
+      paidAt: true,
+      isException: true,
+      program: { select: { name: true } },
+      _count: { select: { commissions: true } },
+    },
+  });
+  if (!payout) return null;
+
+  return {
+    id: payout.id,
+    programName: payout.program.name,
+    currency: payout.currency,
+    total: payout.total.toFixed(2),
+    paidAt: payout.paidAt,
+    isException: payout.isException,
+    commissionCount: payout._count.commissions,
+  };
+}
+
+/**
+ * Recorded payout batches. References and owner notes are intentionally
+ * omitted: the Affiliate sees the date, amount, Program, and whether this was
+ * an explicitly approved below-minimum closeout.
  */
 export async function listAffiliatePayments(
   affiliateId: string,
 ): Promise<AffiliatePaymentGroup[]> {
-  const rows = await db.commission.findMany({
-    where: {
-      affiliateId,
-      status: COMMISSION_STATUS.PAID,
-      paidAt: { not: null },
+  const payouts = await db.payout.findMany({
+    where: { affiliateId },
+    orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      programId: true,
+      currency: true,
+      total: true,
+      paidAt: true,
+      isException: true,
+      program: { select: { name: true } },
+      _count: { select: { commissions: true } },
     },
-    select: { amount: true, currency: true, paidAt: true },
   });
-
-  const byPayout = new Map<
-    number,
-    { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }
-  >();
-  for (const row of rows) {
-    const paidAt = row.paidAt!;
-    let bucket = byPayout.get(paidAt.getTime());
-    if (!bucket) {
-      bucket = { paidAt, totals: new Map(), count: 0 };
-      byPayout.set(paidAt.getTime(), bucket);
-    }
-    bucket.count += 1;
-    bucket.totals.set(
-      row.currency,
-      (bucket.totals.get(row.currency) ?? new Prisma.Decimal(0)).add(
-        row.amount,
-      ),
-    );
-  }
-
-  return [...byPayout.values()]
-    .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime())
-    .map((bucket) => ({
-      paidAt: bucket.paidAt,
-      count: bucket.count,
-      totals: [...bucket.totals.entries()]
-        .map(([currency, amount]) => ({ currency, total: amount.toFixed(2) }))
-        .sort((a, b) => a.currency.localeCompare(b.currency)),
-    }));
+  return payouts.map((payout) => ({
+    id: payout.id,
+    programId: payout.programId,
+    programName: payout.program.name,
+    isException: payout.isException,
+    paidAt: payout.paidAt,
+    count: payout._count.commissions,
+    totals: [{ currency: payout.currency, total: payout.total.toFixed(2) }],
+  }));
 }
 
 export type AffiliateListFilters = {
@@ -521,9 +783,16 @@ export type AffiliateListRow = {
   programId: string;
   programName: string;
   programSlug: string;
-  /** The override when the Affiliate has one, otherwise the Program default. */
+  /** Effective rate used for new referrals. */
   commissionRate: string;
+  /** Whether this Affiliate overrides the Program's default rate. */
   rateIsOverride: boolean;
+  commissionRateOverride: string | null;
+  commissionDurationTypeOverride: CommissionDurationType | null;
+  commissionDurationMonthsOverride: number | null;
+  attributionWindowDaysOverride: number | null;
+  holdingPeriodDaysOverride: number | null;
+  minimumPayoutAmountOverride: string | null;
   clicks: number;
   conversions: number;
   /** One entry per currency. Supaffi never converts (CONTEXT.md). */
@@ -584,11 +853,17 @@ export async function listAffiliatesForMerchant(
         id: true,
         name: true,
         email: true,
+        programId: true,
         links: {
           where: { isPrimary: true },
           select: { code: true, destinationPath: true },
         },
         customCommissionRate: true,
+        commissionDurationTypeOverride: true,
+        commissionDurationMonthsOverride: true,
+        attributionWindowDaysOverride: true,
+        holdingPeriodDaysOverride: true,
+        minimumPayoutAmountOverride: true,
         createdAt: true,
         program: {
           select: {
@@ -596,6 +871,11 @@ export async function listAffiliatesForMerchant(
             name: true,
             slug: true,
             defaultCommissionRate: true,
+            commissionDurationType: true,
+            commissionDurationMonths: true,
+            attributionWindowDays: true,
+            holdingPeriodDays: true,
+            minimumPayoutAmount: true,
           },
         },
       },
@@ -657,26 +937,36 @@ export async function listAffiliatesForMerchant(
 
   return {
     total,
-    rows: affiliates.map((a) => ({
-      id: a.id,
-      name: a.name,
-      email: a.email,
-      referralCode: a.links[0]?.code ?? "",
-      destinationPath: a.links[0]?.destinationPath ?? null,
-      programId: a.program.id,
-      programName: a.program.name,
-      programSlug: a.program.slug,
-      commissionRate: (
-        a.customCommissionRate ?? a.program.defaultCommissionRate
-      ).toString(),
-      rateIsOverride: a.customCommissionRate !== null,
-      clicks: clicksById.get(a.id) ?? 0,
-      conversions: conversionsById.get(a.id) ?? 0,
-      earned: (earnedById.get(a.id) ?? []).sort((x, y) =>
-        x.currency.localeCompare(y.currency),
-      ),
-      createdAt: a.createdAt,
-    })),
+    rows: affiliates.map((a) => {
+      return {
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        referralCode: a.links[0]?.code ?? "",
+        destinationPath: a.links[0]?.destinationPath ?? null,
+        programId: a.program.id,
+        programName: a.program.name,
+        programSlug: a.program.slug,
+        commissionRate: resolveCurrentCommissionTerms(
+          a.program,
+          a,
+        ).commissionRate.toString(),
+        rateIsOverride: a.customCommissionRate !== null,
+        commissionRateOverride: a.customCommissionRate?.toString() ?? null,
+        commissionDurationTypeOverride: a.commissionDurationTypeOverride,
+        commissionDurationMonthsOverride: a.commissionDurationMonthsOverride,
+        attributionWindowDaysOverride: a.attributionWindowDaysOverride,
+        holdingPeriodDaysOverride: a.holdingPeriodDaysOverride,
+        minimumPayoutAmountOverride:
+          a.minimumPayoutAmountOverride?.toFixed(2) ?? null,
+        clicks: clicksById.get(a.id) ?? 0,
+        conversions: conversionsById.get(a.id) ?? 0,
+        earned: (earnedById.get(a.id) ?? []).sort((x, y) =>
+          x.currency.localeCompare(y.currency),
+        ),
+        createdAt: a.createdAt,
+      };
+    }),
   };
 }
 

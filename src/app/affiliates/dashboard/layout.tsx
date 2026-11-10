@@ -47,12 +47,12 @@ export default async function AffiliateDashboardLayout({
         merchantName={merchant.name}
         merchantSite={siteHost(merchant.websiteUrl)}
         email={email}
-        payoutDetailsMissing={payoutDetails === null}
+        payoutDetailsMissing={!payoutDetails?.trim()}
       />
       <SidebarInset>
         {/* Screens are built to fit, so this should never scroll. It is a
             safety net, not a layout. */}
-        <div className="flex h-svh min-h-0 flex-1 flex-col overflow-y-auto p-8 md:h-auto">
+        <div className="flex h-svh min-h-0 flex-1 flex-col overflow-y-auto p-8 mb-4 md:h-auto">
           {/* The sidebar is a sheet below md, so it needs something to open
               it. Above md it is always on screen and this would be noise. */}
           <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />

@@ -82,13 +82,10 @@ export default async function ProductOverviewPage({
   }
 
   const window = resolveRange(range, new Date(), merchant.createdAt);
-  const [metrics, top, payable, celebrate] = await Promise.all([
+  const [metrics, payable, celebrate, defaultCurrency, rates] = await Promise.all([
     getProductMetrics(ownerId, merchant.id, range),
-    getTopAffiliates(ownerId, merchant.id, 5, window),
     getPayableGroups(ownerId, merchant.id),
     shouldCelebrateTracking(merchant.id),
-  ]);
-  const [defaultCurrency, rates] = await Promise.all([
     getOwnerDisplayCurrency(ownerId),
     getEcbReferenceRates(),
   ]);
@@ -96,6 +93,13 @@ export default async function ProductOverviewPage({
   // Commissions, not groups: the Owner pays per affiliate but is counting
   // lines on a ledger.
   const currency = normalizeDisplayCurrency(query.currency) ?? defaultCurrency;
+  const top = await getTopAffiliates(
+    ownerId,
+    merchant.id,
+    { displayCurrency: currency, rates },
+    5,
+    window,
+  );
   const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
   const empty =
     metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;

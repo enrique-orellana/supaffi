@@ -8,8 +8,8 @@ import type { PaymentRef } from "./commission";
 const WITH_CLICK = {
   click: {
     include: {
-      affiliate: { include: { program: true } },
-      link: { select: { commissionRateOverride: true } },
+      affiliate: true,
+      program: true,
     },
   },
 } satisfies Prisma.ReferredSubscriptionInclude;

@@ -2,6 +2,13 @@ import { db } from "@/lib/db";
 import type { CommissionDurationType } from "@prisma/client";
 import { uniqueSlug } from "@/lib/slug";
 import { SUPPORTED_DISPLAY_CURRENCY_CODES } from "@/lib/displayCurrencyOptions";
+import { Prisma } from "@prisma/client";
+import {
+  getProgramMinimumImpact,
+  recalculateProgramPayoutEligibility,
+  summarizeProgramMinimumImpact,
+  type ProgramMinimumImpact,
+} from "@/lib/payoutEligibility";
 
 export type DisplayCurrency = (typeof SUPPORTED_DISPLAY_CURRENCY_CODES)[number];
 
@@ -14,6 +21,8 @@ export type ProgramInput = {
   holdingPeriodDays: number;
   /** Omitted by legacy callers; the database default is EUR. */
   currency?: DisplayCurrency;
+  /** Decimal string to preserve the entered two-place precision. */
+  minimumPayoutAmount?: string;
   /** Left out by onboarding, which keeps the stored value (open by default). */
   signupOpen?: boolean;
 };
@@ -67,6 +76,7 @@ export async function listProgramsForMerchant(
     attributionWindowDays: number;
     holdingPeriodDays: number;
     currency: string;
+    minimumPayoutAmount: string;
     signupOpen: boolean;
     affiliateCount: number;
   }[]
@@ -85,6 +95,7 @@ export async function listProgramsForMerchant(
       attributionWindowDays: true,
       holdingPeriodDays: true,
       currency: true,
+      minimumPayoutAmount: true,
       signupOpen: true,
       _count: { select: { affiliates: true } },
     },
@@ -97,6 +108,7 @@ export async function listProgramsForMerchant(
   // that grid doesn't need a second query per card either.
   return programs.map(({ _count, ...program }) => ({
     ...program,
+    minimumPayoutAmount: program.minimumPayoutAmount.toFixed(2),
     affiliateCount: _count.affiliates,
   }));
 }
@@ -115,6 +127,7 @@ export async function getProgramForMerchant(
   attributionWindowDays: number;
   holdingPeriodDays: number;
   currency: string;
+  minimumPayoutAmount: string;
 } | null> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
@@ -122,7 +135,7 @@ export async function getProgramForMerchant(
   });
   if (!merchant) return null;
 
-  return db.program.findFirst({
+  const program = await db.program.findFirst({
     where: { slug: programSlug, merchantId },
     select: {
       id: true,
@@ -134,8 +147,15 @@ export async function getProgramForMerchant(
       attributionWindowDays: true,
       holdingPeriodDays: true,
       currency: true,
+      minimumPayoutAmount: true,
     },
   });
+  return program
+    ? {
+        ...program,
+        minimumPayoutAmount: program.minimumPayoutAmount.toFixed(2),
+      }
+    : null;
 }
 
 export async function updateProgram(
@@ -143,20 +163,74 @@ export async function updateProgram(
   merchantId: string,
   programId: string,
   input: ProgramInput,
-): Promise<void> {
+  confirmationFingerprint: string | null = null,
+): Promise<ProgramMinimumImpact[] | null> {
   await assertMerchantOwnership(ownerId, merchantId);
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id"
+      FROM "Program"
+      WHERE "id" = ${programId} AND "merchantId" = ${merchantId}
+      FOR UPDATE
+    `);
+    if (rows.length === 0) throw new Error("Program not found");
 
-  const existing = await db.program.findFirst({
-    where: { id: programId, merchantId },
-    select: { id: true },
-  });
-  if (!existing) {
-    throw new Error("Program not found");
-  }
+    const existing = await tx.program.findUniqueOrThrow({
+      where: { id: programId },
+      select: {
+        minimumPayoutAmount: true,
+        commissionDurationType: true,
+        commissionDurationMonths: true,
+      },
+    });
+    const changedMinimum =
+      input.minimumPayoutAmount !== undefined &&
+      !existing.minimumPayoutAmount.eq(input.minimumPayoutAmount);
+    const impact = changedMinimum
+      ? await getProgramMinimumImpact(
+          merchantId,
+          programId,
+          input.minimumPayoutAmount!,
+          new Date(),
+          tx,
+        )
+      : [];
+    if (
+      impact.length > 0 &&
+      summarizeProgramMinimumImpact(impact).fingerprint !==
+        confirmationFingerprint
+    ) {
+      return impact;
+    }
 
-  await db.program.update({
-    where: { id: programId },
-    data: { ...input },
+    if (
+      existing.commissionDurationType === "FIXED_MONTHS" &&
+      input.commissionDurationType !== "FIXED_MONTHS" &&
+      existing.commissionDurationMonths !== null
+    ) {
+      // Affiliate overrides that inherited the old fixed duration must keep
+      // that duration when the Program no longer has a month count to inherit.
+      await tx.affiliate.updateMany({
+        where: {
+          programId,
+          commissionDurationTypeOverride: "FIXED_MONTHS",
+          commissionDurationMonthsOverride: null,
+        },
+        data: {
+          commissionDurationMonthsOverride:
+            existing.commissionDurationMonths,
+        },
+      });
+    }
+
+    await tx.program.update({
+      where: { id: programId },
+      data: { ...input },
+    });
+    if (changedMinimum) {
+      await recalculateProgramPayoutEligibility(tx, merchantId, programId);
+    }
+    return null;
   });
 }
 
@@ -171,6 +245,7 @@ export type ProgramForSignup = {
   name: string;
   /** Percentage, e.g. 20 for 20%. Decimal is not serialisable to a client component. */
   defaultCommissionRate: number;
+  minimumPayoutAmount: string;
   commissionDurationType: CommissionDurationType;
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
@@ -186,6 +261,7 @@ export async function getProgramForSignup(
       id: true,
       name: true,
       defaultCommissionRate: true,
+      minimumPayoutAmount: true,
       commissionDurationType: true,
       commissionDurationMonths: true,
       attributionWindowDays: true,
@@ -195,6 +271,7 @@ export async function getProgramForSignup(
   return {
     ...program,
     defaultCommissionRate: Number(program.defaultCommissionRate),
+    minimumPayoutAmount: program.minimumPayoutAmount.toFixed(2),
   };
 }
 

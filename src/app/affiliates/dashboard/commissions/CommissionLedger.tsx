@@ -94,6 +94,10 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
       // that date passes, say availability is being checked instead of showing
       // a release date that has already passed. This also keeps hidden flags
       // private while explaining why the commission is still on hold.
+      if (row.reviewHeld) return "Under review; payout is paused";
+      if (row.payoutHold) {
+        return `Below minimum: ${formatMoney(row.payoutHold.eligibleBalance, row.currency)} eligible; ${formatMoney(row.payoutHold.remaining, row.currency)} still needed`;
+      }
       if (row.payableAt.getTime() <= Date.now()) return "Checking availability";
       return `Available ${formatDate(row.payableAt)}`;
     }

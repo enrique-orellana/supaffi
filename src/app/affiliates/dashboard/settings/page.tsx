@@ -1,23 +1,26 @@
 import { redirect } from "next/navigation";
 import { requireAffiliate } from "@/lib/affiliateAuth";
+import { getAffiliatePayoutDetails } from "@/lib/affiliate";
 import { getAffiliateDisplaySettings } from "@/lib/affiliateDisplaySettings";
-import { Page, PageTitle, Section } from "@/components/dashboard/Page";
+import { Page, PageTitle } from "@/components/dashboard/Page";
 import { SettingsForm } from "./SettingsForm";
 
 export default async function AffiliateSettingsPage() {
   const { affiliateId, merchant } = await requireAffiliate();
-  const settings = await getAffiliateDisplaySettings(affiliateId, merchant.id);
+  const [settings, payoutDetails] = await Promise.all([
+    getAffiliateDisplaySettings(affiliateId, merchant.id),
+    getAffiliatePayoutDetails(affiliateId),
+  ]);
   if (!settings) redirect("/affiliates/login");
 
   return (
     <Page>
       <PageTitle title="Settings" />
-      <Section title="Display currency">
-        <SettingsForm
-          preference={settings.preference}
-          programDefault={settings.programDefault}
-        />
-      </Section>
+      <SettingsForm
+        payoutDetails={payoutDetails ?? ""}
+        preference={settings.preference}
+        programDefault={settings.programDefault}
+      />
     </Page>
   );
 }

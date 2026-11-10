@@ -1,35 +1,13 @@
 import { PaymentProvider } from "@/lib/payments/types";
 import { Prisma } from "@prisma/client";
-import type { Click, Program } from "@prisma/client";
+import type { Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import { SqlSchema } from "@/lib/sqlSchema";
+import type { CommissionDurationTerms } from "@/lib/commissionTerms";
 import {
   isPaymentWithinCommissionDuration,
-  type CommissionDurationTerms,
   type PaymentRef,
 } from "./commission";
-
-export function commissionDurationForClick(
-  program: Program,
-  click?: Pick<
-    Click,
-    "commissionDurationTypeSnapshot" | "commissionDurationMonthsSnapshot"
-  > | null,
-): CommissionDurationTerms {
-  if (!click?.commissionDurationTypeSnapshot) {
-    return {
-      commissionDurationType: program.commissionDurationType,
-      commissionDurationMonths: program.commissionDurationMonths,
-    };
-  }
-  return {
-    commissionDurationType: click.commissionDurationTypeSnapshot,
-    commissionDurationMonths:
-      click.commissionDurationTypeSnapshot === "FIXED_MONTHS"
-        ? click.commissionDurationMonthsSnapshot
-        : null,
-  };
-}
 
 type ReferralHistoryClient = Pick<typeof db, "$queryRaw">;
 

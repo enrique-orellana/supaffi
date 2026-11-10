@@ -14,7 +14,7 @@ import type { ReactNode } from "react";
  */
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex w-full flex-col gap-4 lg:h-full lg:min-h-0">
+    <div className="flex w-full flex-col gap-4 pb-6 lg:h-full lg:min-h-0">
       {children}
     </div>
   );

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Pencil, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -31,6 +31,7 @@ export type AffiliateRowView = {
   /** Already carries its percent sign. */
   rate: string;
   rateIsOverride: boolean;
+  legacyRateOverride?: string | null;
   /**
    * "8/11": still paying of all referred, from referralCounts (Task A5) batched on the page
    * that builds this row. Null when the program has no recurring commission
@@ -142,15 +143,15 @@ export function AffiliateTable({
               )}
             </TableCell>
             <TableCell className="text-right whitespace-nowrap tabular-nums">
-              <span className="inline-flex items-center justify-end gap-1">
+              <span className="inline-flex items-center justify-end gap-1.5">
                 {row.rate}
-                {row.rateIsOverride && (
-                  <>
-                    <Pencil className="size-3 text-muted-foreground" />
-                    <span className="sr-only">
-                      Overrides the program default
-                    </span>
-                  </>
+                {row.rateIsOverride && row.legacyRateOverride != null && (
+                  <span
+                    className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    title="New referrals use the Program rate; existing Clicks keep their saved rate."
+                  >
+                    stored {row.legacyRateOverride}%
+                  </span>
                 )}
               </span>
             </TableCell>

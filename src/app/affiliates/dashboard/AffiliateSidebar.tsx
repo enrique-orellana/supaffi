@@ -79,7 +79,7 @@ export function AffiliateSidebar({
   /** The host of the merchant's site, under their name. */
   merchantSite: string;
   email: string;
-  /** Draws the waiting dot on Payouts. There is nowhere to send the money yet. */
+  /** Shows a warning badge on Payouts until a destination is saved. */
   payoutDetailsMissing?: boolean;
   /** Overrides the live path, so the shell can be rendered in the dev kit. */
   pathname?: string;
@@ -124,12 +124,13 @@ export function AffiliateSidebar({
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
                       {item.key === "payouts" && payoutDetailsMissing && (
-                        <div
+                        <span
                           className="ml-auto shrink-0 rounded-full bg-status-warning-bg px-1.5 py-1 text-[10px] leading-none font-medium whitespace-nowrap text-status-warning"
-                          title="Add payout details so your merchant can pay you"
+                          aria-label="Payout details are missing"
+                          title="Add payout details in Settings"
                         >
-                          Add payout details
-                        </div>
+                          Add details
+                        </span>
                       )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>

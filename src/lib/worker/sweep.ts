@@ -1,7 +1,6 @@
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { COMMISSION_STATUS } from "@/lib/commissionStatus";
-import { SqlSchema } from "@/lib/sqlSchema";
+import { recalculatePayoutEligibility } from "@/lib/payoutEligibility";
 
 // Runs on the same tick as the webhook drain, with no new infrastructure.
 // Deliberately WHERE status = 'PENDING' only: FLAGGED commissions are
@@ -13,12 +12,45 @@ import { SqlSchema } from "@/lib/sqlSchema";
 // takes. Closing it in the merchant's favour releases it (disputes.ts), and a
 // lost one voids it, so nothing here needs to wait for either.
 export async function sweepPayableCommissions(): Promise<number> {
-  return db.$executeRaw(Prisma.sql`
-    UPDATE ${SqlSchema.tables.Commission.name}
-    SET ${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PAYABLE}::${SqlSchema.types.CommissionStatus}
-    WHERE ${SqlSchema.tables.Commission.status} = ${COMMISSION_STATUS.PENDING}::${SqlSchema.types.CommissionStatus}
-      AND ${SqlSchema.tables.Commission.payableAt} <= now()
-      AND ${SqlSchema.tables.Commission.disputeOpenedAt} IS NULL
-      AND ${SqlSchema.tables.Commission.checkoutConflictHeldAt} IS NULL;
-  `);
+  const now = new Date();
+  const groups = await db.commission.findMany({
+    where: {
+      status: COMMISSION_STATUS.PENDING,
+      payableAt: { lte: now },
+      merchantId: { not: null },
+      programId: { not: null },
+      adjustsCommissionId: null,
+      amount: { gt: 0 },
+      payoutId: null,
+      flagReason: null,
+      disputeOpenedAt: null,
+      checkoutConflictHeldAt: null,
+    },
+    distinct: ["merchantId", "affiliateId", "programId", "currency"],
+    select: {
+      merchantId: true,
+      affiliateId: true,
+      programId: true,
+      currency: true,
+    },
+  });
+
+  let changed = 0;
+  for (const group of groups) {
+    if (!group.merchantId || !group.programId) continue;
+    const result = await db.$transaction((tx) =>
+      recalculatePayoutEligibility(
+        tx,
+        {
+          merchantId: group.merchantId!,
+          affiliateId: group.affiliateId,
+          programId: group.programId!,
+          currency: group.currency,
+        },
+        now,
+      ),
+    );
+    changed += result.changed;
+  }
+  return changed;
 }

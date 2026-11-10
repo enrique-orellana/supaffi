@@ -9,18 +9,18 @@ datasource db {
 
 // The person who installed this Instance. Full access to every Merchant on it.
 model Owner {
-  id                String     @id @default(cuid())
-  email             String     @unique
-  passwordHash      String
+  id                          String                 @id @default(cuid())
+  email                       String                 @unique
+  passwordHash                String
   /// The currency used to visualize owner dashboard totals. Recorded amounts keep their source currency.
-  displayCurrency   String   @default("eur") @db.VarChar(3)
+  displayCurrency             String                 @default("eur") @db.VarChar(3)
   // Set on every password change. Owner sessions issued before it are
   // refused, the only way to end a JWT session with no adapter behind it.
-  passwordChangedAt DateTime?
-  createdAt         DateTime   @default(now())
-  merchants         Merchant[]
-  affiliateImportBatches AffiliateImportBatch[]
-  reconciledCommerceCheckouts CommerceCheckout[] @relation("CommerceCheckoutReconciler")
+  passwordChangedAt           DateTime?
+  createdAt                   DateTime               @default(now())
+  merchants                   Merchant[]
+  affiliateImportBatches      AffiliateImportBatch[]
+  reconciledCommerceCheckouts CommerceCheckout[]     @relation("CommerceCheckoutReconciler")
 }
 
 model Merchant {
@@ -61,8 +61,9 @@ model Merchant {
   affiliateImportBatches  AffiliateImportBatch[]
   importedCommissions     ImportedCommission[]
   importedPayouts         ImportedPayout[]
+  payouts                 Payout[]
   importRowResults        AffiliateImportRowResult[]
-  createdAt               DateTime               @default(now())
+  createdAt               DateTime                   @default(now())
 
   @@unique([ownerId, slug])
   @@unique([id, ownerId])
@@ -87,6 +88,8 @@ model Program {
   defaultCommissionRate    Decimal                @db.Decimal(5, 2) // percentage, e.g. 20.00
   /// The default currency affiliates use to display dashboard amounts. Stored amounts remain unchanged.
   currency                 String                 @default("eur") @db.VarChar(3)
+  /// Minimum mature commission balance, checked separately in each transaction currency.
+  minimumPayoutAmount      Decimal                @default(0) @db.Decimal(18, 2)
   commissionDurationType   CommissionDurationType
   commissionDurationMonths Int? // only set when commissionDurationType = FIXED_MONTHS
   attributionWindowDays    Int                    @default(60)
@@ -95,10 +98,13 @@ model Program {
   // open to whoever guesses its slug. The Owner moves Affiliates in instead.
   signupOpen               Boolean                @default(true)
 
-  affiliates Affiliate[]
+  affiliates          Affiliate[]
+  clicks              Click[]
+  commissions         Commission[]
+  payouts             Payout[]
   importedCommissions ImportedCommission[]
-  importedPayouts ImportedPayout[]
-  createdAt  DateTime    @default(now())
+  importedPayouts     ImportedPayout[]
+  createdAt           DateTime             @default(now())
 
   @@unique([merchantId, slug])
   @@unique([id, merchantId])
@@ -120,15 +126,21 @@ model Affiliate {
   // before it are refused, like the Owner's (see affiliateSessionIsCurrent).
   // Left null at signup: the session that signup starts is the one to keep.
   passwordChangedAt    DateTime?
-  importSourceIdentity String? @unique
+  importSourceIdentity String?   @unique
   /// Null follows the current Program's currency; otherwise an affiliate-chosen dashboard display currency.
-  displayCurrency      String? @db.VarChar(3)
-  customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
+  displayCurrency      String?   @db.VarChar(3)
+  customCommissionRate Decimal?  @db.Decimal(5, 2) // Affiliate-level commission rate override; null inherits the Program.
+  commissionDurationTypeOverride   CommissionDurationType? // Null inherits the Program; applies to every link.
+  commissionDurationMonthsOverride Int? // Used only when the duration override is FIXED_MONTHS.
+  attributionWindowDaysOverride    Int? // Null inherits the Program; applies to every link.
+  holdingPeriodDaysOverride        Int? // Null inherits the Program; applies to every link.
+  minimumPayoutAmountOverride      Decimal?  @db.Decimal(18, 2) // Null inherits the Program; 0 means no minimum.
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
   links               AffiliateLink[]
   clicks              Click[]
   commissions         Commission[]
+  payouts             Payout[]
   importedCommissions ImportedCommission[]
   importedPayouts     ImportedPayout[]
   loginTokens         AffiliateLoginToken[]
@@ -155,18 +167,18 @@ model AffiliateLink {
   affiliateId String
   affiliate   Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
 
-  code String // appears directly in a public ?via= URL, unique within its Merchant
-  legacyAliases String[] @default([])
+  code                    String // appears directly in a public ?via= URL, unique within its Merchant
+  legacyAliases           String[] @default([])
   legacyQueryParamAliases String[] @default([])
-  importSourceIdentity String? @unique
+  importSourceIdentity    String?  @unique
 
-  commissionRateOverride Decimal?  @db.Decimal(5, 2)
-  commissionDurationTypeOverride CommissionDurationType?
-  commissionDurationMonthsOverride Int?
-  attributionWindowDaysOverride Int?
-  holdingPeriodDaysOverride    Int?
-  activeFrom              DateTime?
-  activeUntil             DateTime?
+  commissionRateOverride           Decimal?                @db.Decimal(5, 2) // Legacy imported value; new Clicks use Affiliate or Program terms.
+  commissionDurationTypeOverride   CommissionDurationType? // Legacy per-link value; new Clicks use Affiliate or Program terms.
+  commissionDurationMonthsOverride Int? // Legacy per-link value; new Clicks use Affiliate or Program terms.
+  attributionWindowDaysOverride    Int? // Legacy per-link value; new Clicks use Affiliate or Program terms.
+  holdingPeriodDaysOverride        Int? // Legacy per-link value; new Clicks use Affiliate or Program terms.
+  activeFrom                       DateTime?
+  activeUntil                      DateTime?
 
   /// Path on the Merchant's site this link points at, e.g. "/pricing". Null is
   /// the site root. Display only: the tracking snippet reads ?via= from
@@ -180,8 +192,8 @@ model AffiliateLink {
   clicks    Click[]
   createdAt DateTime @default(now())
 
-  @@index([affiliateId])
   @@unique([merchantId, code])
+  @@index([affiliateId])
 }
 
 /// A password link the Owner copies from the dashboard and sends an Affiliate
@@ -201,18 +213,21 @@ model AffiliateLoginToken {
 }
 
 model Click {
-  id            String    @id @default(cuid())
-  merchantId    String
-  merchant      Merchant  @relation(fields: [merchantId], references: [id])
-  affiliateId   String
-  affiliate     Affiliate @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
-  referralToken String    @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
-  expiresAt     DateTime // createdAt + Program.attributionWindowDays, computed at insert
-  commissionRateSnapshot Decimal? @db.Decimal(5, 2)
-  commissionDurationTypeSnapshot CommissionDurationType?
+  id                               String                  @id @default(cuid())
+  merchantId                       String
+  merchant                         Merchant                @relation(fields: [merchantId], references: [id])
+  affiliateId                      String
+  affiliate                        Affiliate               @relation(fields: [affiliateId, merchantId], references: [id, merchantId])
+  // Immutable Program attribution, independent of later Affiliate reassignment.
+  programId                        String
+  program                          Program                 @relation(fields: [programId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  referralToken                    String                  @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
+  expiresAt                        DateTime // createdAt + the resolved Program/Affiliate attribution window, computed at insert
+  commissionRateSnapshot           Decimal?                @db.Decimal(5, 2)
+  commissionDurationTypeSnapshot   CommissionDurationType?
   commissionDurationMonthsSnapshot Int?
-  holdingPeriodDaysSnapshot Int?
-  createdAt     DateTime  @default(now())
+  holdingPeriodDaysSnapshot        Int?
+  createdAt                        DateTime                @default(now())
 
   // Which link the visitor arrived through. Nullable so deleting a link does
   // not take its click history with it, and because affiliateId (not this) is
@@ -250,10 +265,11 @@ model Click {
   paymentRecords        PaymentRecord[]
   checkoutAttributions  CheckoutAttribution[]
 
+  @@unique([id, merchantId])
+  @@unique([id, merchantId, programId])
   @@index([stripeCustomerId])
   @@index([linkId])
   @@index([merchantId])
-  @@unique([id, merchantId])
 }
 
 /// A subscription that a referred Checkout Session created. Renewals earn by
@@ -318,6 +334,9 @@ model Commission {
   // Filled from the required Click by a database trigger. Nullable in the
   // Prisma model so inserts can leave the authoritative value to the database.
   merchantId  String?
+  // Like merchantId, derived from the Click and immutable for this commission.
+  programId   String?
+  program     Program?  @relation(fields: [programId, merchantId], references: [id, merchantId], onDelete: NoAction)
   clickId     String
   click       Click     @relation(fields: [clickId], references: [id])
 
@@ -328,17 +347,17 @@ model Commission {
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")
 
-  stripePaymentRef String?         @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
-  paymentRecordId  String?         @unique
+  stripePaymentRef String?        @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
+  paymentRecordId  String?        @unique
   paymentRecord    PaymentRecord? @relation(fields: [paymentRecordId], references: [id])
   // Eighteen digits because a single sale in a currency like VND or IDR can
   // pass the eight integer digits Decimal(10,2) allowed.
-  amount           Decimal  @db.Decimal(18, 2) // negative for adjustment rows
+  amount           Decimal        @db.Decimal(18, 2) // negative for adjustment rows
   currency         String // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
   // The sale the commission was earned on, major units, same currency: after
   // discounts, before tax and shipping. Rows written before 0.2.4 hold what
   // the customer paid including tax. Null for adjustments and older rows.
-  saleAmount       Decimal? @db.Decimal(18, 2)
+  saleAmount       Decimal?       @db.Decimal(18, 2)
 
   // What this commission was before any refund reduced it. Set at creation
   // and never changed again, so a second partial refund prorates against the
@@ -350,7 +369,7 @@ model Commission {
 
   // Processor fee removed from the referred sale before applying the rate.
   // The amount uses the Commission currency; historical rows remain null.
-  providerFeeAmount Decimal?          @db.Decimal(18, 3)
+  providerFeeAmount Decimal?           @db.Decimal(18, 3)
   providerFeeSource ProviderFeeSource?
 
   // The referred share of the charge, in Stripe minor units, capped at the
@@ -364,7 +383,9 @@ model Commission {
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?
-  paidNote   String?           @db.VarChar(200)
+  paidNote   String?          @db.VarChar(200)
+  payoutId   String?
+  payout     Payout?          @relation(fields: [payoutId, merchantId, affiliateId, programId, currency], references: [id, merchantId, affiliateId, programId, currency], onDelete: NoAction, onUpdate: Cascade)
   voidedAt   DateTime?
   voidReason String? // e.g. "refund", "confirmed self-referral"
   flagReason String? // e.g. "email:buyer@x.com affiliate@x.com" or "card"
@@ -373,7 +394,7 @@ model Commission {
   // Null when no dispute is open. A held row is never PAYABLE: opening a
   // dispute moves a PAYABLE row back to PENDING, and neither the sweep nor a
   // dismissed flag promotes a held row. See src/lib/worker/disputes.ts.
-  disputeOpenedAt DateTime?
+  disputeOpenedAt        DateTime?
   // Holds this commission while its associated hosted checkout has conflicting
   // provider invoice references. Separate from dispute and fraud review holds.
   checkoutConflictHeldAt DateTime?
@@ -381,10 +402,38 @@ model Commission {
   createdAt DateTime @default(now())
 
   @@index([status, payableAt])
+  @@index([programId, affiliateId, currency, status, payableAt])
   @@index([status, checkoutConflictHeldAt], map: "Commission_status_conflictHold_idx")
   // The sale handlers read a click's earlier commissions on every sale of a
   // program with a limited duration (src/lib/worker/referralDuration.ts).
   @@index([clickId, createdAt])
+}
+
+/// Owner-confirmed record of an external transfer; creating it never sends money.
+model Payout {
+  id                String       @id @default(cuid())
+  merchantId        String
+  merchant          Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  affiliateId       String
+  affiliate         Affiliate    @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  programId         String
+  program           Program      @relation(fields: [programId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  currency          String       @db.VarChar(3)
+  total             Decimal      @db.Decimal(18, 2)
+  paidAt            DateTime
+  paymentMethod     String?      @db.VarChar(80)
+  externalReference String?      @db.VarChar(200)
+  note              String?      @db.VarChar(500)
+  isException       Boolean      @default(false)
+  exceptionReason   String?      @db.VarChar(500)
+  commissions       Commission[]
+  createdAt         DateTime     @default(now())
+
+  // Commission's composite foreign key enforces that every linked row has
+  // this exact Merchant, Affiliate, Program, and currency.
+  @@unique([id, merchantId, affiliateId, programId, currency])
+  @@index([merchantId, paidAt])
+  @@index([affiliateId, programId, currency, paidAt])
 }
 
 // Postgres-only webhook queue (ADR 0007). Drained via SELECT ... FOR UPDATE SKIP LOCKED.
@@ -450,30 +499,30 @@ model RetiredLinkCode {
   merchantId  String
   retiredAt   DateTime @default(now())
 
-  @@index([affiliateId])
   @@unique([merchantId, code])
+  @@index([affiliateId])
 }
 
 /// One set of provider credentials and callback identity for a Merchant.
 /// Ciphertext is copied as-is from legacy Stripe fields during the additive
 /// migration; provider code owns encryption and rotation afterwards.
 model PaymentConnection {
-  id                  String           @id @default(cuid())
-  merchantId          String
-  merchant            Merchant         @relation(fields: [merchantId], references: [id])
-  provider            PaymentProvider
+  id                 String                  @id @default(cuid())
+  merchantId         String
+  merchant           Merchant                @relation(fields: [merchantId], references: [id])
+  provider           PaymentProvider
   // Connectivity and cutover activation are independent: a working provider
   // can be paused without forgetting its status or credentials.
-  status              PaymentConnectionStatus @default(DISCONNECTED)
-  enabled             Boolean          @default(false)
-  apiKeyEnc           String?
-  webhookSecretEnc    String?
+  status             PaymentConnectionStatus @default(DISCONNECTED)
+  enabled            Boolean                 @default(false)
+  apiKeyEnc          String?
+  webhookSecretEnc   String?
   // Used only when a payment event does not include a usable transaction fee.
-  feeFallbackPercent  Decimal?         @db.Decimal(5, 2)
+  feeFallbackPercent Decimal?                @db.Decimal(5, 2)
   externalEndpointId String?
-  webhookRouteId      String          @unique @default(cuid())
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  webhookRouteId     String                  @unique @default(cuid())
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   checkouts CommerceCheckout[]
   payments  PaymentRecord[]
@@ -487,34 +536,34 @@ model PaymentConnection {
 /// fields and digest let retries reproduce the original provider request and
 /// identical calls return the existing destination.
 model CommerceCheckout {
-  id                 String            @id @default(cuid())
-  merchantId         String
-  merchant           Merchant          @relation(fields: [merchantId], references: [id])
-  connectionId       String
-  provider           PaymentProvider
-  connection         PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
-  sourceOrderId      String
-  clickId            String?
-  click              Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
-  amount             Decimal           @db.Decimal(18, 2)
-  currency           String
-  successUrl         String
-  cancelUrl          String
-  hostedCheckoutRef  String?
-  alternateCheckoutRef String?
-  hostedCheckoutUrl  String?
-  status             String            @default("PENDING")
-  idempotencyDigest  String
-  attempts           Int              @default(0)
-  lastCreationError  String?
-  nextAttemptAt      DateTime?
-  reconciliationResolution String?
+  id                            String            @id @default(cuid())
+  merchantId                    String
+  merchant                      Merchant          @relation(fields: [merchantId], references: [id])
+  connectionId                  String
+  provider                      PaymentProvider
+  connection                    PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
+  sourceOrderId                 String
+  clickId                       String?
+  click                         Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
+  amount                        Decimal           @db.Decimal(18, 2)
+  currency                      String
+  successUrl                    String
+  cancelUrl                     String
+  hostedCheckoutRef             String?
+  alternateCheckoutRef          String?
+  hostedCheckoutUrl             String?
+  status                        String            @default("PENDING")
+  idempotencyDigest             String
+  attempts                      Int               @default(0)
+  lastCreationError             String?
+  nextAttemptAt                 DateTime?
+  reconciliationResolution      String?
   refundReconciliationPendingAt DateTime?
-  reconciledAt       DateTime?
-  reconciledByOwnerId String?
-  reconciledByOwner  Owner?            @relation("CommerceCheckoutReconciler", fields: [reconciledByOwnerId], references: [id], onDelete: SetNull)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  reconciledAt                  DateTime?
+  reconciledByOwnerId           String?
+  reconciledByOwner             Owner?            @relation("CommerceCheckoutReconciler", fields: [reconciledByOwnerId], references: [id], onDelete: SetNull)
+  createdAt                     DateTime          @default(now())
+  updatedAt                     DateTime          @updatedAt
 
   payments PaymentRecord[]
 
@@ -529,14 +578,14 @@ model CommerceCheckout {
 /// script before redirecting the customer to the hosted checkout. This is
 /// Attribution metadata only; payment facts are verified with the provider.
 model CheckoutAttribution {
-  id                  String         @id @default(cuid())
+  id                  String          @id @default(cuid())
   merchantId          String
-  merchant            Merchant       @relation(fields: [merchantId], references: [id])
+  merchant            Merchant        @relation(fields: [merchantId], references: [id])
   provider            PaymentProvider
-  providerCheckoutRef String         @db.VarChar(255)
+  providerCheckoutRef String          @db.VarChar(255)
   clickId             String
-  click               Click          @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
-  createdAt           DateTime       @default(now())
+  click               Click           @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
+  createdAt           DateTime        @default(now())
 
   @@unique([merchantId, provider, providerCheckoutRef], map: "CheckoutAttribution_merchant_provider_ref_key")
   @@index([clickId])
@@ -546,29 +595,29 @@ model CheckoutAttribution {
 /// Provider references and source-order identities are merchant scoped; nullable
 /// values retain PostgreSQL's multiple-NULL behavior for unreconciled records.
 model PaymentRecord {
-  id              String            @id @default(cuid())
-  merchantId      String
-  merchant        Merchant          @relation(fields: [merchantId], references: [id])
-  connectionId    String
-  provider        PaymentProvider
-  connection      PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
-  sourceOrderId   String?
-  checkoutId      String?
-  checkout        CommerceCheckout? @relation(fields: [checkoutId, merchantId], references: [id, merchantId], onDelete: Restrict)
-  checkoutRef     String?
-  paymentRef      String?
-  saleAmount      Decimal           @db.Decimal(18, 2)
-  saleCurrency    String
-  cryptoAmount    Decimal?          @db.Decimal(38, 18)
-  cryptoCurrency  String?
+  id             String            @id @default(cuid())
+  merchantId     String
+  merchant       Merchant          @relation(fields: [merchantId], references: [id])
+  connectionId   String
+  provider       PaymentProvider
+  connection     PaymentConnection @relation(fields: [connectionId, merchantId, provider], references: [id, merchantId, provider])
+  sourceOrderId  String?
+  checkoutId     String?
+  checkout       CommerceCheckout? @relation(fields: [checkoutId, merchantId], references: [id, merchantId], onDelete: Restrict)
+  checkoutRef    String?
+  paymentRef     String?
+  saleAmount     Decimal           @db.Decimal(18, 2)
+  saleCurrency   String
+  cryptoAmount   Decimal?          @db.Decimal(38, 18)
+  cryptoCurrency String?
   // Asset symbols can exist on more than one chain.
-  cryptoNetwork   String?
-  status          String
-  clickId         String?
-  click           Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
-  commission      Commission?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  cryptoNetwork  String?
+  status         String
+  clickId        String?
+  click          Click?            @relation(fields: [clickId, merchantId], references: [id, merchantId], onDelete: Restrict)
+  commission     Commission?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@unique([merchantId, provider, paymentRef])
   @@unique([merchantId, provider, sourceOrderId])
@@ -580,11 +629,11 @@ model PaymentRecord {
 
 /// Historical integration metadata retained for existing event records.
 model CommerceIntegration {
-  id               String   @id @default(cuid())
-  merchantId       String   @unique
-  merchant         Merchant @relation(fields: [merchantId], references: [id])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id         String   @id @default(cuid())
+  merchantId String   @unique
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   /// Historical rows retained for referential integrity; runtime delivery is disabled.
   deliveries CommerceEventDelivery[]
@@ -595,20 +644,20 @@ model CommerceIntegration {
 /// Historical outbound event records retained for referential integrity.
 /// New rows are not enqueued and these records are not delivered.
 model CommerceEventDelivery {
-  id            String                       @id @default(cuid())
-  merchantId    String
-  merchant      Merchant                     @relation(fields: [merchantId], references: [id])
-  integrationId String
-  integration   CommerceIntegration          @relation(fields: [integrationId, merchantId], references: [id, merchantId])
-  eventId       String                       @unique
-  payload       Json
-  status        CommerceEventDeliveryStatus  @default(PENDING)
-  attempts      Int                          @default(0)
-  lastError     String?
-  nextAttemptAt DateTime                     @default(now())
+  id                     String                      @id @default(cuid())
+  merchantId             String
+  merchant               Merchant                    @relation(fields: [merchantId], references: [id])
+  integrationId          String
+  integration            CommerceIntegration         @relation(fields: [integrationId, merchantId], references: [id, merchantId])
+  eventId                String                      @unique
+  payload                Json
+  status                 CommerceEventDeliveryStatus @default(PENDING)
+  attempts               Int                         @default(0)
+  lastError              String?
+  nextAttemptAt          DateTime                    @default(now())
   checkoutConflictHeldAt DateTime?
-  createdAt     DateTime                     @default(now())
-  deliveredAt   DateTime?
+  createdAt              DateTime                    @default(now())
+  deliveredAt            DateTime?
 
   @@index([status, nextAttemptAt, createdAt])
   @@index([status, checkoutConflictHeldAt, nextAttemptAt], map: "CommerceEventDelivery_status_conflictHold_nextAttempt_idx")
@@ -618,20 +667,20 @@ model CommerceEventDelivery {
 /// Metadata and normalized digest for a confirmed or preview import. Uploaded
 /// bundles are intentionally not persisted.
 model AffiliateImportBatch {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   merchantId          String
-  merchant            Merchant @relation(fields: [merchantId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  merchant            Merchant  @relation(fields: [merchantId, ownerId], references: [id, ownerId], onDelete: Cascade)
   ownerId             String
-  owner               Owner    @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner               Owner     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   sourceAdapter       String
   sourceFormatVersion Int
   normalizedDigest    String
   mappingChoices      Json?
   previewTotals       Json?
   applyProgress       Json?
-  status              String   @default("PREVIEW")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  status              String    @default("PREVIEW")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
   completedAt         DateTime?
 
   commissions ImportedCommission[]
@@ -648,12 +697,12 @@ model AffiliateImportBatch {
 /// Row-level outcomes for a completed or resumable import report. Stores only
 /// stable source identifiers and non-personal status/amount metadata.
 model AffiliateImportRowResult {
-  id             String               @id @default(cuid())
-  batchId        String
-  ownerId        String
-  batch          AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  id               String               @id @default(cuid())
+  batchId          String
+  ownerId          String
+  batch            AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
   targetMerchantId String?
-  targetOwnerId   String?
+  targetOwnerId    String?
   targetMerchant   Merchant?            @relation(fields: [targetMerchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
   sourceIdentity   String
   sourceKind       String
@@ -680,8 +729,8 @@ model ImportedCommission {
   merchant                Merchant?            @relation(fields: [merchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
   targetProgramId         String?
   affiliateId             String?
-  affiliate               Affiliate?            @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
-  targetProgram           Program?              @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  affiliate               Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  targetProgram           Program?             @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
   sourceIdentity          String               @unique
   sourceAffiliateIdentity String?
   sourceLinkIdentity      String?
@@ -711,37 +760,34 @@ model ImportedCommission {
 /// Historical payout snapshots are aggregate records; no individual imported
 /// commission is marked paid by inference.
 model ImportedPayout {
-  id                       String               @id @default(cuid())
-  batchId                  String
-  ownerId                  String
-  batch                    AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
-  merchantId               String?
-  targetOwnerId            String?
-  merchant                 Merchant?            @relation(fields: [merchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
-  targetProgramId          String?
-  affiliateId              String?
-  affiliate                Affiliate?            @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
-  targetProgram            Program?              @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
-  sourceIdentity           String               @unique
-  sourceAffiliateIdentity  String?
-  sourceProductIdentity    String?
-  sourceCommissionIdentities String[]            @default([])
-  sourceTransactionRef     String?
-  amount                   Decimal              @db.Decimal(24, 6)
-  amountMinor              BigInt?
-  currency                 String
-  originalStatus           String
-  allocationStatus         String               @default("UNALLOCATED")
-  periodStart              DateTime?
-  periodEnd                DateTime?
-  paidAt                   DateTime?
-  importedAt               DateTime             @default(now())
+  id                         String               @id @default(cuid())
+  batchId                    String
+  ownerId                    String
+  batch                      AffiliateImportBatch @relation(fields: [batchId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  merchantId                 String?
+  targetOwnerId              String?
+  merchant                   Merchant?            @relation(fields: [merchantId, targetOwnerId], references: [id, ownerId], onDelete: NoAction)
+  targetProgramId            String?
+  affiliateId                String?
+  affiliate                  Affiliate?           @relation(fields: [affiliateId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  targetProgram              Program?             @relation(fields: [targetProgramId, merchantId], references: [id, merchantId], onDelete: NoAction)
+  sourceIdentity             String               @unique
+  sourceAffiliateIdentity    String?
+  sourceProductIdentity      String?
+  sourceCommissionIdentities String[]             @default([])
+  sourceTransactionRef       String?
+  amount                     Decimal              @db.Decimal(24, 6)
+  amountMinor                BigInt?
+  currency                   String
+  originalStatus             String
+  allocationStatus           String               @default("UNALLOCATED")
+  periodStart                DateTime?
+  periodEnd                  DateTime?
+  paidAt                     DateTime?
+  importedAt                 DateTime             @default(now())
 
   @@index([batchId, importedAt])
   @@index([affiliateId, paidAt])
   @@index([merchantId])
   @@index([ownerId, allocationStatus])
 }
-
-
-
