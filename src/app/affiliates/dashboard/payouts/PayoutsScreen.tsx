@@ -67,7 +67,7 @@ export function PayoutsScreen({
 }: PayoutsView) {
   const [selectedProgram, setSelectedProgram] = useState(filters.program);
   const anyFilterActive = Boolean(
-    filters.dateFrom || filters.dateTo || selectedProgram,
+    filters.dateFrom || filters.dateTo || filters.program || selectedProgram,
   );
   const selectedProgramName = programOptions.find(
     (program) => program.id === selectedProgram,
@@ -166,7 +166,7 @@ export function PayoutsScreen({
                     <Button
                       type="button"
                       variant="outline"
-                      aria-label="Program"
+                      aria-label={`Program: ${selectedProgramName ?? "All programs"}`}
                       className="cursor-pointer justify-between gap-1.5"
                     />
                   }
@@ -233,6 +233,7 @@ export function PayoutsScreen({
               variant="ghost"
               className="cursor-pointer text-muted-foreground"
               nativeButton={false}
+              onClick={() => setSelectedProgram("")}
               render={<Link href="/affiliates/dashboard/payouts" />}
             >
               <X />

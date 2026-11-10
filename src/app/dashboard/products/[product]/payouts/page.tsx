@@ -35,8 +35,7 @@ import { PayoutFilters } from "./PayoutFilters";
 import { MarkPayoutDialog } from "./MarkPayoutDialog";
 
 /**
- * The monthly job: who is owed what today, where to send it, and Mark paid.
- * Then every payout already made.
+ * Ready balances, below-minimum balances, and every payout already made.
  *
  * One row per affiliate, program, and currency, because that is what a payout
  * is: the ledger refuses a write that spans any of them. Each row binds the exact
@@ -102,7 +101,11 @@ export default async function PayoutsPage({
 
   // A page query used to mean the Paid history, before tabs were added.
   const tab =
-    query.tab === "paid" || (!query.tab && query.page) ? "paid" : "ready";
+    query.tab === "paid" || (!query.tab && query.page)
+      ? "paid"
+      : query.tab === "below"
+        ? "below"
+        : "ready";
   const page =
     tab === "paid" ? Math.max(1, Math.floor(Number(query.page)) || 1) : 1;
   const affiliateFilter = (query.affiliate ?? "").slice(0, 64);
@@ -138,10 +141,13 @@ export default async function PayoutsPage({
   })) {
     if (value) noticeParams.set(key, value);
   }
-  const payoutHref = (targetTab: "ready" | "paid", targetPage?: number) => {
+  const payoutHref = (
+    targetTab: "ready" | "below" | "paid",
+    targetPage?: number,
+  ) => {
     const params = new URLSearchParams(noticeParams);
-    if (targetTab === "paid") params.set("tab", targetTab);
-    else params.delete("tab");
+    if (targetTab === "ready") params.delete("tab");
+    else params.set("tab", targetTab);
     if (affiliateFilter) params.set("affiliate", affiliateFilter);
     if (currencyFilter) params.set("currency", currencyFilter);
     if (queryFilter) params.set("q", queryFilter);
@@ -192,6 +198,17 @@ export default async function PayoutsPage({
                 </span>
               </TabsTrigger>
               <TabsTrigger
+                value="below"
+                render={
+                  <Link href={payoutHref("below")} className="cursor-pointer" />
+                }
+              >
+                Below minimum
+                <span className="ml-1.5 text-muted-foreground tabular-nums">
+                  {belowMinimumGroups.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger
                 value="paid"
                 render={
                   <Link href={payoutHref("paid")} className="cursor-pointer" />
@@ -214,7 +231,7 @@ export default async function PayoutsPage({
       {tab === "ready" ? (
         <Section flush scroll className="overflow-hidden">
           {filtersBar}
-          {groups.length === 0 && belowMinimumGroups.length === 0 ? (
+          {groups.length === 0 ? (
             <EmptyState
               icon={<Wallet />}
               title={
@@ -300,83 +317,98 @@ export default async function PayoutsPage({
                 </Table>
               )}
 
-              {belowMinimumGroups.length > 0 && (
-                <div className={groups.length > 0 ? "border-t border-neutral-200" : ""}>
-                  <div className="px-4 py-3">
-                    <h3 className="text-sm font-medium">Below minimum</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Mature, clear balances carry forward until they reach the Program minimum.
-                    </p>
-                  </div>
-                  <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-neutral-100">
-                      <TableRow className="border-neutral-200 hover:bg-transparent">
-                        <TableHead className={HEAD}>Affiliate</TableHead>
-                        <TableHead className={HEAD}>Program</TableHead>
-                        <TableHead className={`${HEAD} text-right`}>
-                          Commissions
-                        </TableHead>
-                        <TableHead className={`${HEAD} text-right`}>Eligible balance</TableHead>
-                        <TableHead className={`${HEAD} text-right`}>Still needed</TableHead>
-                        <TableHead className={HEAD} />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-neutral-200">
-                      {belowMinimumGroups.map((group) => (
-                        <TableRow
-                          key={`${group.affiliateId}:${group.programId}:${group.currency}`}
-                          className="relative border-neutral-200 hover:bg-neutral-50"
+            </div>
+          )}
+        </Section>
+      ) : tab === "below" ? (
+        <Section flush scroll className="overflow-hidden">
+          {filtersBar}
+          {belowMinimumGroups.length === 0 ? (
+            <EmptyState
+              icon={<Wallet />}
+              title={
+                anyFilterActive
+                  ? "No balances match these filters"
+                  : "No balances below minimum"
+              }
+            />
+          ) : (
+            <div className="flex flex-col">
+              <p className="border-b border-neutral-200 px-5 py-3 text-xs text-muted-foreground">
+                Mature, clear balances carry forward until they reach the
+                Program minimum.
+              </p>
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-neutral-100">
+                  <TableRow className="border-neutral-200 hover:bg-transparent">
+                    <TableHead className={HEAD}>Affiliate</TableHead>
+                    <TableHead className={HEAD}>Program</TableHead>
+                    <TableHead className={`${HEAD} text-right`}>
+                      Commissions
+                    </TableHead>
+                    <TableHead className={`${HEAD} text-right`}>
+                      Eligible balance
+                    </TableHead>
+                    <TableHead className={`${HEAD} text-right`}>
+                      Still needed
+                    </TableHead>
+                    <TableHead className={HEAD} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-neutral-200">
+                  {belowMinimumGroups.map((group) => (
+                    <TableRow
+                      key={`${group.affiliateId}:${group.programId}:${group.currency}`}
+                      className="relative border-neutral-200 hover:bg-neutral-50"
+                    >
+                      <TableCell className="max-w-56">
+                        <Link
+                          href={commissionGroupHref(base, group, "PENDING")}
+                          className="cursor-pointer font-medium hover:underline after:absolute after:inset-0"
                         >
-                          <TableCell className="max-w-56">
-                            <Link
-                              href={commissionGroupHref(base, group, "PENDING")}
-                              className="cursor-pointer font-medium hover:underline after:absolute after:inset-0"
-                            >
-                              <span className="block truncate">
-                                {group.affiliateName ?? group.affiliateEmail}
-                              </span>
-                              <span className="sr-only">
-                                View {formatCount(group.commissions.length)} commissions
-                              </span>
-                            </Link>
-                            {group.affiliateName && (
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {group.affiliateEmail}
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <span className="block truncate">{group.programName}</span>
-                            <span className="text-xs text-muted-foreground">
-                              Minimum {formatMoney(group.minimum, group.currency)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground tabular-nums">
-                            <span className="inline-flex items-center justify-end gap-1">
-                              {formatCount(group.commissions.length)}
-                              <ChevronRight aria-hidden="true" className="size-3.5" />
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatMoney(group.total, group.currency)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatMoney(group.remainingToMinimum, group.currency)}
-                          </TableCell>
-                          <TableCell className="relative z-10 w-px text-right">
-                            <MarkPayoutDialog
-                              product={productRef}
-                              group={group}
-                              renderedAt={renderedAt}
-                              closeout
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                          <span className="block truncate">
+                            {group.affiliateName ?? group.affiliateEmail}
+                          </span>
+                          <span className="sr-only">
+                            View {formatCount(group.commissions.length)} commissions
+                          </span>
+                        </Link>
+                        {group.affiliateName && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {group.affiliateEmail}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="block truncate">{group.programName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Minimum {formatMoney(group.minimum, group.currency)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {formatCount(group.commissions.length)}
+                          <ChevronRight aria-hidden="true" className="size-3.5" />
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(group.total, group.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(group.remainingToMinimum, group.currency)}
+                      </TableCell>
+                      <TableCell className="relative z-10 w-px text-right">
+                        <MarkPayoutDialog
+                          product={productRef}
+                          group={group}
+                          renderedAt={renderedAt}
+                          closeout
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </Section>
