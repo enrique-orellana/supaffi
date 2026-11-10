@@ -1,27 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  CircleAlert,
-  Wallet,
-  X,
-} from "lucide-react";
+import { ChevronRight, CircleAlert, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Page, PageTitle, Section, Tiles } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { PayoutHistoryTable, type PaymentDisplay } from "./PayoutHistoryTable";
+import { PayoutFiltersDialog } from "./PayoutFiltersDialog";
 
 /**
  * The payout summary and payment details an Affiliate uses to reconcile the
@@ -65,14 +50,6 @@ export function PayoutsScreen({
   paid,
   rateNote,
 }: PayoutsView) {
-  const [selectedProgram, setSelectedProgram] = useState(filters.program);
-  const anyFilterActive = Boolean(
-    filters.dateFrom || filters.dateTo || filters.program || selectedProgram,
-  );
-  const selectedProgramName = programOptions.find(
-    (program) => program.id === selectedProgram,
-  )?.name;
-
   return (
     <Page>
       <PageTitle title="Payouts" subtitle={rateNote} />
@@ -126,124 +103,16 @@ export function PayoutsScreen({
         </div>
       )}
 
-      <Section flush>
-        <form
-          method="get"
-          action="/affiliates/dashboard/payouts"
-          aria-label="Filter payment history"
-          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 px-5 py-3"
-        >
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>From</span>
-            <Input
-              key={`from:${filters.dateFrom}`}
-              type="date"
-              name="dateFrom"
-              aria-label="From date"
-              defaultValue={filters.dateFrom}
-              max={filters.dateTo || undefined}
-              className="h-8 w-40 text-sm"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>To</span>
-            <Input
-              key={`to:${filters.dateTo}`}
-              type="date"
-              name="dateTo"
-              aria-label="To date"
-              defaultValue={filters.dateTo}
-              min={filters.dateFrom || undefined}
-              className="h-8 w-40 text-sm"
-            />
-          </label>
-          {programOptions.length >= 2 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Program</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      aria-label={`Program: ${selectedProgramName ?? "All programs"}`}
-                      className="cursor-pointer justify-between gap-1.5"
-                    />
-                  }
-                >
-                  <span
-                    className={
-                      selectedProgramName
-                        ? "font-medium"
-                        : "text-muted-foreground"
-                    }
-                  >
-                    {selectedProgramName ?? "All programs"}
-                  </span>
-                  <ChevronDown className="opacity-60" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    className="cursor-pointer"
-                    render={
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProgram("")}
-                        className="w-full"
-                      />
-                    }
-                  >
-                    <Check
-                      className={selectedProgram ? "opacity-0" : "opacity-100"}
-                    />
-                    <span>All programs</span>
-                  </DropdownMenuItem>
-                  {programOptions.map((program) => (
-                    <DropdownMenuItem
-                      key={program.id}
-                      className="cursor-pointer"
-                      render={
-                        <button
-                          type="button"
-                          onClick={() => setSelectedProgram(program.id)}
-                          className="w-full"
-                        />
-                      }
-                    >
-                      <Check
-                        className={
-                          selectedProgram === program.id
-                            ? "opacity-100"
-                            : "opacity-0"
-                        }
-                      />
-                      <span>{program.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
-          <input type="hidden" name="program" value={selectedProgram} />
-          <Button type="submit" variant="outline">
-            Apply
-          </Button>
-          {anyFilterActive && (
-            <Button
-              variant="ghost"
-              className="cursor-pointer text-muted-foreground"
-              nativeButton={false}
-              onClick={() => setSelectedProgram("")}
-              render={<Link href="/affiliates/dashboard/payouts" />}
-            >
-              <X />
-              Clear
-            </Button>
-          )}
-          <h2 className="ml-auto shrink-0 whitespace-nowrap text-sm font-medium">
-            Payment history
-          </h2>
-        </form>
+      <Section
+        title="Payment history"
+        actions={
+          <PayoutFiltersDialog
+            programOptions={programOptions}
+            filters={filters}
+          />
+        }
+        flush
+      >
         {invalidDateRange ? (
           <p role="alert" className="px-5 py-3 text-[13px] text-status-warning">
             From date must be on or before To date. Adjust the dates and apply

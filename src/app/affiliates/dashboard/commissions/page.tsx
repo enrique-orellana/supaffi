@@ -411,21 +411,33 @@ export default async function AffiliateCommissionsPage({
       ) : (
         <>
           <Section
-            title={payoutId ? "Commissions in this payout" : undefined}
+            title={
+              payoutId ? "Commissions in this payout" : "Commission history"
+            }
+            actions={
+              !payoutId ? (
+                <CommissionFilters
+                  key={`${query.dateFrom ?? ""}:${query.dateTo ?? ""}:${linkId ?? ""}`}
+                  links={linkOptions}
+                  dateFrom={fromDate ? (query.dateFrom ?? "") : ""}
+                  dateTo={throughDate ? (query.dateTo ?? "") : ""}
+                  linkId={linkId}
+                  anyFilterActive={anyFilterActive}
+                />
+              ) : undefined
+            }
             flush
             scroll
             className="overflow-hidden"
           >
-            {!payoutId && (
-              <CommissionFilters
-                key={`${query.dateFrom ?? ""}:${query.dateTo ?? ""}:${linkId ?? ""}`}
-                links={linkOptions}
-                dateFrom={fromDate ? (query.dateFrom ?? "") : ""}
-                dateTo={throughDate ? (query.dateTo ?? "") : ""}
-                linkId={linkId}
-                anyFilterActive={anyFilterActive}
-                invalidDateFilter={invalidDateFilter}
-              />
+            {!payoutId && invalidDateFilter && (
+              <p
+                role="alert"
+                className="border-b border-border px-5 py-3 text-sm text-status-warning"
+              >
+                Enter valid dates and make sure the start date is not after the
+                end date. Update the filters to continue.
+              </p>
             )}
             {!invalidDateFilter && (
               <CommissionLedger
