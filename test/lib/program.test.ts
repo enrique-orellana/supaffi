@@ -6,6 +6,12 @@ import { PaymentProvider } from "@/lib/payments/types";
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
+  AUDIT_ACTIONS,
+  AUDIT_ENTITY_TYPES,
+  listAuditEvents,
+  recordAuditEvent,
+} from "@/lib/audit";
+import {
   createProgram,
   listProgramsForMerchant,
   getProgramForMerchant,
@@ -238,6 +244,201 @@ describe.skipIf(!hasDatabase)("program", () => {
     expect(raw.name).toBe("Renamed");
     expect(raw.commissionDurationType).toBe("FIXED_MONTHS");
     expect(raw.commissionDurationMonths).toBe(12);
+  });
+
+  it("records changed Program settings in the audit module with before and after values and the editing Owner", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      name: "Arthouse Partners",
+      defaultCommissionRate: 16,
+    });
+
+    const history = await listAuditEvents(
+      ownerId,
+      merchantId,
+      AUDIT_ENTITY_TYPES.PROGRAM,
+      id,
+    );
+
+    expect(history).toHaveLength(1);
+    expect(history[0].action).toBe(AUDIT_ACTIONS.UPDATED);
+    expect(history[0].actorLabel).toBe("program-test-owner@example.com");
+    expect(history[0].beforeValues).toMatchObject({
+      name: "Standard",
+      defaultCommissionRate: "20.00",
+    });
+    expect(history[0].afterValues).toMatchObject({
+      name: "Arthouse Partners",
+      defaultCommissionRate: "16.00",
+    });
+  });
+
+  it("does not create a history entry when saving unchanged Program settings", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await updateProgram(ownerId, merchantId, id, baseInput);
+
+    expect(
+      await db.auditEvent.count({
+        where: {
+          merchantId,
+          entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+          entityId: id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("rolls back an audit event when the surrounding Program transaction fails", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+
+    await expect(
+      db.$transaction(async (tx) => {
+        await tx.program.update({
+          where: { id },
+          data: { defaultCommissionRate: 16 },
+        });
+        await recordAuditEvent(tx, {
+          merchantId,
+          actorOwnerId: ownerId,
+          entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+          entityId: id,
+          action: AUDIT_ACTIONS.UPDATED,
+          beforeValues: {
+            name: "Standard",
+            defaultCommissionRate: "20.00",
+            commissionDurationType: "FOREVER",
+            commissionDurationMonths: null,
+            attributionWindowDays: 60,
+            holdingPeriodDays: 30,
+            currency: "eur",
+            minimumPayoutAmount: "0.00",
+            signupOpen: true,
+          },
+          afterValues: {
+            name: "Standard",
+            defaultCommissionRate: "16.00",
+            commissionDurationType: "FOREVER",
+            commissionDurationMonths: null,
+            attributionWindowDays: 60,
+            holdingPeriodDays: 30,
+            currency: "eur",
+            minimumPayoutAmount: "0.00",
+            signupOpen: true,
+          },
+        });
+        throw new Error("abort Program update");
+      }),
+    ).rejects.toThrow("abort Program update");
+
+    const program = await db.program.findUniqueOrThrow({ where: { id } });
+    expect(program.defaultCommissionRate.toFixed(2)).toBe("20.00");
+    expect(
+      await db.auditEvent.count({
+        where: {
+          merchantId,
+          entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+          entityId: id,
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("rejects audit snapshots containing fields outside the entity allowlist", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+
+    await expect(
+      db.$transaction((tx) =>
+        recordAuditEvent(tx, {
+          merchantId,
+          actorOwnerId: ownerId,
+          entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+          entityId: id,
+          action: AUDIT_ACTIONS.UPDATED,
+          beforeValues: { name: "Standard", passwordHash: "private" },
+          afterValues: { name: "Changed", passwordHash: "private" },
+        }),
+      ),
+    ).rejects.toThrow(/not allowed in Program audit snapshots/i);
+  });
+
+  it("scopes audited Program changes to the Owner and Merchant", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      defaultCommissionRate: 16,
+    });
+
+    expect(
+      await listAuditEvents(
+        ownerId,
+        merchantId2,
+        AUDIT_ENTITY_TYPES.PROGRAM,
+        id,
+      ),
+    ).toEqual([]);
+    expect(
+      await listAuditEvents(
+        otherOwnerId,
+        merchantId,
+        AUDIT_ENTITY_TYPES.PROGRAM,
+        id,
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects attempts to update or delete persisted audit events", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      defaultCommissionRate: 16,
+    });
+    const [event] = await db.auditEvent.findMany({
+      where: {
+        merchantId,
+        entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+        entityId: id,
+      },
+      select: { id: true },
+    });
+
+    await expect(
+      db.auditEvent.update({
+        where: { id: event.id },
+        data: { action: "REPLACED" },
+      }),
+    ).rejects.toThrow(/immutable/i);
+    await expect(
+      db.auditEvent.delete({ where: { id: event.id } }),
+    ).rejects.toThrow(/immutable/i);
+    await expect(db.$executeRaw`TRUNCATE TABLE "AuditEvent"`).rejects.toThrow(
+      /immutable/i,
+    );
+  });
+
+  it("prevents a Merchant owner change from rewriting historical audit actors", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await updateProgram(ownerId, merchantId, id, {
+      ...baseInput,
+      defaultCommissionRate: 16,
+    });
+
+    await expect(
+      db.merchant.update({
+        where: { id: merchantId },
+        data: { ownerId: otherOwnerId },
+      }),
+    ).rejects.toThrow();
+
+    const [event] = await db.auditEvent.findMany({
+      where: {
+        merchantId,
+        entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+        entityId: id,
+      },
+      select: { actorOwnerId: true },
+    });
+    expect(event.actorOwnerId).toBe(ownerId);
   });
 
   it("updateProgram throws when the Merchant isn't owned by the caller", async () => {

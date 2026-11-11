@@ -4,6 +4,16 @@ import { uniqueSlug } from "@/lib/slug";
 import { SUPPORTED_DISPLAY_CURRENCY_CODES } from "@/lib/displayCurrencyOptions";
 import { Prisma } from "@prisma/client";
 import {
+  AUDIT_ACTIONS,
+  AUDIT_ENTITY_TYPES,
+  listAuditEvents,
+  recordAuditEvent,
+} from "@/lib/audit";
+import {
+  type ProgramEditHistoryEntry,
+  type ProgramHistorySnapshot,
+} from "@/lib/programHistory";
+import {
   getProgramMinimumImpact,
   recalculateProgramPayoutEligibility,
   summarizeProgramMinimumImpact,
@@ -38,6 +48,38 @@ async function assertMerchantOwnership(
   if (!merchant) {
     throw new Error("Merchant not found");
   }
+}
+
+type ProgramHistorySource = {
+  name: string;
+  defaultCommissionRate: Prisma.Decimal | number | string;
+  commissionDurationType: CommissionDurationType;
+  commissionDurationMonths: number | null;
+  attributionWindowDays: number;
+  holdingPeriodDays: number;
+  currency: string;
+  minimumPayoutAmount: Prisma.Decimal | number | string;
+  signupOpen: boolean;
+};
+
+function programHistorySnapshot(
+  program: ProgramHistorySource,
+): ProgramHistorySnapshot {
+  return {
+    name: program.name,
+    defaultCommissionRate: new Prisma.Decimal(
+      program.defaultCommissionRate,
+    ).toFixed(2),
+    commissionDurationType: program.commissionDurationType,
+    commissionDurationMonths: program.commissionDurationMonths,
+    attributionWindowDays: program.attributionWindowDays,
+    holdingPeriodDays: program.holdingPeriodDays,
+    currency: program.currency,
+    minimumPayoutAmount: new Prisma.Decimal(
+      program.minimumPayoutAmount,
+    ).toFixed(2),
+    signupOpen: program.signupOpen,
+  };
 }
 
 export async function createProgram(
@@ -178,10 +220,29 @@ export async function updateProgram(
     const existing = await tx.program.findUniqueOrThrow({
       where: { id: programId },
       select: {
-        minimumPayoutAmount: true,
+        name: true,
+        defaultCommissionRate: true,
         commissionDurationType: true,
         commissionDurationMonths: true,
+        attributionWindowDays: true,
+        holdingPeriodDays: true,
+        currency: true,
+        minimumPayoutAmount: true,
+        signupOpen: true,
       },
+    });
+    const beforeValues = programHistorySnapshot(existing);
+    const afterValues = programHistorySnapshot({
+      name: input.name,
+      defaultCommissionRate: input.defaultCommissionRate,
+      commissionDurationType: input.commissionDurationType,
+      commissionDurationMonths: input.commissionDurationMonths,
+      attributionWindowDays: input.attributionWindowDays,
+      holdingPeriodDays: input.holdingPeriodDays,
+      currency: input.currency ?? existing.currency,
+      minimumPayoutAmount:
+        input.minimumPayoutAmount ?? existing.minimumPayoutAmount,
+      signupOpen: input.signupOpen ?? existing.signupOpen,
     });
     const changedMinimum =
       input.minimumPayoutAmount !== undefined &&
@@ -226,11 +287,42 @@ export async function updateProgram(
       where: { id: programId },
       data: { ...input },
     });
+    await recordAuditEvent(tx, {
+      merchantId,
+      actorOwnerId: ownerId,
+      entityType: AUDIT_ENTITY_TYPES.PROGRAM,
+      entityId: programId,
+      action: AUDIT_ACTIONS.UPDATED,
+      beforeValues: beforeValues as Prisma.InputJsonObject,
+      afterValues: afterValues as Prisma.InputJsonObject,
+    });
     if (changedMinimum) {
       await recalculateProgramPayoutEligibility(tx, merchantId, programId);
     }
     return null;
   });
+}
+
+/** Return this Program's edit history only to the Owner of its Merchant. */
+export async function listProgramEditHistory(
+  ownerId: string,
+  merchantId: string,
+  programId: string,
+): Promise<ProgramEditHistoryEntry[]> {
+  const events = await listAuditEvents(
+    ownerId,
+    merchantId,
+    AUDIT_ENTITY_TYPES.PROGRAM,
+    programId,
+  );
+
+  return events.map((event) => ({
+    id: event.id,
+    createdAt: event.createdAt,
+    actorEmail: event.actorLabel,
+    beforeValues: event.beforeValues as unknown as ProgramHistorySnapshot,
+    afterValues: event.afterValues as unknown as ProgramHistorySnapshot,
+  }));
 }
 
 // Public — no Owner/session context. Scoped only by merchantId (resolved

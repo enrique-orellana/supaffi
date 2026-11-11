@@ -5,7 +5,7 @@ import type { CommissionDurationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { db } from "@/lib/db";
-import { listProgramsForMerchant } from "@/lib/program";
+import { listProgramEditHistory, listProgramsForMerchant } from "@/lib/program";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { signupLinkFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
@@ -85,8 +85,8 @@ export default async function ProgramsPage({
   const editing = query.edit
     ? (programs.find((p) => p.id === query.edit) ?? null)
     : null;
-  const storedRateOverrides: StoredRateOverride[] = editing
-    ? await (async () => {
+  const storedRateOverridesPromise: Promise<StoredRateOverride[]> = editing
+    ? (async () => {
         const [terms, affiliatesWithLegacyLinkRates] = await Promise.all([
           db.affiliateProgramTerms.findMany({
             where: {
@@ -154,7 +154,14 @@ export default async function ProgramsPage({
           a.affiliateName.localeCompare(b.affiliateName),
         );
       })()
-    : [];
+    : Promise.resolve([]);
+  const programEditHistoryPromise = editing
+    ? listProgramEditHistory(ownerId, merchant.id, editing.id)
+    : Promise.resolve([]);
+  const [storedRateOverrides, programEditHistory] = await Promise.all([
+    storedRateOverridesPromise,
+    programEditHistoryPromise,
+  ]);
 
   return (
     <Page>
@@ -210,6 +217,7 @@ export default async function ProgramsPage({
           signupOpen={editing.signupOpen}
           listHref={base}
           storedRateOverrides={storedRateOverrides}
+          history={programEditHistory}
         />
       )}
     </Page>

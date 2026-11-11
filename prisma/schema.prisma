@@ -46,6 +46,7 @@ model Merchant {
   welcomeDismissedAt     DateTime? // the first-visit banner on the overview was closed
 
   programs                Program[]
+  auditEvents             AuditEvent[]
   affiliates              Affiliate[]
   clicks                  Click[]
   affiliateLinks          AffiliateLink[]
@@ -109,6 +110,25 @@ model Program {
 
   @@unique([merchantId, slug])
   @@unique([id, merchantId])
+}
+
+/// Immutable, tenant-scoped audit events. The audit module validates snapshots
+/// against a per-entity allowlist and never logs arbitrary Prisma rows.
+model AuditEvent {
+  id           String   @id @default(cuid())
+  merchantId   String
+  actorOwnerId String
+  actorLabel   String
+  entityType   String
+  entityId     String
+  action       String
+  beforeValues Json     @db.JsonB
+  afterValues  Json     @db.JsonB
+  createdAt    DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId, actorOwnerId], references: [id, ownerId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([merchantId, entityType, entityId, createdAt])
 }
 
 model Affiliate {
